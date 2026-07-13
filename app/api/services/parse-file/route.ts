@@ -101,7 +101,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const parsed = JSON.parse(content.text);
+    const raw = content.text.replace(/```(?:json)?\s*/g, "").replace(/```\s*$/g, "").trim();
+    const parsed = JSON.parse(raw);
 
     return NextResponse.json({
       name: String(parsed.name ?? ""),

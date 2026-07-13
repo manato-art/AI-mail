@@ -286,7 +286,6 @@ function ServiceForm({
   onCancel: () => void;
 }) {
   const [specText, setSpecText] = useState("");
-  const [specOpen, setSpecOpen] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -301,7 +300,6 @@ function ServiceForm({
       target: data.target || form.target,
       lp_url: data.lp_url || form.lp_url,
     });
-    setSpecOpen(false);
     setSpecText("");
     setSelectedFile(null);
   }
@@ -403,32 +401,12 @@ function ServiceForm({
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
           {editing ? "サービスを編集" : "新規サービス登録"}
         </h2>
-        {!specOpen && (
-          <button
-            type="button"
-            onClick={() => setSpecOpen(true)}
-            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-600 dark:text-gray-400 transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary)"
-          >
-            <FileText size={14} />
-            仕様書から入力
-          </button>
-        )}
       </div>
 
-      {specOpen && (
-        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              仕様書・企画書を読み込み
-            </p>
-            <button
-              type="button"
-              onClick={() => { setSpecOpen(false); setSpecText(""); setSelectedFile(null); setParseError(null); }}
-              className="text-xs text-(--color-muted) hover:text-(--color-foreground) cursor-pointer"
-            >
-              閉じる
-            </button>
-          </div>
+      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            仕様書・企画書を読み込み
+          </p>
 
           <div
             onDrop={handleDrop}
@@ -516,7 +494,6 @@ function ServiceForm({
             )}
           </button>
         </div>
-      )}
 
       {error && (
         <div className="flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
