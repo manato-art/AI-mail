@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Briefcase,
+  FileText,
   PencilSimple,
   Plus,
   SpinnerGap,
@@ -279,14 +280,109 @@ function ServiceForm({
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
 }) {
+  const [specText, setSpecText] = useState("");
+  const [specOpen, setSpecOpen] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  async function handleParse() {
+    if (!specText.trim()) return;
+    setParsing(true);
+    setParseError(null);
+    try {
+      const res = await fetch("/api/services/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: specText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "解析に失敗しました。");
+      }
+      onChange({
+        name: data.name || form.name,
+        description: data.description || form.description,
+        strengths: data.strengths || form.strengths,
+        target: data.target || form.target,
+        lp_url: data.lp_url || form.lp_url,
+      });
+      setSpecOpen(false);
+      setSpecText("");
+    } catch (err) {
+      setParseError(
+        err instanceof Error ? err.message : "解析に失敗しました。"
+      );
+    } finally {
+      setParsing(false);
+    }
+  }
+
   return (
     <form
       onSubmit={onSubmit}
       className="animate-fade-in mb-6 space-y-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
     >
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-        {editing ? "サービスを編集" : "新規サービス登録"}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          {editing ? "サービスを編集" : "新規サービス登録"}
+        </h2>
+        {!specOpen && (
+          <button
+            type="button"
+            onClick={() => setSpecOpen(true)}
+            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-600 dark:text-gray-400 transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary)"
+          >
+            <FileText size={14} />
+            仕様書から入力
+          </button>
+        )}
+      </div>
+
+      {specOpen && (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              仕様書・企画書を貼り付け
+            </p>
+            <button
+              type="button"
+              onClick={() => { setSpecOpen(false); setSpecText(""); setParseError(null); }}
+              className="text-xs text-(--color-muted) hover:text-(--color-foreground) cursor-pointer"
+            >
+              閉じる
+            </button>
+          </div>
+          <textarea
+            rows={8}
+            value={specText}
+            onChange={(e) => setSpecText(e.target.value)}
+            disabled={parsing}
+            placeholder="サービスの仕様書や企画書のテキストをここに貼り付けてください..."
+            className="w-full rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 py-2.5 text-sm leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
+          />
+          {parseError && (
+            <p className="text-sm text-(--color-danger)">{parseError}</p>
+          )}
+          <button
+            type="button"
+            onClick={handleParse}
+            disabled={parsing || !specText.trim()}
+            className="flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {parsing ? (
+              <>
+                <SpinnerGap size={14} className="animate-spin" />
+                解析中...
+              </>
+            ) : (
+              <>
+                <FileText size={14} />
+                解析してフォームに反映
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
