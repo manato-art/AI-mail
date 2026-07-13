@@ -12,6 +12,7 @@ import {
   UserCircle,
   List,
   X,
+  PaperPlaneRight,
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import logoIcon from "./icon.png";
@@ -23,6 +24,7 @@ const NAV_ITEMS: {
 }[] = [
   { href: "/", label: "ダッシュボード", Icon: ChartBar },
   { href: "/generate", label: "生成", Icon: PaperPlaneTilt },
+  { href: "/bulk-send", label: "一括送信", Icon: PaperPlaneRight },
   { href: "/history", label: "履歴", Icon: Clock },
   { href: "/services", label: "サービス", Icon: Briefcase },
   { href: "/personas", label: "人格", Icon: UserCircle },
