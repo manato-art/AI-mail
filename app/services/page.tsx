@@ -395,17 +395,108 @@ function ServiceForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="animate-fade-in mb-6 space-y-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
+      className="animate-fade-in mb-6 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          {editing ? "サービスを編集" : "新規サービス登録"}
-        </h2>
-      </div>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5">
+        {editing ? "サービスを編集" : "新規サービス登録"}
+      </h2>
 
-      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
+      {error && (
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+          <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              サービス名
+            </label>
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={(e) => onChange({ ...form, name: e.target.value })}
+              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              サービス説明
+            </label>
+            <textarea
+              required
+              rows={2}
+              value={form.description}
+              onChange={(e) => onChange({ ...form, description: e.target.value })}
+              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              強み
+            </label>
+            <textarea
+              required
+              rows={2}
+              value={form.strengths}
+              onChange={(e) => onChange({ ...form, strengths: e.target.value })}
+              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              ターゲット
+            </label>
+            <textarea
+              required
+              rows={2}
+              value={form.target}
+              onChange={(e) => onChange({ ...form, target: e.target.value })}
+              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              LP・HP URL
+            </label>
+            <input
+              type="url"
+              value={form.lp_url}
+              onChange={(e) => onChange({ ...form, lp_url: e.target.value })}
+              placeholder="https://example.co.jp"
+              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving && <SpinnerGap size={16} className="animate-spin" />}
+              {saving ? "保存中..." : "保存"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="h-11 cursor-pointer rounded-lg border border-(--color-border) px-5 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3 self-start">
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            仕様書・企画書を読み込み
+            仕様書・企画書から自動入力
           </p>
 
           <div
@@ -413,7 +504,7 @@ function ServiceForm({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors cursor-pointer ${
+            className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors cursor-pointer ${
               dragging
                 ? "border-(--color-primary) bg-(--color-primary-light)"
                 : "border-gray-300 dark:border-gray-600 hover:border-(--color-primary) hover:bg-white dark:hover:bg-slate-800"
@@ -448,7 +539,7 @@ function ServiceForm({
               <>
                 <UploadSimple size={24} className="text-(--color-muted)" />
                 <p className="text-sm text-(--color-muted)">
-                  ドラッグ&ドロップ、またはクリックしてファイルを選択
+                  ドラッグ&ドロップ、またはクリック
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   PDF・Markdown・テキスト（5MB以下）
@@ -464,7 +555,7 @@ function ServiceForm({
           </div>
 
           <textarea
-            rows={6}
+            rows={5}
             value={specText}
             onChange={(e) => { setSpecText(e.target.value); if (e.target.value.trim()) setSelectedFile(null); }}
             disabled={parsing}
@@ -479,7 +570,7 @@ function ServiceForm({
             type="button"
             onClick={handleParse}
             disabled={parsing || !hasInput}
-            className="flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
           >
             {parsing ? (
               <>
@@ -494,97 +585,6 @@ function ServiceForm({
             )}
           </button>
         </div>
-
-      {error && (
-        <div className="flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
-          <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-          <p>{error}</p>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            サービス名
-          </label>
-          <input
-            type="text"
-            required
-            value={form.name}
-            onChange={(e) => onChange({ ...form, name: e.target.value })}
-            className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            サービス説明
-          </label>
-          <textarea
-            required
-            rows={3}
-            value={form.description}
-            onChange={(e) => onChange({ ...form, description: e.target.value })}
-            className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            強み
-          </label>
-          <textarea
-            required
-            rows={3}
-            value={form.strengths}
-            onChange={(e) => onChange({ ...form, strengths: e.target.value })}
-            className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            ターゲット
-          </label>
-          <textarea
-            required
-            rows={3}
-            value={form.target}
-            onChange={(e) => onChange({ ...form, target: e.target.value })}
-            className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            LP・HP URL
-          </label>
-          <input
-            type="url"
-            value={form.lp_url}
-            onChange={(e) => onChange({ ...form, lp_url: e.target.value })}
-            placeholder="https://example.co.jp"
-            className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving && <SpinnerGap size={16} className="animate-spin" />}
-          {saving ? "保存中..." : "保存"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-11 cursor-pointer rounded-lg border border-(--color-border) px-5 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700"
-        >
-          キャンセル
-        </button>
       </div>
     </form>
   );
