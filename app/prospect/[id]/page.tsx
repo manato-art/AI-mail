@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowCounterClockwise,
   ArrowSquareOut,
+  BookmarkSimple,
+  CaretDown,
   CaretLeft,
   Check,
   Copy,
@@ -14,7 +16,7 @@ import {
   SpinnerGap,
   WarningCircle,
 } from "@phosphor-icons/react";
-import type { AnalysisResult, Prospect } from "@/lib/types";
+import type { AnalysisResult, Prospect, SendStatus } from "@/lib/types";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -26,6 +28,22 @@ const COMPATIBILITY_BG: Record<string, string> = {
   high: "bg-(--color-success-light) text-(--color-success)",
   medium: "bg-(--color-warning-light) text-(--color-warning)",
   low: "bg-(--color-danger-light) text-(--color-danger)",
+};
+
+const STATUS_LABELS: Record<SendStatus, string> = {
+  unsent: "未送信",
+  sent: "送信済",
+  replied: "返信あり",
+  meeting: "商談中",
+  rejected: "見送り",
+};
+
+const STATUS_STYLES: Record<SendStatus, string> = {
+  unsent: "border-gray-300 text-gray-500 dark:border-gray-600 dark:text-gray-400",
+  sent: "border-(--color-primary) text-(--color-primary)",
+  replied: "border-(--color-success) text-(--color-success)",
+  meeting: "border-(--color-warning) text-(--color-warning)",
+  rejected: "border-(--color-danger) text-(--color-danger)",
 };
 
 const GMAIL_URL_MAX_LENGTH = 32000;
@@ -41,8 +59,7 @@ function parseJson<T>(raw: string | null | undefined, fallback: T): T {
 
 function countBodyLength(body: string): number {
   const separatorIndex = body.indexOf("━━━");
-  const mainText =
-    separatorIndex === -1 ? body : body.slice(0, separatorIndex);
+  const mainText = separatorIndex === -1 ? body : body.slice(0, separatorIndex);
   return mainText.trim().length;
 }
 
@@ -60,6 +77,9 @@ export default function ProspectPage() {
 
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  const [followingUp, setFollowingUp] = useState(false);
 
   const [senderEmail, setSenderEmail] = useState("");
 
@@ -101,9 +121,7 @@ export default function ProspectPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setLoadError(
-            err instanceof Error ? err.message : "データの取得に失敗しました。"
-          );
+          setLoadError(err instanceof Error ? err.message : "データの取得に失敗しました。");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -111,9 +129,7 @@ export default function ProspectPage() {
     }
 
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [id]);
 
   const analysis = useMemo<AnalysisResult | null>(
@@ -132,9 +148,7 @@ export default function ProspectPage() {
     if (!id) return;
     setRegenerating(true);
     try {
-      const res = await fetch(`/api/prospects/${id}/regenerate`, {
-        method: "POST",
-      });
+      const res = await fetch(`/api/prospects/${id}/regenerate`, { method: "POST" });
       if (!res.ok) throw new Error("再生成に失敗しました。");
       const data: Prospect = await res.json();
       setProspect(data);
@@ -166,6 +180,43 @@ export default function ProspectPage() {
     }
   }
 
+  async function handleStatusChange(status: SendStatus) {
+    if (!id) return;
+    setSavingStatus(true);
+    try {
+      const res = await fetch(`/api/prospects/${id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("ステータスの更新に失敗しました。");
+      const data: Prospect = await res.json();
+      setProspect(data);
+      showToast(`ステータスを「${STATUS_LABELS[status]}」に変更しました`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "ステータスの更新に失敗しました。");
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handleFollowUp() {
+    if (!id) return;
+    setFollowingUp(true);
+    try {
+      const res = await fetch(`/api/prospects/${id}/followup`, { method: "POST" });
+      if (!res.ok) throw new Error("フォローアップの生成に失敗しました。");
+      const data: { subject: string; body: string } = await res.json();
+      setSubject(data.subject);
+      setBody(data.body);
+      showToast("フォローアップメールを生成しました");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "フォローアップの生成に失敗しました。");
+    } finally {
+      setFollowingUp(false);
+    }
+  }
+
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(`${subject}\n\n${body}`);
@@ -175,10 +226,24 @@ export default function ProspectPage() {
     }
   }
 
+  async function handleSaveTemplate() {
+    const name = prompt("テンプレート名を入力してください", prospect?.company_name || "テンプレート");
+    if (!name) return;
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, subject, body }),
+      });
+      if (!res.ok) throw new Error("保存に失敗しました。");
+      showToast("テンプレートとして保存しました");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "テンプレート保存に失敗しました。");
+    }
+  }
+
   function handleOpenGmail() {
-    let gmailUrl = `https://mail.google.com/mail/?${senderEmail ? `authuser=${encodeURIComponent(senderEmail)}&` : ""}view=cm&su=${encodeURIComponent(
-      subject
-    )}&body=${encodeURIComponent(body)}`;
+    let gmailUrl = `https://mail.google.com/mail/?${senderEmail ? `authuser=${encodeURIComponent(senderEmail)}&` : ""}view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (emailsFound.length > 0) {
       gmailUrl += `&to=${encodeURIComponent(emailsFound[0])}`;
     }
@@ -220,7 +285,8 @@ export default function ProspectPage() {
     );
   }
 
-  const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400";
+  const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400";
+  const currentStatus = (prospect.send_status || "unsent") as SendStatus;
 
   return (
     <div className="animate-fade-in pb-20">
@@ -240,6 +306,21 @@ export default function ProspectPage() {
           <Globe size={12} />
           {prospect.domain}
         </span>
+
+        {/* Status selector */}
+        <div className="relative ml-auto">
+          <select
+            value={currentStatus}
+            onChange={(e) => handleStatusChange(e.target.value as SendStatus)}
+            disabled={savingStatus}
+            className={`h-8 appearance-none rounded-full border-2 bg-transparent py-0 pl-3 pr-7 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-primary)/20 disabled:opacity-50 ${STATUS_STYLES[currentStatus]}`}
+          >
+            {(Object.entries(STATUS_LABELS) as [SendStatus, string][]).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+          <CaretDown size={10} weight="bold" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
@@ -252,34 +333,21 @@ export default function ProspectPage() {
 
           <div className="space-y-4 p-5">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
-                会社名
-              </p>
-              <p className="mt-1 text-[15px] font-semibold">
-                {prospect.company_name || "-"}
-              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">会社名</p>
+              <p className="mt-1 text-[15px] font-semibold">{prospect.company_name || "-"}</p>
             </div>
-
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
-                事業概要
-              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">事業概要</p>
               <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
                 {analysis?.business_summary || "-"}
               </p>
             </div>
-
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
-                提案ポイント
-              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">提案ポイント</p>
               {analysis && analysis.proposal_points.length > 0 ? (
                 <ul className="mt-1.5 space-y-2">
                   {analysis.proposal_points.map((point, index) => (
-                    <li
-                      key={index}
-                      className="flex gap-2 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400"
-                    >
+                    <li key={index} className="flex gap-2 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
                       <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-primary)" />
                       {point}
                     </li>
@@ -291,11 +359,8 @@ export default function ProspectPage() {
             </div>
           </div>
 
-          {/* Compatibility Banner */}
           <div className="flex items-center gap-3 border-t border-(--color-border) px-5 py-3.5">
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${compatStyle}`}
-            >
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${compatStyle}`}>
               {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
             </div>
             <div className="min-w-0">
@@ -328,12 +393,7 @@ export default function ProspectPage() {
 
             <div className="space-y-4 p-5">
               <div>
-                <label
-                  htmlFor="subject"
-                  className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)"
-                >
-                  件名
-                </label>
+                <label htmlFor="subject" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">件名</label>
                 <input
                   id="subject"
                   type="text"
@@ -342,14 +402,8 @@ export default function ProspectPage() {
                   className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
                 />
               </div>
-
               <div>
-                <label
-                  htmlFor="body"
-                  className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)"
-                >
-                  本文
-                </label>
+                <label htmlFor="body" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">本文</label>
                 <textarea
                   id="body"
                   rows={12}
@@ -365,15 +419,8 @@ export default function ProspectPage() {
 
             {prospect.form_url && (
               <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                  フォームURL
-                </p>
-                <a
-                  href={prospect.form_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-0.5 block break-all text-[13px] text-(--color-primary) underline underline-offset-2 hover:text-(--color-primary-hover)"
-                >
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">フォームURL</p>
+                <a href={prospect.form_url} target="_blank" rel="noopener noreferrer" className="mt-0.5 block break-all text-[13px] text-(--color-primary) underline underline-offset-2 hover:text-(--color-primary-hover)">
                   {prospect.form_url}
                 </a>
               </div>
@@ -381,74 +428,55 @@ export default function ProspectPage() {
 
             {emailsFound.length > 0 && (
               <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                  送信先
-                </p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">送信先</p>
                 {emailsFound.map((email) => (
-                  <p key={email} className="mt-0.5 text-[13px] text-gray-600 dark:text-gray-400">
-                    {email}
-                  </p>
+                  <p key={email} className="mt-0.5 text-[13px] text-gray-600 dark:text-gray-400">{email}</p>
                 ))}
               </div>
             )}
           </div>
-
         </div>
       </div>
 
       {/* Fixed Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-(--color-border) bg-white/90 backdrop-blur-sm dark:bg-slate-900/90">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-2 px-6 py-3">
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            disabled={regenerating}
-            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
-          >
-            <ArrowCounterClockwise
-              size={15}
-              className={regenerating ? "animate-spin" : ""}
-            />
+          <button type="button" onClick={handleRegenerate} disabled={regenerating}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300">
+            <ArrowCounterClockwise size={15} className={regenerating ? "animate-spin" : ""} />
             {regenerating ? "再生成中..." : "再生成"}
           </button>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
-          >
+          <button type="button" onClick={handleFollowUp} disabled={followingUp}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300">
+            <EnvelopeSimple size={15} className={followingUp ? "animate-spin" : ""} />
+            {followingUp ? "生成中..." : "フォローアップ"}
+          </button>
+          <button type="button" onClick={handleCopy}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
             <Copy size={15} />
             コピー
           </button>
-          <button
-            type="button"
-            onClick={handleOpenGmail}
-            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
-          >
+          <button type="button" onClick={handleSaveTemplate}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
+            <BookmarkSimple size={15} />
+            テンプレ保存
+          </button>
+          <button type="button" onClick={handleOpenGmail}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
             <ArrowSquareOut size={15} />
             Gmailで開く
           </button>
           {prospect.form_url && (
-            <button
-              type="button"
-              onClick={handleOpenForm}
-              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
-            >
+            <button type="button" onClick={handleOpenForm}
+              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
               <ArrowSquareOut size={15} />
               フォームを開く
             </button>
           )}
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? (
-              <SpinnerGap size={16} className="animate-spin" />
-            ) : (
-              <Check size={16} weight="bold" />
-            )}
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60">
+            {saving ? <SpinnerGap size={16} className="animate-spin" /> : <Check size={16} weight="bold" />}
             {saving ? "保存中..." : "保存"}
           </button>
         </div>

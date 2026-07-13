@@ -7,6 +7,7 @@ import type {
   Prospect,
   Service,
   ServiceInput,
+  Template,
 } from "@/lib/types";
 
 let dbInstance: Database.Database | null = null;
@@ -64,7 +65,17 @@ function createTables(instance: Database.Database): void {
       form_url TEXT,
       is_form_only INTEGER NOT NULL DEFAULT 0,
       compatibility_score TEXT NOT NULL DEFAULT 'medium',
+      send_status TEXT NOT NULL DEFAULT 'unsent',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
   `);
 }
@@ -167,6 +178,14 @@ function seedServices(instance: Database.Database): void {
     });
 }
 
+function migrateSchema(instance: Database.Database): void {
+  const cols = instance.prepare("PRAGMA table_info(prospects)").all() as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has("send_status")) {
+    instance.exec("ALTER TABLE prospects ADD COLUMN send_status TEXT NOT NULL DEFAULT 'unsent'");
+  }
+}
+
 function seedSettings(instance: Database.Database): void {
   const row = instance
     .prepare("SELECT value FROM settings WHERE key = 'sender_email'")
@@ -193,6 +212,7 @@ function getDb(): Database.Database {
   instance.pragma("journal_mode = WAL");
 
   createTables(instance);
+  migrateSchema(instance);
   seedPersonas(instance);
   seedServices(instance);
   seedSettings(instance);
@@ -482,8 +502,58 @@ export function setSetting(key: string, value: string): void {
     .run(key, value);
 }
 
+export function deleteAllProspects(): void {
+  getDb().prepare("DELETE FROM prospects").run();
+}
+
+export function updateProspectStatus(id: number, status: string): Prospect | undefined {
+  const instance = getDb();
+  instance.prepare("UPDATE prospects SET send_status = ? WHERE id = ?").run(status, id);
+  return getProspect(id);
+}
+
 export function findProspectByDomain(domain: string): Prospect | undefined {
   return getDb()
     .prepare("SELECT * FROM prospects WHERE domain = ? ORDER BY id DESC LIMIT 1")
     .get(domain) as Prospect | undefined;
+}
+
+export function getAllTemplates(): Template[] {
+  return getDb()
+    .prepare("SELECT * FROM templates ORDER BY id DESC")
+    .all() as Template[];
+}
+
+export function getTemplate(id: number): Template | undefined {
+  return getDb()
+    .prepare("SELECT * FROM templates WHERE id = ?")
+    .get(id) as Template | undefined;
+}
+
+export function createTemplate(data: { name: string; subject: string; body: string }): Template {
+  const instance = getDb();
+  const result = instance
+    .prepare("INSERT INTO templates (name, subject, body) VALUES (@name, @subject, @body)")
+    .run(data);
+  return getTemplate(Number(result.lastInsertRowid)) as Template;
+}
+
+export function updateTemplate(id: number, data: { name?: string; subject?: string; body?: string }): Template | undefined {
+  const instance = getDb();
+  const existing = getTemplate(id);
+  if (!existing) return undefined;
+  instance
+    .prepare("UPDATE templates SET name = @name, subject = @subject, body = @body, updated_at = datetime('now','localtime') WHERE id = @id")
+    .run({
+      id,
+      name: data.name ?? existing.name,
+      subject: data.subject ?? existing.subject,
+      body: data.body ?? existing.body,
+    });
+  return getTemplate(id);
+}
+
+export function deleteTemplate(id: number): boolean {
+  const result = getDb().prepare("DELETE FROM templates WHERE id = ?").run(id);
+  return result.changes > 0;
 }

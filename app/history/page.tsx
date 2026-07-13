@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, SpinnerGap, Tray } from "@phosphor-icons/react";
-import type { Prospect, Service } from "@/lib/types";
+import {
+  ArrowRight,
+  DownloadSimple,
+  FunnelSimple,
+  MagnifyingGlass,
+  SpinnerGap,
+  Tray,
+  X,
+} from "@phosphor-icons/react";
+import type { Prospect, SendStatus, Service } from "@/lib/types";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -15,6 +23,22 @@ const COMPATIBILITY_STYLES: Record<string, string> = {
   high: "bg-(--color-success-light) text-(--color-success)",
   medium: "bg-(--color-warning-light) text-(--color-warning)",
   low: "bg-(--color-danger-light) text-(--color-danger)",
+};
+
+const STATUS_LABELS: Record<SendStatus, string> = {
+  unsent: "未送信",
+  sent: "送信済",
+  replied: "返信あり",
+  meeting: "商談中",
+  rejected: "見送り",
+};
+
+const STATUS_STYLES: Record<SendStatus, string> = {
+  unsent: "bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400",
+  sent: "bg-(--color-primary-light) text-(--color-primary)",
+  replied: "bg-(--color-success-light) text-(--color-success)",
+  meeting: "bg-(--color-warning-light) text-(--color-warning)",
+  rejected: "bg-(--color-danger-light) text-(--color-danger)",
 };
 
 function formatDate(iso: string): string {
@@ -40,9 +64,14 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+  const [filterCompat, setFilterCompat] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterService, setFilterService] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
@@ -53,28 +82,21 @@ export default function HistoryPage() {
         ]);
         if (!prospectsRes.ok) throw new Error("履歴の取得に失敗しました。");
         const prospectsData: Prospect[] = await prospectsRes.json();
-        const servicesData: Service[] = servicesRes.ok
-          ? await servicesRes.json()
-          : [];
+        const servicesData: Service[] = servicesRes.ok ? await servicesRes.json() : [];
         if (!cancelled) {
           setProspects(prospectsData);
           setServices(servicesData);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "履歴の取得に失敗しました。"
-          );
+          setError(err instanceof Error ? err.message : "履歴の取得に失敗しました。");
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const serviceNameMap = useMemo(() => {
@@ -83,25 +105,135 @@ export default function HistoryPage() {
     return map;
   }, [services]);
 
-  const sortedProspects = useMemo(
-    () =>
-      [...prospects].sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ),
-    [prospects]
-  );
+  const filtered = useMemo(() => {
+    const sorted = [...prospects].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    return sorted.filter((p) => {
+      if (search) {
+        const q = search.toLowerCase();
+        const matchName = (p.company_name || "").toLowerCase().includes(q);
+        const matchDomain = p.domain.toLowerCase().includes(q);
+        const matchSubject = p.subject.toLowerCase().includes(q);
+        if (!matchName && !matchDomain && !matchSubject) return false;
+      }
+      if (filterCompat && p.compatibility_score !== filterCompat) return false;
+      if (filterStatus && p.send_status !== filterStatus) return false;
+      if (filterService && p.service_id !== Number(filterService)) return false;
+      return true;
+    });
+  }, [prospects, search, filterCompat, filterStatus, filterService]);
+
+  const hasActiveFilters = Boolean(filterCompat || filterStatus || filterService);
+
+  function clearFilters() {
+    setFilterCompat("");
+    setFilterStatus("");
+    setFilterService("");
+  }
+
+  function handleExportCsv() {
+    window.open("/api/prospects/export", "_blank");
+  }
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">生成履歴</h1>
-        {!loading && (
-          <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
-            {sortedProspects.length}
-          </span>
-        )}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold tracking-tight">生成履歴</h1>
+          {!loading && (
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
+              {filtered.length}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          disabled={prospects.length === 0}
+          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <DownloadSimple size={14} />
+          CSV出力
+        </button>
       </div>
+
+      {/* Search & Filters */}
+      {!loading && prospects.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <MagnifyingGlass size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted) pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="企業名・ドメイン・件名で検索"
+                className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-card) pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFilters((v) => !v)}
+              className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                showFilters || hasActiveFilters
+                  ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
+                  : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+              }`}
+            >
+              <FunnelSimple size={14} />
+              フィルター
+              {hasActiveFilters && (
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-(--color-primary) text-[10px] font-bold text-white">
+                  {[filterCompat, filterStatus, filterService].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {showFilters && (
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-(--color-border) bg-(--color-card) p-3 animate-fade-in">
+              <div className="min-w-[140px]">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">相性</label>
+                <select value={filterCompat} onChange={(e) => setFilterCompat(e.target.value)} className="h-8 w-full appearance-none rounded-md border border-(--color-border) bg-(--color-card) px-2 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)">
+                  <option value="">すべて</option>
+                  <option value="high">高</option>
+                  <option value="medium">中</option>
+                  <option value="low">低</option>
+                </select>
+              </div>
+              <div className="min-w-[140px]">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-8 w-full appearance-none rounded-md border border-(--color-border) bg-(--color-card) px-2 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)">
+                  <option value="">すべて</option>
+                  {(Object.entries(STATUS_LABELS) as [SendStatus, string][]).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[160px]">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">サービス</label>
+                <select value={filterService} onChange={(e) => setFilterService(e.target.value)} className="h-8 w-full appearance-none rounded-md border border-(--color-border) bg-(--color-card) px-2 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)">
+                  <option value="">すべて</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={String(s.id)}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2.5 text-[11px] font-medium text-(--color-muted) hover:text-(--color-danger)"
+                >
+                  <X size={12} />
+                  リセット
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
@@ -114,51 +246,41 @@ export default function HistoryPage() {
           <SpinnerGap size={20} className="animate-spin text-(--color-primary)" />
           <p className="text-sm text-(--color-muted)">読み込み中...</p>
         </div>
-      ) : sortedProspects.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-(--color-border) bg-(--color-card) px-6 py-20 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-gray-500">
             <Tray size={24} />
           </div>
           <p className="text-sm text-(--color-muted)">
-            まだ生成履歴がありません。
+            {prospects.length > 0 ? "条件に一致する履歴がありません" : "まだ生成履歴がありません。"}
           </p>
-          <Link
-            href="/generate"
-            className="mt-1 inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
-          >
-            メールを作成する
-          </Link>
+          {prospects.length === 0 && (
+            <Link
+              href="/generate"
+              className="mt-1 inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-4 text-sm font-medium text-gray-700 hover:bg-(--color-card-hover) dark:text-gray-300"
+            >
+              メールを作成する
+            </Link>
+          )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50 text-left">
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
-                    日付
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
-                    会社名
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
-                    サービス
-                  </th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
-                    相性
-                  </th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
-                    件名
-                  </th>
+                <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">日付</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">会社名</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">サービス</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">相性</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">件名</th>
                   <th className="whitespace-nowrap px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
-                {sortedProspects.map((prospect) => (
-                  <tr
-                    key={prospect.id}
-                    className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)"
-                  >
+                {filtered.map((prospect) => (
+                  <tr key={prospect.id} className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)">
                     <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
                       {formatDate(prospect.created_at)}
                     </td>
@@ -166,18 +288,16 @@ export default function HistoryPage() {
                       {prospect.company_name || prospect.domain}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
-                      {serviceNameMap.get(prospect.service_id) ??
-                        `#${prospect.service_id}`}
+                      {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          COMPATIBILITY_STYLES[prospect.compatibility_score] ??
-                          "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
-                        }`}
-                      >
-                        {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
-                          prospect.compatibility_score}
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COMPATIBILITY_STYLES[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400"}`}>
+                        {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
+                        {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
@@ -186,7 +306,7 @@ export default function HistoryPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       <Link
                         href={`/prospect/${prospect.id}`}
-                        className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover) hover:text-(--color-primary)"
+                        className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 hover:bg-(--color-card-hover) hover:text-(--color-primary) dark:text-gray-300"
                       >
                         詳細
                         <ArrowRight size={14} />

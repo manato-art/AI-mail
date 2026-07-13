@@ -50,8 +50,26 @@
   --trait-length: #f59e0b;
 }
 
+:root[data-theme="dark"] {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --primary-light: #1e3a5f;
+  --danger-light: #451a1a;
+  --success-light: #14332a;
+  --warning-light: #422006;
+  --muted: #94a3b8;
+  --border: #334155;
+  --card: #1e293b;
+  --card-hover: #334155;
+  --trait-logic: #818cf8;
+  --trait-passion: #f87171;
+  --trait-polite: #34d399;
+  --trait-sales: #a78bfa;
+  --trait-length: #fbbf24;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0f172a;
     --foreground: #f1f5f9;
     --primary-light: #1e3a5f;
@@ -80,8 +98,18 @@ input, textarea, select {
   font-size: 16px;
 }
 
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background-color: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
 @media (prefers-color-scheme: dark) {
-  input, textarea, select {
+  :root:not([data-theme="light"]) input,
+  :root:not([data-theme="light"]) textarea,
+  :root:not([data-theme="light"]) select {
     background-color: var(--card);
     color: var(--foreground);
     border-color: var(--border);

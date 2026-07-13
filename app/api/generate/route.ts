@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
       form_url: crawlResult.formUrl,
       is_form_only: isFormOnly ? 1 : 0,
       compatibility_score: analysis.compatibility.score,
+      send_status: "unsent",
     });
 
     return NextResponse.json({ prospect, qualityCheck });

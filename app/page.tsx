@@ -16,8 +16,6 @@ import {
   Tray,
   Check,
   Warning,
-  PencilSimple,
-  FloppyDisk,
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
@@ -102,10 +100,6 @@ export default function DashboardPage() {
   const [quickError, setQuickError] = useState<string | null>(null);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const [senderEmail, setSenderEmail] = useState("");
-  const [editingSender, setEditingSender] = useState(false);
-  const [senderDraft, setSenderDraft] = useState("");
-  const [savingSender, setSavingSender] = useState(false);
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -116,21 +110,18 @@ export default function DashboardPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [pRes, sRes, perRes, settingsRes] = await Promise.all([
+        const [pRes, sRes, perRes] = await Promise.all([
           fetch("/api/prospects"),
           fetch("/api/services"),
           fetch("/api/personas"),
-          fetch("/api/settings"),
         ]);
         const pData: Prospect[] = pRes.ok ? await pRes.json() : [];
         const sData: Service[] = sRes.ok ? await sRes.json() : [];
         const perData: Persona[] = perRes.ok ? await perRes.json() : [];
-        const settingsData = settingsRes.ok ? await settingsRes.json() : {};
         if (!cancelled) {
           setProspects(pData);
           setServices(sData);
           setPersonas(perData);
-          if (settingsData.sender_email) setSenderEmail(settingsData.sender_email);
         }
       } catch {
         /* ignore */
@@ -176,26 +167,6 @@ export default function DashboardPage() {
         )
       : 0;
   const serviceCount = services.length;
-
-  async function handleSaveSender() {
-    setSavingSender(true);
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender_email: senderDraft }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSenderEmail(data.sender_email);
-        setEditingSender(false);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setSavingSender(false);
-    }
-  }
 
   const isBusy = quickStatus === "crawling" || quickStatus === "analyzing" || quickStatus === "generating";
 
@@ -333,54 +304,6 @@ export default function DashboardPage() {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="flex items-center gap-3 rounded-xl border border-(--color-border) bg-(--color-card) px-5 py-3">
-        <EnvelopeSimple size={16} className="shrink-0 text-(--color-muted)" />
-        <span className="shrink-0 text-xs font-medium text-(--color-muted)">送信元</span>
-        {editingSender ? (
-          <>
-            <input
-              type="email"
-              value={senderDraft}
-              onChange={(e) => setSenderDraft(e.target.value)}
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleSaveSender(); if (e.key === "Escape") setEditingSender(false); }}
-              className="h-8 flex-1 rounded-lg border border-(--color-border) px-3 text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent"
-              placeholder="example@gmail.com"
-            />
-            <button
-              type="button"
-              onClick={handleSaveSender}
-              disabled={savingSender}
-              className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-xs font-semibold text-white hover:bg-(--color-primary-hover) disabled:opacity-50"
-            >
-              <FloppyDisk size={14} />
-              保存
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditingSender(false)}
-              className="h-8 cursor-pointer rounded-lg border border-(--color-border) px-3 text-xs font-medium text-(--color-muted) hover:bg-(--color-card-hover)"
-            >
-              取消
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="flex-1 truncate text-sm">
-              {senderEmail || <span className="text-(--color-muted)">未設定</span>}
-            </span>
-            <button
-              type="button"
-              onClick={() => { setSenderDraft(senderEmail); setEditingSender(true); }}
-              className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
-            >
-              <PencilSimple size={13} />
-              変更
-            </button>
-          </>
-        )}
       </div>
 
       <div className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">

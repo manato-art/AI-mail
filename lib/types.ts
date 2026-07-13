@@ -50,6 +50,8 @@ export interface PersonaInput {
   length: number;
 }
 
+export type SendStatus = "unsent" | "sent" | "replied" | "meeting" | "rejected";
+
 export interface Prospect {
   id: number;
   input_url: string;
@@ -66,7 +68,17 @@ export interface Prospect {
   form_url: string | null;
   is_form_only: number;
   compatibility_score: string;
+  send_status: SendStatus;
   created_at: string;
+}
+
+export interface Template {
+  id: number;
+  name: string;
+  subject: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AnalysisResult {

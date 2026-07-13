@@ -13,9 +13,14 @@ import {
   List,
   X,
   PaperPlaneRight,
+  GearSix,
+  Moon,
+  Sun,
+  BookmarkSimple,
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import logoIcon from "./icon.png";
+import { useTheme } from "@/lib/theme-context";
 
 const NAV_ITEMS: {
   href: string;
@@ -26,6 +31,7 @@ const NAV_ITEMS: {
   { href: "/generate", label: "生成", Icon: PaperPlaneTilt },
   { href: "/bulk-send", label: "一括送信", Icon: PaperPlaneRight },
   { href: "/history", label: "履歴", Icon: Clock },
+  { href: "/templates", label: "テンプレート", Icon: BookmarkSimple },
   { href: "/services", label: "サービス", Icon: Briefcase },
   { href: "/personas", label: "人格", Icon: UserCircle },
 ];
@@ -33,11 +39,18 @@ const NAV_ITEMS: {
 export function NavHeader() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { resolved, setTheme } = useTheme();
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   }
+
+  function toggleTheme() {
+    setTheme(resolved === "dark" ? "light" : "dark");
+  }
+
+  const settingsActive = pathname.startsWith("/settings");
 
   return (
     <header className="border-b border-(--color-border) bg-(--color-card)">
@@ -81,15 +94,38 @@ export function NavHeader() {
           })}
         </nav>
 
-        <div className="ml-auto md:hidden">
+        <div className="ml-auto flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setMobileOpen((v) => !v)}
-            className="p-1.5 rounded-lg text-(--color-muted) hover:text-(--color-foreground) hover:bg-(--color-card-hover) transition-colors cursor-pointer"
-            aria-label="メニュー"
+            onClick={toggleTheme}
+            className="p-2 rounded-lg text-(--color-muted) hover:text-(--color-foreground) hover:bg-(--color-card-hover) transition-colors cursor-pointer"
+            aria-label="テーマ切替"
           >
-            {mobileOpen ? <X size={24} /> : <List size={24} />}
+            {resolved === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+
+          <Link
+            href="/settings"
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${
+              settingsActive
+                ? "text-(--color-primary) bg-(--color-primary-light)"
+                : "text-(--color-muted) hover:text-(--color-foreground) hover:bg-(--color-card-hover)"
+            }`}
+            aria-label="設定"
+          >
+            <GearSix size={18} />
+          </Link>
+
+          <div className="md:hidden ml-1">
+            <button
+              type="button"
+              onClick={() => setMobileOpen((v) => !v)}
+              className="p-1.5 rounded-lg text-(--color-muted) hover:text-(--color-foreground) hover:bg-(--color-card-hover) transition-colors cursor-pointer"
+              aria-label="メニュー"
+            >
+              {mobileOpen ? <X size={24} /> : <List size={24} />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -113,6 +149,18 @@ export function NavHeader() {
               </Link>
             );
           })}
+          <Link
+            href="/settings"
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              settingsActive
+                ? "text-(--color-primary) bg-(--color-primary-light)"
+                : "text-(--color-muted) hover:text-(--color-foreground) hover:bg-(--color-card-hover)"
+            }`}
+          >
+            <GearSix size={20} weight={settingsActive ? "fill" : "regular"} />
+            設定
+          </Link>
         </nav>
       )}
     </header>
