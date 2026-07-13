@@ -285,7 +285,7 @@ export default function GeneratePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 左カラム: 基本入力 */}
-        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4 self-start">
+        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
             基本設定
           </h2>
@@ -370,7 +370,7 @@ export default function GeneratePage() {
         </div>
 
         {/* 右カラム: カスタマイズ */}
-        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4 self-start">
+        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
             カスタマイズ
           </h2>
