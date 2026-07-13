@@ -7,7 +7,7 @@ export async function GET() {
     return NextResponse.json(getAllServices());
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     if (!name || !description || !strengths || !target) {
       return NextResponse.json(
-        { error: "name, description, strengths, and target are required" },
+        { error: "サービス名・説明・強み・ターゲットは必須です" },
         { status: 400 }
       );
     }
@@ -29,6 +29,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(service, { status: 201 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

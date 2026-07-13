@@ -396,9 +396,23 @@ export default function GeneratePage() {
 
 function ProgressCard({ status }: { status: Status }) {
   const currentIndex = PROGRESS_STEPS.findIndex((step) => step.key === status);
+  const pctMap: Record<string, number> = { crawling: 15, analyzing: 50, generating: 85 };
+  const pct = pctMap[status] ?? 0;
 
   return (
     <div className="mt-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 animate-fade-in">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          {PROGRESS_STEPS[currentIndex]?.label ?? "処理中"}
+        </p>
+        <span className="text-xs tabular-nums text-(--color-muted)">{pct}%</span>
+      </div>
+      <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden mb-5">
+        <div
+          className="h-full rounded-full bg-(--color-primary) transition-all duration-700 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
       <div className="space-y-4">
         {PROGRESS_STEPS.map((step, index) => {
           const isDone = currentIndex > index;

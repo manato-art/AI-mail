@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,6 +14,8 @@ import {
   CaretDown,
   SpinnerGap,
   Tray,
+  Check,
+  Warning,
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
@@ -51,7 +53,16 @@ function truncate(text: string, max: number) {
   return `${text.slice(0, max)}...`;
 }
 
-type QuickStatus = "idle" | "busy" | "done" | "error" | "duplicate" | "low-compat";
+type QuickStatus = "idle" | "crawling" | "analyzing" | "generating" | "done" | "error" | "duplicate" | "low-compat";
+
+const QUICK_STEPS = [
+  { key: "crawling", label: "企業HPを取得中", pct: 15 },
+  { key: "analyzing", label: "企業を分析中", pct: 50 },
+  { key: "generating", label: "メールを作成中", pct: 85 },
+  { key: "done", label: "完了", pct: 100 },
+] as const;
+
+const STEP_DELAY_MS = 2200;
 
 interface GenerateSuccessResponse {
   prospect: Prospect;
@@ -87,6 +98,12 @@ export default function DashboardPage() {
   const [quickPersonaId, setQuickPersonaId] = useState("");
   const [quickStatus, setQuickStatus] = useState<QuickStatus>("idle");
   const [quickError, setQuickError] = useState<string | null>(null);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => { timers.forEach(clearTimeout); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,16 +167,23 @@ export default function DashboardPage() {
       : 0;
   const serviceCount = services.length;
 
+  const isBusy = quickStatus === "crawling" || quickStatus === "analyzing" || quickStatus === "generating";
+
   const canQuickSubmit =
-    quickStatus !== "busy" &&
+    !isBusy &&
+    quickStatus !== "done" &&
     Boolean(quickServiceId) &&
     Boolean(quickPersonaId) &&
     Boolean(quickUrl.trim());
 
   async function handleQuickGenerate() {
     if (!canQuickSubmit) return;
-    setQuickStatus("busy");
     setQuickError(null);
+    setQuickStatus("crawling");
+
+    const t1 = setTimeout(() => setQuickStatus("analyzing"), STEP_DELAY_MS);
+    const t2 = setTimeout(() => setQuickStatus("generating"), STEP_DELAY_MS * 2);
+    timersRef.current.push(t1, t2);
 
     try {
       const res = await fetch("/api/generate", {
@@ -174,6 +198,9 @@ export default function DashboardPage() {
         }),
       });
 
+      clearTimeout(t1);
+      clearTimeout(t2);
+
       const data: GenerateResponse = await res.json();
 
       if (!res.ok) {
@@ -187,7 +214,7 @@ export default function DashboardPage() {
       }
 
       if ("duplicate" in data && data.duplicate) {
-        setQuickStatus("duplicate");
+        setQuickStatus("done");
         router.push(`/prospect/${(data as DuplicateResponse).existingProspect.id}`);
         return;
       }
@@ -207,6 +234,8 @@ export default function DashboardPage() {
       setQuickStatus("error");
       setQuickError("予期しない応答です。");
     } catch (err) {
+      clearTimeout(t1);
+      clearTimeout(t2);
       setQuickStatus("error");
       setQuickError(
         err instanceof Error ? err.message : "通信エラーが発生しました。"
@@ -295,7 +324,7 @@ export default function DashboardPage() {
               <select
                 value={quickServiceId}
                 onChange={(e) => setQuickServiceId(e.target.value)}
-                disabled={quickStatus === "busy"}
+                disabled={isBusy}
                 className="w-full h-10 px-3 pr-8 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
               >
                 <option value="">選択</option>
@@ -320,7 +349,7 @@ export default function DashboardPage() {
               <select
                 value={quickPersonaId}
                 onChange={(e) => setQuickPersonaId(e.target.value)}
-                disabled={quickStatus === "busy"}
+                disabled={isBusy}
                 className="w-full h-10 px-3 pr-8 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
               >
                 <option value="">選択</option>
@@ -350,7 +379,7 @@ export default function DashboardPage() {
                 type="url"
                 value={quickUrl}
                 onChange={(e) => setQuickUrl(e.target.value)}
-                disabled={quickStatus === "busy"}
+                disabled={isBusy}
                 placeholder="https://example.co.jp"
                 className="w-full h-10 pl-9 pr-3 border border-(--color-border) rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
               />
@@ -362,7 +391,7 @@ export default function DashboardPage() {
             disabled={!canQuickSubmit}
             className="h-10 px-5 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
           >
-            {quickStatus === "busy" ? (
+            {isBusy ? (
               <SpinnerGap size={16} className="animate-spin" />
             ) : (
               <PaperPlaneTilt size={16} weight="fill" />
@@ -370,8 +399,23 @@ export default function DashboardPage() {
             生成
           </button>
         </div>
+
+        {isBusy && <QuickProgressBar status={quickStatus} />}
+
         {quickStatus === "error" && quickError && (
-          <p className="mt-3 text-sm text-(--color-danger)">{quickError}</p>
+          <div className="mt-4 flex gap-2.5 rounded-lg border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger) animate-fade-in">
+            <Warning size={18} weight="fill" className="shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p>{quickError}</p>
+              <button
+                type="button"
+                onClick={handleQuickGenerate}
+                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline cursor-pointer"
+              >
+                再試行
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -470,6 +514,47 @@ export default function DashboardPage() {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function QuickProgressBar({ status }: { status: QuickStatus }) {
+  const currentStep = QUICK_STEPS.find((s) => s.key === status);
+  const pct = currentStep?.pct ?? 0;
+
+  return (
+    <div className="mt-4 animate-fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          {QUICK_STEPS.slice(0, 3).map((step) => {
+            const stepIdx = QUICK_STEPS.findIndex((s) => s.key === step.key);
+            const currentIdx = QUICK_STEPS.findIndex((s) => s.key === status);
+            const isDone = currentIdx > stepIdx;
+            const isCurrent = step.key === status;
+            return (
+              <div key={step.key} className="flex items-center gap-1.5">
+                {isDone ? (
+                  <Check size={14} weight="bold" style={{ color: "var(--color-success)" }} />
+                ) : isCurrent ? (
+                  <SpinnerGap size={14} className="animate-spin text-(--color-primary)" />
+                ) : (
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600" />
+                )}
+                <span className={`text-xs ${isCurrent ? "font-semibold text-(--color-primary)" : isDone ? "text-(--color-success)" : "text-(--color-muted)"}`}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <span className="text-xs tabular-nums text-(--color-muted)">{pct}%</span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-(--color-primary) transition-all duration-700 ease-out"
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );

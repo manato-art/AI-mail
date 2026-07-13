@@ -6,6 +6,6 @@ export async function GET() {
     return NextResponse.json(getAllProspects());
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

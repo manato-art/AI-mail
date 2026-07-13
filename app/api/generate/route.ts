@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     if (!serviceId || !personaId || !url) {
       return NextResponse.json(
-        { error: "serviceId, personaId, and url are required" },
+        { error: "サービス・人格・URLをすべて入力してください" },
         { status: 400 }
       );
     }
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     if (!validated.valid) {
       return NextResponse.json(
-        { error: validated.error ?? "Invalid URL" },
+        { error: validated.error ?? "URLの形式が不正です" },
         { status: 400 }
       );
     }
@@ -46,12 +46,12 @@ export async function POST(request: NextRequest) {
 
     const service = getService(Number(serviceId));
     if (!service) {
-      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+      return NextResponse.json({ error: "サービスが見つかりません" }, { status: 404 });
     }
 
     const persona = getPersona(Number(personaId));
     if (!persona) {
-      return NextResponse.json({ error: "Persona not found" }, { status: 404 });
+      return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
     const crawlResult = await crawlWebsite(validated.normalized);
@@ -97,6 +97,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ prospect, qualityCheck });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

@@ -10,13 +10,13 @@ export async function GET(
     const prospect = getProspect(Number(id));
 
     if (!prospect) {
-      return NextResponse.json({ error: "Prospect not found" }, { status: 404 });
+      return NextResponse.json({ error: "生成履歴が見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(prospect);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -32,12 +32,12 @@ export async function PUT(
     const prospect = updateProspect(Number(id), { subject, body });
 
     if (!prospect) {
-      return NextResponse.json({ error: "Prospect not found" }, { status: 404 });
+      return NextResponse.json({ error: "生成履歴が見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(prospect);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

@@ -15,13 +15,13 @@ export async function GET(
     const persona = getPersona(Number(id));
 
     if (!persona) {
-      return NextResponse.json({ error: "Persona not found" }, { status: 404 });
+      return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(persona);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -48,7 +48,7 @@ export async function PUT(
 
     if (!name || !title) {
       return NextResponse.json(
-        { error: "name and title are required" },
+        { error: "名前と肩書きは必須です" },
         { status: 400 }
       );
     }
@@ -80,13 +80,13 @@ export async function PUT(
     const persona = updatePersona(Number(id), input);
 
     if (!persona) {
-      return NextResponse.json({ error: "Persona not found" }, { status: 404 });
+      return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(persona);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -99,12 +99,12 @@ export async function DELETE(
     const deleted = deletePersona(Number(id));
 
     if (!deleted) {
-      return NextResponse.json({ error: "Persona not found" }, { status: 404 });
+      return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

@@ -11,13 +11,13 @@ export async function GET(
     const service = getService(Number(id));
 
     if (!service) {
-      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+      return NextResponse.json({ error: "サービスが見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(service);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -32,7 +32,7 @@ export async function PUT(
 
     if (!name || !description || !strengths || !target) {
       return NextResponse.json(
-        { error: "name, description, strengths, and target are required" },
+        { error: "サービス名・説明・強み・ターゲットは必須です" },
         { status: 400 }
       );
     }
@@ -41,13 +41,13 @@ export async function PUT(
     const service = updateService(Number(id), input);
 
     if (!service) {
-      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+      return NextResponse.json({ error: "サービスが見つかりません" }, { status: 404 });
     }
 
     return NextResponse.json(service);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -60,12 +60,12 @@ export async function DELETE(
     const deleted = deleteService(Number(id));
 
     if (!deleted) {
-      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+      return NextResponse.json({ error: "サービスが見つかりません" }, { status: 404 });
     }
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }

@@ -11,7 +11,7 @@ export async function GET() {
     return NextResponse.json(getAllPersonas());
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     if (!name || !title) {
       return NextResponse.json(
-        { error: "name and title are required" },
+        { error: "名前と肩書きは必須です" },
         { status: 400 }
       );
     }
@@ -68,6 +68,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(persona, { status: 201 });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
