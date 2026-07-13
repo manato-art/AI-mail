@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Briefcase,
   FileText,
@@ -8,7 +8,9 @@ import {
   Plus,
   SpinnerGap,
   Trash,
+  UploadSimple,
   Warning,
+  X,
 } from "@phosphor-icons/react";
 import type { Service, ServiceInput } from "@/lib/types";
 
@@ -263,6 +265,9 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
+const ACCEPTED_EXTENSIONS = [".pdf", ".md", ".txt", ".markdown"];
+const ACCEPTED_MIME = ["application/pdf", "text/plain", "text/markdown", "text/x-markdown"];
+
 function ServiceForm({
   form,
   editing,
@@ -284,30 +289,100 @@ function ServiceForm({
   const [specOpen, setSpecOpen] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function applyResult(data: { name: string; description: string; strengths: string; target: string; lp_url: string }) {
+    onChange({
+      name: data.name || form.name,
+      description: data.description || form.description,
+      strengths: data.strengths || form.strengths,
+      target: data.target || form.target,
+      lp_url: data.lp_url || form.lp_url,
+    });
+    setSpecOpen(false);
+    setSpecText("");
+    setSelectedFile(null);
+  }
+
+  function isValidFile(file: File): boolean {
+    const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
+    return ACCEPTED_MIME.includes(file.type) || ACCEPTED_EXTENSIONS.includes(ext);
+  }
+
+  function handleFileSelect(file: File) {
+    if (!isValidFile(file)) {
+      setParseError("PDF・Markdown・テキストファイルのみ対応しています。");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setParseError("ファイルサイズは5MB以下にしてください。");
+      return;
+    }
+    setParseError(null);
+    setSelectedFile(file);
+  }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
+    if (!ACCEPTED_MIME.includes(file.type) && !ACCEPTED_EXTENSIONS.includes(ext)) {
+      setParseError("PDF・Markdown・テキストファイルのみ対応しています。");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setParseError("ファイルサイズは5MB以下にしてください。");
+      return;
+    }
+    setParseError(null);
+    setSelectedFile(file);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+  }, []);
 
   async function handleParse() {
-    if (!specText.trim()) return;
     setParsing(true);
     setParseError(null);
+
     try {
-      const res = await fetch("/api/services/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: specText.trim() }),
-      });
+      let res: Response;
+
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        res = await fetch("/api/services/parse-file", {
+          method: "POST",
+          body: formData,
+        });
+      } else if (specText.trim()) {
+        res = await fetch("/api/services/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: specText.trim() }),
+        });
+      } else {
+        setParseError("テキストを入力するか、ファイルを選択してください。");
+        setParsing(false);
+        return;
+      }
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error ?? "解析に失敗しました。");
       }
-      onChange({
-        name: data.name || form.name,
-        description: data.description || form.description,
-        strengths: data.strengths || form.strengths,
-        target: data.target || form.target,
-        lp_url: data.lp_url || form.lp_url,
-      });
-      setSpecOpen(false);
-      setSpecText("");
+      applyResult(data);
     } catch (err) {
       setParseError(
         err instanceof Error ? err.message : "解析に失敗しました。"
@@ -316,6 +391,8 @@ function ServiceForm({
       setParsing(false);
     }
   }
+
+  const hasInput = Boolean(specText.trim()) || Boolean(selectedFile);
 
   return (
     <form
@@ -342,31 +419,88 @@ function ServiceForm({
         <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              仕様書・企画書を貼り付け
+              仕様書・企画書を読み込み
             </p>
             <button
               type="button"
-              onClick={() => { setSpecOpen(false); setSpecText(""); setParseError(null); }}
+              onClick={() => { setSpecOpen(false); setSpecText(""); setSelectedFile(null); setParseError(null); }}
               className="text-xs text-(--color-muted) hover:text-(--color-foreground) cursor-pointer"
             >
               閉じる
             </button>
           </div>
+
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors cursor-pointer ${
+              dragging
+                ? "border-(--color-primary) bg-(--color-primary-light)"
+                : "border-gray-300 dark:border-gray-600 hover:border-(--color-primary) hover:bg-white dark:hover:bg-slate-800"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.md,.txt,.markdown"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileSelect(file);
+                e.target.value = "";
+              }}
+            />
+            {selectedFile ? (
+              <div className="flex items-center gap-2">
+                <FileText size={20} className="text-(--color-primary)" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {selectedFile.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                  className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-slate-600 cursor-pointer"
+                >
+                  <X size={12} className="text-(--color-muted)" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <UploadSimple size={24} className="text-(--color-muted)" />
+                <p className="text-sm text-(--color-muted)">
+                  ドラッグ&ドロップ、またはクリックしてファイルを選択
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  PDF・Markdown・テキスト（5MB以下）
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-600" />
+            <span className="text-xs text-gray-400 dark:text-gray-500">または</span>
+            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-600" />
+          </div>
+
           <textarea
-            rows={8}
+            rows={6}
             value={specText}
-            onChange={(e) => setSpecText(e.target.value)}
+            onChange={(e) => { setSpecText(e.target.value); if (e.target.value.trim()) setSelectedFile(null); }}
             disabled={parsing}
-            placeholder="サービスの仕様書や企画書のテキストをここに貼り付けてください..."
+            placeholder="テキストを直接貼り付け..."
             className="w-full rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 py-2.5 text-sm leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
           />
+
           {parseError && (
             <p className="text-sm text-(--color-danger)">{parseError}</p>
           )}
           <button
             type="button"
             onClick={handleParse}
-            disabled={parsing || !specText.trim()}
+            disabled={parsing || !hasInput}
             className="flex h-9 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
           >
             {parsing ? (
