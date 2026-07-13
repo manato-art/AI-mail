@@ -80,6 +80,7 @@ export default function ProspectPage() {
   const [savingStatus, setSavingStatus] = useState(false);
 
   const [followingUp, setFollowingUp] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   const [senderEmail, setSenderEmail] = useState("");
 
@@ -299,16 +300,16 @@ export default function ProspectPage() {
         >
           <CaretLeft size={16} weight="bold" />
         </button>
-        <h1 className="text-xl font-bold tracking-tight">
+        <h1 className="text-lg md:text-xl font-bold tracking-tight">
           {prospect.company_name || prospect.domain} 宛のメール
         </h1>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-(--color-primary-light) px-3 py-1 text-xs font-semibold text-(--color-primary)">
+        <span className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-(--color-primary-light) px-3 py-1 text-xs font-semibold text-(--color-primary)">
           <Globe size={12} />
           {prospect.domain}
         </span>
 
         {/* Status selector */}
-        <div className="relative ml-auto">
+        <div className="relative ml-auto w-full md:w-auto mt-2 md:mt-0">
           <select
             value={currentStatus}
             onChange={(e) => handleStatusChange(e.target.value as SendStatus)}
@@ -329,8 +330,17 @@ export default function ProspectPage() {
           <div className="flex items-center gap-2 border-b border-(--color-border) px-5 py-3.5">
             <Notebook size={15} className="text-(--color-muted)" />
             <h2 className="text-sm font-semibold">企業分析</h2>
+            <button
+              type="button"
+              onClick={() => setShowAnalysis((v) => !v)}
+              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs text-(--color-muted) transition-colors hover:bg-(--color-card-hover) md:hidden"
+            >
+              {showAnalysis ? "閉じる" : "詳細を見る"}
+              <CaretDown size={12} weight="bold" className={`transition-transform ${showAnalysis ? "rotate-180" : ""}`} />
+            </button>
           </div>
 
+          <div className={`${showAnalysis ? "block" : "hidden"} md:block`}>
           <div className="space-y-4 p-5">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">会社名</p>
@@ -373,6 +383,7 @@ export default function ProspectPage() {
                 </p>
               )}
             </div>
+          </div>
           </div>
         </div>
 
@@ -438,8 +449,30 @@ export default function ProspectPage() {
         </div>
       </div>
 
-      {/* Fixed Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-(--color-border) bg-white/90 backdrop-blur-sm dark:bg-slate-900/90">
+      {/* Mobile Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-(--color-border) bg-white/95 backdrop-blur-sm dark:bg-slate-900/95 md:hidden">
+        <div className="grid grid-cols-4 gap-1 px-2 py-2">
+          <button type="button" onClick={handleRegenerate} disabled={regenerating} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary) disabled:opacity-50">
+            <ArrowCounterClockwise size={18} className={regenerating ? "animate-spin" : ""} />
+            <span className="text-[10px]">再生成</span>
+          </button>
+          <button type="button" onClick={handleCopy} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary)">
+            <Copy size={18} />
+            <span className="text-[10px]">コピー</span>
+          </button>
+          <button type="button" onClick={handleOpenGmail} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary)">
+            <ArrowSquareOut size={18} />
+            <span className="text-[10px]">Gmail</span>
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-primary) font-medium transition-colors disabled:opacity-50">
+            {saving ? <SpinnerGap size={18} className="animate-spin" /> : <Check size={18} weight="bold" />}
+            <span className="text-[10px] font-semibold">{saving ? "保存中" : "保存"}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 hidden border-t border-(--color-border) bg-white/90 backdrop-blur-sm dark:bg-slate-900/90 md:block">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-2 px-6 py-3">
           <button type="button" onClick={handleRegenerate} disabled={regenerating}
             className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300">
@@ -483,7 +516,7 @@ export default function ProspectPage() {
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 z-20 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg animate-fade-in">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 z-20 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg animate-fade-in">
           {toast}
         </div>
       )}

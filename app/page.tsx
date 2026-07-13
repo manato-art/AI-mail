@@ -285,17 +285,17 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="rounded-xl border border-(--color-border) bg-(--color-card) p-4 transition-shadow hover:shadow-md"
+            className="rounded-xl border border-(--color-border) bg-(--color-card) p-3 md:p-4 transition-shadow hover:shadow-md"
           >
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-lg ${m.bg}`}
+                className={`flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg ${m.bg}`}
               >
-                <m.icon size={20} weight="duotone" className={m.color} />
+                <m.icon className={`size-4 md:size-5 ${m.color}`} weight="duotone" />
               </div>
               <div>
                 <p className="text-xs text-(--color-muted)">{m.label}</p>
@@ -390,7 +390,7 @@ export default function DashboardPage() {
             type="button"
             onClick={handleQuickGenerate}
             disabled={!canQuickSubmit}
-            className="h-10 px-5 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
+            className="h-10 px-5 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap w-full md:w-auto"
           >
             {isBusy ? (
               <SpinnerGap size={16} className="animate-spin" />
@@ -448,7 +448,38 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile card list */}
+          <div className="md:hidden">
+            {recentProspects.map((prospect) => (
+              <div key={prospect.id} className="border-b border-(--color-border) last:border-0 px-4 py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold">{prospect.company_name || prospect.domain}</span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      COMPATIBILITY_STYLES[prospect.compatibility_score] ??
+                      "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
+                    }`}
+                  >
+                    {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
+                      prospect.compatibility_score}
+                  </span>
+                </div>
+                <p className="text-xs text-(--color-muted) truncate">{prospect.subject}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[11px] text-(--color-muted)">
+                    {formatDate(prospect.created_at)} · {serviceMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
+                  </span>
+                  <Link href={`/prospect/${prospect.id}`} className="text-xs text-(--color-primary) font-medium">
+                    詳細 →
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50 text-left">
@@ -514,6 +545,7 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>

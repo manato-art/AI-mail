@@ -192,7 +192,7 @@ export default function HistoryPage() {
           </div>
 
           {showFilters && (
-            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-(--color-border) bg-(--color-card) p-3 animate-fade-in">
+            <div className="grid grid-cols-1 gap-2 md:flex md:flex-wrap md:items-end md:gap-3 rounded-lg border border-(--color-border) bg-(--color-card) p-3 animate-fade-in">
               <div className="min-w-[140px]">
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">相性</label>
                 <select value={filterCompat} onChange={(e) => setFilterCompat(e.target.value)} className="h-8 w-full appearance-none rounded-md border border-(--color-border) bg-(--color-card) px-2 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)">
@@ -264,60 +264,89 @@ export default function HistoryPage() {
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">日付</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">会社名</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">サービス</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">相性</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">件名</th>
-                  <th className="whitespace-nowrap px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((prospect) => (
-                  <tr key={prospect.id} className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)">
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
-                      {formatDate(prospect.created_at)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                      {prospect.company_name || prospect.domain}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
-                      {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COMPATIBILITY_STYLES[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400"}`}>
-                        {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
-                        {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                      {truncate(prospect.subject, 40)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Link
-                        href={`/prospect/${prospect.id}`}
-                        className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 hover:bg-(--color-card-hover) hover:text-(--color-primary) dark:text-gray-300"
-                      >
-                        詳細
-                        <ArrowRight size={14} />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-(--color-border) rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
+            {filtered.map((prospect) => (
+              <Link key={prospect.id} href={`/prospect/${prospect.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-(--color-card-hover) transition-colors">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold truncate">{prospect.company_name || prospect.domain}</span>
+                    <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${COMPATIBILITY_STYLES[prospect.compatibility_score]}`}>
+                      {COMPATIBILITY_LABELS[prospect.compatibility_score]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-(--color-muted) truncate mt-0.5">{truncate(prospect.subject, 50)}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[11px] text-(--color-muted)">{formatDate(prospect.created_at)}</span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
+                      {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight size={14} className="shrink-0 text-(--color-muted)" />
+              </Link>
+            ))}
           </div>
-        </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
+                      <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">日付</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">会社名</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">サービス</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">相性</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</th>
+                      <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">件名</th>
+                      <th className="whitespace-nowrap px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((prospect) => (
+                      <tr key={prospect.id} className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)">
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
+                          {formatDate(prospect.created_at)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                          {prospect.company_name || prospect.domain}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
+                          {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COMPATIBILITY_STYLES[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400"}`}>
+                            {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
+                            {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                          {truncate(prospect.subject, 40)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          <Link
+                            href={`/prospect/${prospect.id}`}
+                            className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 hover:bg-(--color-card-hover) hover:text-(--color-primary) dark:text-gray-300"
+                          >
+                            詳細
+                            <ArrowRight size={14} />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

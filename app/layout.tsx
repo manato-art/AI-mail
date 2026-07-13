@@ -34,7 +34,7 @@ export default function RootLayout({
       <body className="min-h-screen antialiased">
         <ThemeProvider>
           <NavHeader />
-          <main className="py-6 px-4 lg:px-6">{children}</main>
+          <main className="py-4 px-3 pb-20 md:py-6 md:px-4 md:pb-6 lg:px-6">{children}</main>
         </ThemeProvider>
       </body>
     </html>
