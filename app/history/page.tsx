@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowRight, SpinnerGap, Tray } from "@phosphor-icons/react";
 import type { Prospect, Service } from "@/lib/types";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
@@ -11,9 +12,9 @@ const COMPATIBILITY_LABELS: Record<string, string> = {
 };
 
 const COMPATIBILITY_STYLES: Record<string, string> = {
-  high: "bg-green-100 text-[--color-success]",
-  medium: "bg-amber-100 text-[--color-warning]",
-  low: "bg-red-100 text-[--color-danger]",
+  high: "bg-(--color-success-light) text-(--color-success)",
+  medium: "bg-(--color-warning-light) text-(--color-warning)",
+  low: "bg-(--color-danger-light) text-(--color-danger)",
 };
 
 function formatDate(iso: string): string {
@@ -92,82 +93,110 @@ export default function HistoryPage() {
   );
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">生成履歴</h1>
+    <div className="animate-fade-in">
+      <div className="mb-6 flex items-center gap-3">
+        <h1 className="text-2xl font-bold tracking-tight">生成履歴</h1>
+        {!loading && (
+          <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
+            {sortedProspects.length}
+          </span>
+        )}
+      </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[--color-danger] bg-red-50 p-4 text-sm text-[--color-danger]">
+        <div className="mb-4 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
           {error}
         </div>
       )}
 
       {loading ? (
-        <p className="text-gray-500">読み込み中...</p>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--color-border) bg-(--color-card) py-20 text-center">
+          <SpinnerGap size={20} className="animate-spin text-(--color-primary)" />
+          <p className="text-sm text-(--color-muted)">読み込み中...</p>
+        </div>
       ) : sortedProspects.length === 0 ? (
-        <p className="text-gray-500">まだ生成履歴がありません。</p>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-(--color-border) bg-(--color-card) px-6 py-20 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-gray-500">
+            <Tray size={24} />
+          </div>
+          <p className="text-sm text-(--color-muted)">
+            まだ生成履歴がありません。
+          </p>
+          <Link
+            href="/"
+            className="mt-1 inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
+          >
+            メールを作成する
+          </Link>
+        </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[--color-border] text-left text-gray-500">
-                <th className="px-4 py-3 font-medium whitespace-nowrap">
-                  日付
-                </th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">
-                  会社名
-                </th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">
-                  サービス
-                </th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">
-                  相性
-                </th>
-                <th className="px-4 py-3 font-medium">件名</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap" />
-              </tr>
-            </thead>
-            <tbody>
-              {sortedProspects.map((prospect) => (
-                <tr
-                  key={prospect.id}
-                  className="border-b border-[--color-border] last:border-0 hover:bg-[--color-card-hover]"
-                >
-                  <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                    {formatDate(prospect.created_at)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap font-medium">
-                    {prospect.company_name || prospect.domain}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                    {serviceNameMap.get(prospect.service_id) ??
-                      `#${prospect.service_id}`}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        COMPATIBILITY_STYLES[prospect.compatibility_score] ??
-                        "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
-                        prospect.compatibility_score}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {truncate(prospect.subject, 40)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-right">
-                    <Link
-                      href={`/prospect/${prospect.id}`}
-                      className="text-[--color-primary] hover:underline underline-offset-2 font-medium"
-                    >
-                      詳細
-                    </Link>
-                  </td>
+        <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50 text-left">
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
+                    日付
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
+                    会社名
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
+                    サービス
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
+                    相性
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
+                    件名
+                  </th>
+                  <th className="whitespace-nowrap px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedProspects.map((prospect) => (
+                  <tr
+                    key={prospect.id}
+                    className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
+                      {formatDate(prospect.created_at)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                      {prospect.company_name || prospect.domain}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
+                      {serviceNameMap.get(prospect.service_id) ??
+                        `#${prospect.service_id}`}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          COMPATIBILITY_STYLES[prospect.compatibility_score] ??
+                          "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
+                        }`}
+                      >
+                        {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
+                          prospect.compatibility_score}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                      {truncate(prospect.subject, 40)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      <Link
+                        href={`/prospect/${prospect.id}`}
+                        className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover) hover:text-(--color-primary)"
+                      >
+                        詳細
+                        <ArrowRight size={14} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

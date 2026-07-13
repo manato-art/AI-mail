@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  PaperPlaneTilt,
+  Globe,
+  CaretDown,
+  Check,
+  SpinnerGap,
+  Warning,
+} from "@phosphor-icons/react";
 import type {
   AnalysisResult,
   Persona,
@@ -52,7 +60,9 @@ function isSuccessResponse(
   return (data as GenerateSuccessResponse).prospect !== undefined;
 }
 
-function isDuplicateResponse(data: GenerateResponse): data is DuplicateResponse {
+function isDuplicateResponse(
+  data: GenerateResponse
+): data is DuplicateResponse {
   return (data as DuplicateResponse).duplicate === true;
 }
 
@@ -67,9 +77,9 @@ function isErrorResponse(data: GenerateResponse): data is ErrorResponse {
 }
 
 const PROGRESS_STEPS = [
-  { key: "crawling", label: "HPを取得しています..." },
-  { key: "analyzing", label: "企業を分析しています..." },
-  { key: "generating", label: "メールを作成しています..." },
+  { key: "crawling", label: "企業HPを取得中", sub: "Webサイトをクロールしています" },
+  { key: "analyzing", label: "企業を分析中", sub: "事業内容と相性を判定しています" },
+  { key: "generating", label: "メールを作成中", sub: "パーソナライズされた文面を生成しています" },
 ] as const;
 
 const STEP_DELAY_MS = 2000;
@@ -142,6 +152,13 @@ export default function Home() {
   const isBusy =
     status === "crawling" || status === "analyzing" || status === "generating";
 
+  const canSubmit =
+    !isBusy &&
+    !loadingOptions &&
+    Boolean(selectedServiceId) &&
+    Boolean(selectedPersonaId) &&
+    Boolean(url.trim());
+
   function resetToIdle() {
     setStatus("idle");
     setError(null);
@@ -150,9 +167,7 @@ export default function Home() {
   }
 
   async function handleGenerate(opts?: { force?: boolean; forceLow?: boolean }) {
-    if (!selectedServiceId || !selectedPersonaId || !url.trim()) {
-      return;
-    }
+    if (!selectedServiceId || !selectedPersonaId || !url.trim()) return;
 
     setError(null);
     setDuplicateProspect(null);
@@ -227,104 +242,130 @@ export default function Home() {
   const missingPersonas = !loadingOptions && personas.length === 0;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">営業メール作成</h1>
+    <div className="max-w-2xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">営業メールを作成</h1>
+        <p className="mt-1 text-sm text-(--color-muted)">
+          企業URLを入力すると、HPを自動分析してパーソナライズされた営業メールを生成します
+        </p>
+      </div>
 
       {(missingServices || missingPersonas) && (
-        <div className="mb-6 rounded-lg border border-[--color-border] bg-white p-4 text-sm text-gray-600 space-y-1">
-          {missingServices && (
-            <p>
-              サービスが登録されていません。
-              <Link
-                href="/services"
-                className="text-[--color-primary] underline underline-offset-2"
-              >
-                サービス管理
-              </Link>
-              から登録してください。
-            </p>
-          )}
-          {missingPersonas && (
-            <p>
-              人格が登録されていません。
-              <Link
-                href="/personas"
-                className="text-[--color-primary] underline underline-offset-2"
-              >
-                人格管理
-              </Link>
-              から登録してください。
-            </p>
-          )}
+        <div className="mb-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-4 text-sm space-y-1 animate-fade-in">
+          <div className="flex gap-2.5">
+            <Warning className="shrink-0 mt-0.5" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+            <div className="space-y-1">
+              {missingServices && (
+                <p className="text-gray-700 dark:text-gray-300">
+                  サービスが未登録です。
+                  <Link
+                    href="/services"
+                    className="text-(--color-primary) font-medium underline underline-offset-2 ml-1"
+                  >
+                    サービスを登録
+                  </Link>
+                </p>
+              )}
+              {missingPersonas && (
+                <p className="text-gray-700 dark:text-gray-300">
+                  人格が未登録です。
+                  <Link
+                    href="/personas"
+                    className="text-(--color-primary) font-medium underline underline-offset-2 ml-1"
+                  >
+                    人格を登録
+                  </Link>
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-6 space-y-4">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-(--color-border) p-5 md:p-6 space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               サービス
             </label>
-            <select
-              value={selectedServiceId}
-              onChange={(e) => setSelectedServiceId(e.target.value)}
-              disabled={isBusy || loadingOptions}
-              className="w-full h-10 px-3 border border-[--color-border] rounded-lg focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent disabled:opacity-50"
-            >
-              <option value="">選択してください</option>
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectedServiceId}
+                onChange={(e) => setSelectedServiceId(e.target.value)}
+                disabled={isBusy || loadingOptions}
+                className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+              >
+                <option value="">選択してください</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+              <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              人格（送信者）
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              送信者（人格）
             </label>
-            <select
-              value={selectedPersonaId}
-              onChange={(e) => setSelectedPersonaId(e.target.value)}
-              disabled={isBusy || loadingOptions}
-              className="w-full h-10 px-3 border border-[--color-border] rounded-lg focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent disabled:opacity-50"
-            >
-              <option value="">選択してください</option>
-              {personas.map((persona) => (
-                <option key={persona.id} value={persona.id}>
-                  {persona.name}（{persona.title}）
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectedPersonaId}
+                onChange={(e) => setSelectedPersonaId(e.target.value)}
+                disabled={isBusy || loadingOptions}
+                className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+              >
+                <option value="">選択してください</option>
+                {personas.map((persona) => (
+                  <option key={persona.id} value={persona.id}>
+                    {persona.name}（{persona.title}）
+                  </option>
+                ))}
+              </select>
+              <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 md:items-end">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              企業URL
-            </label>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            企業URL
+          </label>
+          <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <Globe size={20} />
+            </div>
             <input
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               disabled={isBusy}
               placeholder="https://example.co.jp"
-              className="w-full h-10 px-3 border border-[--color-border] rounded-lg focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent disabled:opacity-50"
+              className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => handleGenerate()}
-            disabled={
-              isBusy || !selectedServiceId || !selectedPersonaId || !url.trim()
-            }
-            className="h-10 px-6 rounded-lg bg-[--color-primary] hover:bg-[--color-primary-hover] text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            生成
-          </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => handleGenerate()}
+          disabled={!canSubmit}
+          className="w-full h-12 rounded-xl bg-(--color-primary) hover:bg-(--color-primary-hover) text-white font-semibold text-base flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+        >
+          {isBusy ? (
+            <>
+              <SpinnerGap className="animate-spin" size={20} />
+              生成中...
+            </>
+          ) : (
+            <>
+              <PaperPlaneTilt size={20} weight="fill" />
+              メールを生成
+            </>
+          )}
+        </button>
       </div>
 
       {isBusy && <ProgressCard status={status} />}
@@ -357,35 +398,49 @@ function ProgressCard({ status }: { status: Status }) {
   const currentIndex = PROGRESS_STEPS.findIndex((step) => step.key === status);
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 mt-6">
-      <ul className="space-y-3">
+    <div className="mt-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 animate-fade-in">
+      <div className="space-y-4">
         {PROGRESS_STEPS.map((step, index) => {
           const isDone = currentIndex > index;
           const isCurrent = currentIndex === index;
           return (
-            <li key={step.key} className="flex items-center gap-3">
-              {isDone ? (
-                <CheckIcon />
-              ) : isCurrent ? (
-                <SpinnerIcon />
-              ) : (
-                <span className="h-5 w-5 shrink-0 rounded-full border-2 border-gray-300" />
-              )}
-              <span
-                className={
-                  isCurrent
-                    ? "text-gray-900 font-medium"
-                    : isDone
-                      ? "text-gray-500"
-                      : "text-gray-400"
-                }
-              >
-                {step.label}
-              </span>
-            </li>
+            <div key={step.key} className="flex items-start gap-3">
+              <div className="mt-0.5">
+                {isDone ? (
+                  <div className="h-6 w-6 rounded-full bg-(--color-success-light) flex items-center justify-center">
+                    <Check size={16} weight="bold" style={{ color: "var(--color-success)" }} />
+                  </div>
+                ) : isCurrent ? (
+                  <div className="h-6 w-6 rounded-full bg-(--color-primary-light) flex items-center justify-center relative">
+                    <div className="absolute inset-0 rounded-full bg-(--color-primary) opacity-20 animate-pulse-ring" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-(--color-primary)" />
+                  </div>
+                ) : (
+                  <div className="h-6 w-6 rounded-full border-2 border-gray-200" />
+                )}
+              </div>
+              <div>
+                <p
+                  className={`text-sm font-medium ${
+                    isCurrent
+                      ? "text-gray-900 dark:text-gray-100"
+                      : isDone
+                        ? "text-gray-500"
+                        : "text-gray-400"
+                  }`}
+                >
+                  {step.label}
+                </p>
+                {isCurrent && (
+                  <p className="text-xs text-(--color-muted) mt-0.5">
+                    {step.sub}
+                  </p>
+                )}
+              </div>
+            </div>
           );
         })}
-      </ul>
+      </div>
     </div>
   );
 }
@@ -402,38 +457,38 @@ function DuplicateDialog({
   onCancel: () => void;
 }) {
   return (
-    <div className="mt-6 rounded-lg border border-[--color-warning] bg-amber-50 p-6">
+    <div className="mt-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-5 animate-fade-in">
       <div className="flex gap-3">
-        <WarningIcon className="text-[--color-warning]" />
-        <div className="flex-1">
-          <h2 className="font-semibold text-gray-900">
+        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-warning)" }} />
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
             この企業は生成済みです
           </h2>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {prospect.company_name || prospect.domain}{" "}
             宛のメールは既に作成されています。
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={onView}
-              className="bg-[--color-primary] hover:bg-[--color-primary-hover] text-white rounded-lg px-4 py-2 font-medium"
+              className="h-9 px-4 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-medium transition-colors"
             >
               過去の結果を見る
             </button>
             <button
               type="button"
               onClick={onForceNew}
-              className="border border-[--color-border] rounded-lg px-4 py-2 hover:bg-gray-50"
+              className="h-9 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 text-sm font-medium hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
             >
-              新規生成
+              新規作成
             </button>
             <button
               type="button"
               onClick={onCancel}
-              className="border border-[--color-border] rounded-lg px-4 py-2 hover:bg-gray-50"
+              className="h-9 px-4 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
-              中止
+              キャンセル
             </button>
           </div>
         </div>
@@ -452,30 +507,30 @@ function LowCompatDialog({
   onCancel: () => void;
 }) {
   return (
-    <div className="mt-6 rounded-lg border border-[--color-danger] bg-red-50 p-6">
+    <div className="mt-5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-5 animate-fade-in">
       <div className="flex gap-3">
-        <WarningIcon className="text-[--color-danger]" />
-        <div className="flex-1">
-          <h2 className="font-semibold text-gray-900">
+        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-danger)" }} />
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
             相性が低い可能性があります
           </h2>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {analysis.compatibility.reason}
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={onForce}
-              className="bg-[--color-danger] hover:bg-[--color-danger-hover] text-white rounded-lg px-4 py-2"
+              className="h-9 px-4 rounded-lg bg-(--color-danger) hover:bg-(--color-danger-hover) text-white text-sm font-medium transition-colors"
             >
-              それでも作る
+              それでも生成する
             </button>
             <button
               type="button"
               onClick={onCancel}
-              className="border border-[--color-border] rounded-lg px-4 py-2 hover:bg-gray-50"
+              className="h-9 px-4 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
-              やめる
+              キャンセル
             </button>
           </div>
         </div>
@@ -492,16 +547,16 @@ function ErrorCard({
   onRetry: () => void;
 }) {
   return (
-    <div className="mt-6 rounded-lg border border-[--color-danger] bg-red-50 p-6">
+    <div className="mt-5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-5 animate-fade-in">
       <div className="flex gap-3">
-        <WarningIcon className="text-[--color-danger]" />
-        <div className="flex-1">
-          <h2 className="font-semibold text-gray-900">エラーが発生しました</h2>
-          <p className="mt-1 text-sm text-gray-600">{message}</p>
+        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-danger)" }} />
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">エラーが発生しました</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{message}</p>
           <button
             type="button"
             onClick={onRetry}
-            className="mt-4 bg-[--color-primary] hover:bg-[--color-primary-hover] text-white rounded-lg px-4 py-2 font-medium"
+            className="mt-4 h-9 px-4 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-medium transition-colors"
           >
             再試行
           </button>
@@ -511,61 +566,3 @@ function ErrorCard({
   );
 }
 
-function CheckIcon() {
-  return (
-    <svg
-      className="h-5 w-5 shrink-0 text-[--color-success]"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        d="M16.704 5.29a1 1 0 00-1.408-1.42l-6.573 6.514-2.42-2.396a1 1 0 10-1.406 1.421l3.122 3.093a1 1 0 001.407 0l7.278-7.212z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}
-
-function SpinnerIcon() {
-  return (
-    <svg
-      className="h-5 w-5 shrink-0 animate-spin text-[--color-primary]"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
-}
-
-function WarningIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={`h-6 w-6 shrink-0 ${className}`}
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 8a1 1 0 100-2 1 1 0 000 2z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}

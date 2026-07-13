@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  CaretDown,
+  PencilSimple,
+  Plus,
+  SpinnerGap,
+  Trash,
+  User,
+  Warning,
+} from "@phosphor-icons/react";
 import type { Persona, PersonaInput } from "@/lib/types";
 
 type ParamKey = "logic" | "passion" | "politeness" | "salesiness" | "length";
@@ -197,20 +206,24 @@ export default function PersonasPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">人格管理（メール作成者）</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">
+          人格管理（メール作成者）
+        </h1>
         <button
           type="button"
           onClick={openCreateForm}
-          className="bg-[--color-primary] hover:bg-[--color-primary-hover] text-white rounded-lg px-4 py-2 font-medium"
+          className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
         >
+          <Plus size={16} />
           新規登録
         </button>
       </div>
 
       {listError && (
-        <div className="mb-4 rounded-lg border border-[--color-danger] bg-red-50 p-4 text-sm text-[--color-danger]">
-          {listError}
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+          <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
+          <p>{listError}</p>
         </div>
       )}
 
@@ -228,52 +241,96 @@ export default function PersonasPage() {
       )}
 
       {loading ? (
-        <p className="text-gray-500">読み込み中...</p>
+        <p className="text-sm text-(--color-muted)">読み込み中...</p>
       ) : personas.length === 0 ? (
-        <p className="text-gray-500">人格が登録されていません。</p>
+        <EmptyState onCreate={openCreateForm} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {personas.map((persona) => (
-            <div key={persona.id} className="bg-white rounded-lg shadow p-6">
+            <div
+              key={persona.id}
+              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 transition-colors hover:bg-(--color-card-hover)"
+            >
               <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-lg">{persona.name}</h2>
-                  <p className="text-sm text-gray-600">
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">{persona.name}</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
                     {persona.title}
                     {persona.company_name && ` / ${persona.company_name}`}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {PARAMETER_CONFIG.map((param) => (
-                      <span
-                        key={param.key}
-                        className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600"
-                      >
-                        {param.label} {persona[param.key]}
-                      </span>
-                    ))}
-                  </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex shrink-0 gap-1">
                   <button
                     type="button"
                     onClick={() => openEditForm(persona)}
-                    className="border border-[--color-border] rounded-lg px-4 py-2 hover:bg-gray-50 text-sm"
+                    aria-label="編集"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
                   >
-                    編集
+                    <PencilSimple size={16} />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDelete(persona)}
-                    className="bg-[--color-danger] hover:bg-[--color-danger-hover] text-white rounded-lg px-4 py-2 text-sm"
+                    aria-label="削除"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
                   >
-                    削除
+                    <Trash size={16} />
                   </button>
                 </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {PARAMETER_CONFIG.map((param) => (
+                  <div key={param.key} className="flex items-center gap-2.5">
+                    <span className="w-14 shrink-0 text-xs text-(--color-muted)">
+                      {param.label}
+                    </span>
+                    <div className="flex flex-1 items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <span
+                          key={n}
+                          className={`h-1.5 flex-1 rounded-full ${
+                            n <= persona[param.key]
+                              ? "bg-(--color-primary)"
+                              : "bg-(--color-border)"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="w-3 shrink-0 text-right text-xs font-medium text-gray-400 dark:text-gray-500">
+                      {persona[param.key]}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-white dark:bg-slate-800 px-6 py-16 text-center">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700">
+        <User size={24} className="text-gray-400 dark:text-gray-500" />
+      </div>
+      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        人格が登録されていません
+      </p>
+      <p className="mt-1 text-sm text-(--color-muted)">
+        メールの送信者となる人格を登録しましょう
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-5 flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
+      >
+        <Plus size={16} />
+        新規登録
+      </button>
     </div>
   );
 }
@@ -300,26 +357,27 @@ function PersonaForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="bg-white rounded-lg shadow p-6 mb-6 space-y-6"
+      className="animate-fade-in mb-6 space-y-6 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
     >
-      <h2 className="text-lg font-semibold">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
         {editing ? "人格を編集" : "新規人格登録"}
       </h2>
 
       {error && (
-        <div className="rounded-lg border border-[--color-danger] bg-red-50 p-3 text-sm text-[--color-danger]">
-          {error}
+        <div className="flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+          <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
+          <p>{error}</p>
         </div>
       )}
 
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900 border-b border-[--color-border] pb-2">
+        <h3 className="border-b border-(--color-border) pb-2.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
           基本情報
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               名前
             </label>
             <input
@@ -327,12 +385,12 @@ function PersonaForm({
               required
               value={form.name}
               onChange={(e) => onChange({ ...form, name: e.target.value })}
-              className="w-full border border-[--color-border] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               役職
             </label>
             <input
@@ -340,44 +398,56 @@ function PersonaForm({
               required
               value={form.title}
               onChange={(e) => onChange({ ...form, title: e.target.value })}
-              className="w-full border border-[--color-border] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               性別
             </label>
-            <select
-              value={form.gender}
-              onChange={(e) => onChange({ ...form, gender: e.target.value })}
-              className="w-full h-10 px-3 border border-[--color-border] rounded-lg focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
-            >
-              <option value="">未設定</option>
-              <option value="男性">男性</option>
-              <option value="女性">女性</option>
-            </select>
+            <div className="relative">
+              <select
+                value={form.gender}
+                onChange={(e) => onChange({ ...form, gender: e.target.value })}
+                className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 pr-9 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              >
+                <option value="">未設定</option>
+                <option value="男性">男性</option>
+                <option value="女性">女性</option>
+              </select>
+              <CaretDown
+                size={16}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               年代
             </label>
-            <select
-              value={form.age_range}
-              onChange={(e) => onChange({ ...form, age_range: e.target.value })}
-              className="w-full h-10 px-3 border border-[--color-border] rounded-lg focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
-            >
-              {AGE_RANGES.map((range) => (
-                <option key={range} value={range}>
-                  {range}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={form.age_range}
+                onChange={(e) => onChange({ ...form, age_range: e.target.value })}
+                className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 pr-9 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              >
+                {AGE_RANGES.map((range) => (
+                  <option key={range} value={range}>
+                    {range}
+                  </option>
+                ))}
+              </select>
+              <CaretDown
+                size={16}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
+            </div>
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
               会社名
             </label>
             <input
@@ -386,13 +456,13 @@ function PersonaForm({
               onChange={(e) =>
                 onChange({ ...form, company_name: e.target.value })
               }
-              className="w-full border border-[--color-border] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
             署名ブロック
           </label>
           <textarea
@@ -401,24 +471,24 @@ function PersonaForm({
             onChange={(e) =>
               onChange({ ...form, signature_block: e.target.value })
             }
-            className="w-full border border-[--color-border] rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[--color-primary] focus:border-transparent"
+            className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 font-mono text-sm transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
           />
         </div>
       </div>
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-gray-900 border-b border-[--color-border] pb-2">
+      <div className="space-y-5">
+        <h3 className="border-b border-(--color-border) pb-2.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
           性格パラメータ
         </h3>
 
         <div className="space-y-5">
           {PARAMETER_CONFIG.map((param) => (
             <div key={param.key}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-gray-700">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {param.label}
                 </label>
-                <span className="text-sm font-semibold text-[--color-primary]">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-(--color-primary-light) text-xs font-semibold text-(--color-primary)">
                   {form[param.key]}
                 </span>
               </div>
@@ -429,9 +499,9 @@ function PersonaForm({
                 step={1}
                 value={form[param.key]}
                 onChange={(e) => onParamChange(param.key, Number(e.target.value))}
-                className="w-full accent-[--color-primary]"
+                className="w-full cursor-pointer accent-(--color-primary)"
               />
-              <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+              <div className="mt-1.5 flex items-center justify-between text-xs text-(--color-muted)">
                 <span>{param.minLabel}</span>
                 <span>{param.maxLabel}</span>
               </div>
@@ -440,18 +510,19 @@ function PersonaForm({
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 pt-1">
         <button
           type="submit"
           disabled={saving}
-          className="bg-[--color-primary] hover:bg-[--color-primary-hover] text-white rounded-lg px-4 py-2 font-medium disabled:opacity-50"
+          className="flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
         >
+          {saving && <SpinnerGap size={16} className="animate-spin" />}
           {saving ? "保存中..." : "保存"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="border border-[--color-border] rounded-lg px-4 py-2 hover:bg-gray-50"
+          className="h-11 cursor-pointer rounded-lg border border-(--color-border) px-5 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700"
         >
           キャンセル
         </button>
