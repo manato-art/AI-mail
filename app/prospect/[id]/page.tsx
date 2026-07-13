@@ -28,7 +28,7 @@ const COMPATIBILITY_BG: Record<string, string> = {
   low: "bg-(--color-danger-light) text-(--color-danger)",
 };
 
-const GMAIL_URL_MAX_LENGTH = 2000;
+const GMAIL_URL_MAX_LENGTH = 32000;
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
