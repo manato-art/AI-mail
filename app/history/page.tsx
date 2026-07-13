@@ -123,7 +123,7 @@ export default function HistoryPage() {
             まだ生成履歴がありません。
           </p>
           <Link
-            href="/"
+            href="/generate"
             className="mt-1 inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
           >
             メールを作成する
