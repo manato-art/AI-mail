@@ -223,7 +223,7 @@ export default function ProspectPage() {
   const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400";
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in pb-20">
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <button
@@ -393,61 +393,64 @@ export default function ProspectPage() {
             )}
           </div>
 
-          {/* Action Bar */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+        </div>
+      </div>
+
+      {/* Fixed Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-(--color-border) bg-white/90 backdrop-blur-sm dark:bg-slate-900/90">
+        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-2 px-6 py-3">
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            disabled={regenerating}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
+          >
+            <ArrowCounterClockwise
+              size={15}
+              className={regenerating ? "animate-spin" : ""}
+            />
+            {regenerating ? "再生成中..." : "再生成"}
+          </button>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
+          >
+            <Copy size={15} />
+            コピー
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenGmail}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
+          >
+            <ArrowSquareOut size={15} />
+            Gmailで開く
+          </button>
+          {prospect.form_url && (
             <button
               type="button"
-              onClick={handleRegenerate}
-              disabled={regenerating}
-              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
-            >
-              <ArrowCounterClockwise
-                size={15}
-                className={regenerating ? "animate-spin" : ""}
-              />
-              {regenerating ? "再生成中..." : "再生成"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
-            >
-              <Copy size={15} />
-              コピー
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenGmail}
+              onClick={handleOpenForm}
               className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
             >
               <ArrowSquareOut size={15} />
-              Gmailで開く
+              フォームを開く
             </button>
-            {prospect.form_url && (
-              <button
-                type="button"
-                onClick={handleOpenForm}
-                className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
-              >
-                <ArrowSquareOut size={15} />
-                フォームを開く
-              </button>
+          )}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? (
+              <SpinnerGap size={16} className="animate-spin" />
+            ) : (
+              <Check size={16} weight="bold" />
             )}
-            <div className="flex-1" />
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? (
-                <SpinnerGap size={16} className="animate-spin" />
-              ) : (
-                <Check size={16} weight="bold" />
-              )}
-              {saving ? "保存中..." : "保存"}
-            </button>
-          </div>
+            {saving ? "保存中..." : "保存"}
+          </button>
         </div>
       </div>
 
