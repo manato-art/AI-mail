@@ -35,36 +35,42 @@ const PARAMETER_CONFIG: {
   label: string;
   minLabel: string;
   maxLabel: string;
+  color: string;
 }[] = [
   {
     key: "logic",
     label: "論理性",
     minLabel: "感情・共感型",
     maxLabel: "ロジカル",
+    color: "var(--trait-logic)",
   },
   {
     key: "passion",
     label: "熱量",
     minLabel: "低（淡々）",
     maxLabel: "高（前のめり）",
+    color: "var(--trait-passion)",
   },
   {
     key: "politeness",
     label: "丁寧さ",
     minLabel: "フランク寄り",
     maxLabel: "最敬体",
+    color: "var(--trait-polite)",
   },
   {
     key: "salesiness",
     label: "営業感",
     minLabel: "控えめ・相談風",
     maxLabel: "ストレート",
+    color: "var(--trait-sales)",
   },
   {
     key: "length",
     label: "文章量",
     minLabel: "短め",
     maxLabel: "長め",
+    color: "var(--trait-length)",
   },
 ];
 
@@ -249,59 +255,74 @@ export default function PersonasPage() {
           {personas.map((persona) => (
             <div
               key={persona.id}
-              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 transition-colors hover:bg-(--color-card-hover)"
+              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 transition-colors hover:border-(--color-primary)"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">{persona.name}</h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {persona.title}
-                    {persona.company_name && ` / ${persona.company_name}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(persona)}
-                    aria-label="編集"
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <PencilSimple size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(persona)}
-                    aria-label="削除"
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
-                  >
-                    <Trash size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                {PARAMETER_CONFIG.map((param) => (
-                  <div key={param.key} className="flex items-center gap-2.5">
-                    <span className="w-14 shrink-0 text-xs text-(--color-muted)">
-                      {param.label}
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                      style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+                    >
+                      {persona.name.charAt(0)}
                     </span>
-                    <div className="flex flex-1 items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <span
-                          key={n}
-                          className={`h-1.5 flex-1 rounded-full ${
-                            n <= persona[param.key]
-                              ? "bg-(--color-primary)"
-                              : "bg-(--color-border)"
-                          }`}
-                        />
-                      ))}
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {persona.name}
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {persona.title}
+                        {persona.company_name && ` / ${persona.company_name}`}
+                      </p>
                     </div>
-                    <span className="w-3 shrink-0 text-right text-xs font-medium text-gray-400 dark:text-gray-500">
-                      {persona[param.key]}
-                    </span>
                   </div>
-                ))}
+                  <div className="flex shrink-0 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(persona)}
+                      aria-label="編集"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                      <PencilSimple size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(persona)}
+                      aria-label="削除"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                    >
+                      <Trash size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {PARAMETER_CONFIG.map((param) => (
+                    <div key={param.key} className="flex items-center gap-2.5">
+                      <span className="w-12 shrink-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                        {param.label}
+                      </span>
+                      <div className="flex flex-1 items-center gap-[3px]">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <span
+                            key={n}
+                            className="h-[5px] flex-1 rounded-full transition-opacity"
+                            style={{
+                              backgroundColor: param.color,
+                              opacity: n <= persona[param.key] ? 1 : 0.15,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span
+                        className="w-4 shrink-0 text-right text-[11px] font-semibold tabular-nums"
+                        style={{ color: param.color }}
+                      >
+                        {persona[param.key]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ))}

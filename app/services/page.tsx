@@ -196,41 +196,68 @@ export default function ServicesPage() {
       ) : services.length === 0 ? (
         <EmptyState onCreate={openCreateForm} />
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {services.map((service) => (
             <div
               key={service.id}
-              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 transition-colors hover:bg-(--color-card-hover)"
+              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 transition-colors hover:border-(--color-primary)"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold text-gray-900 dark:text-gray-100">{service.name}</h2>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                    {truncate(service.description, 80)}
-                  </p>
-                  <div className="mt-2.5">
-                    <span className="inline-flex max-w-full items-center rounded-full bg-(--color-primary-light) px-2.5 py-1 text-xs font-medium text-(--color-primary)">
-                      {truncate(service.strengths, 80)}
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                      style={{ background: "linear-gradient(135deg, #2563eb, #06b6d4)" }}
+                    >
+                      {service.name.charAt(0)}
                     </span>
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {service.name}
+                      </h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {truncate(service.description, 40)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(service)}
+                      aria-label="編集"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
+                    >
+                      <PencilSimple size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(service)}
+                      aria-label="削除"
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                    >
+                      <Trash size={15} />
+                    </button>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(service)}
-                    aria-label="編集"
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
-                  >
-                    <PencilSimple size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(service)}
-                    aria-label="削除"
-                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
-                  >
-                    <Trash size={16} />
-                  </button>
+
+                <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-400 mb-3">
+                  {truncate(service.description, 80)}
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {service.strengths.split(/[、,\-]/).filter(Boolean).slice(0, 3).map((s) => (
+                    <span
+                      key={s}
+                      className="inline-flex items-center gap-1 rounded-md bg-(--color-border)/30 dark:bg-slate-700/50 px-2 py-1 text-[11px] font-medium text-gray-600 dark:text-gray-300"
+                    >
+                      {s.trim().slice(0, 20)}
+                    </span>
+                  ))}
+                  {service.target && (
+                    <span className="inline-flex items-center rounded-md bg-(--color-success-light) px-2 py-1 text-[11px] font-medium text-(--color-success)">
+                      {truncate(service.target, 20)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -559,7 +586,7 @@ function ServiceForm({
             value={specText}
             onChange={(e) => { setSpecText(e.target.value); if (e.target.value.trim()) setSelectedFile(null); }}
             disabled={parsing}
-            placeholder="テキストを直接貼り付け..."
+            placeholder="サービス内容を直接入力..."
             className="w-full rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 py-2.5 text-sm leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
           />
 

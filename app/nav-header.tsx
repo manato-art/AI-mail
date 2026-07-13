@@ -3,6 +3,7 @@
 import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import {
   ChartBar,
   PaperPlaneTilt,
@@ -11,9 +12,9 @@ import {
   UserCircle,
   List,
   X,
-  EnvelopeSimple,
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
+import logoIcon from "./icon.png";
 
 const NAV_ITEMS: {
   href: string;
@@ -43,10 +44,12 @@ export function NavHeader() {
           href="/"
           className="flex items-center gap-2.5 shrink-0 group mr-8"
         >
-          <EnvelopeSimple
-            size={24}
-            weight="duotone"
-            className="text-(--color-primary)"
+          <Image
+            src={logoIcon}
+            alt="SalesMail"
+            width={26}
+            height={26}
+            className="rounded-sm"
           />
           <span className="font-semibold text-lg tracking-tight">
             SalesMail
