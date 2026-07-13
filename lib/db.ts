@@ -43,6 +43,11 @@ function createTables(instance: Database.Database): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS prospects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       input_url TEXT NOT NULL,
@@ -162,6 +167,17 @@ function seedServices(instance: Database.Database): void {
     });
 }
 
+function seedSettings(instance: Database.Database): void {
+  const row = instance
+    .prepare("SELECT value FROM settings WHERE key = 'sender_email'")
+    .get();
+  if (!row) {
+    instance
+      .prepare("INSERT INTO settings (key, value) VALUES ('sender_email', 'cypherone.inc@gmail.com')")
+      .run();
+  }
+}
+
 function getDb(): Database.Database {
   if (dbInstance) {
     return dbInstance;
@@ -179,6 +195,7 @@ function getDb(): Database.Database {
   createTables(instance);
   seedPersonas(instance);
   seedServices(instance);
+  seedSettings(instance);
 
   dbInstance = instance;
   return dbInstance;
@@ -450,6 +467,19 @@ export function updateProspect(
     });
 
   return getProspect(id);
+}
+
+export function getSetting(key: string): string | undefined {
+  const row = getDb()
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(key) as { value: string } | undefined;
+  return row?.value;
+}
+
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(key, value);
 }
 
 export function findProspectByDomain(domain: string): Prospect | undefined {

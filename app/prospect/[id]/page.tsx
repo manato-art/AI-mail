@@ -61,6 +61,8 @@ export default function ProspectPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [senderEmail, setSenderEmail] = useState("");
+
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -84,13 +86,18 @@ export default function ProspectPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const res = await fetch(`/api/prospects/${id}`);
+        const [res, settingsRes] = await Promise.all([
+          fetch(`/api/prospects/${id}`),
+          fetch("/api/settings"),
+        ]);
         if (!res.ok) throw new Error("データの取得に失敗しました。");
         const data: Prospect = await res.json();
+        const settings = settingsRes.ok ? await settingsRes.json() : {};
         if (!cancelled) {
           setProspect(data);
           setSubject(data.subject);
           setBody(data.body);
+          if (settings.sender_email) setSenderEmail(settings.sender_email);
         }
       } catch (err) {
         if (!cancelled) {
@@ -169,8 +176,7 @@ export default function ProspectPage() {
   }
 
   function handleOpenGmail() {
-    const authUser = "cypherone.inc@gmail.com";
-    let gmailUrl = `https://mail.google.com/mail/?authuser=${encodeURIComponent(authUser)}&view=cm&su=${encodeURIComponent(
+    let gmailUrl = `https://mail.google.com/mail/?${senderEmail ? `authuser=${encodeURIComponent(senderEmail)}&` : ""}view=cm&su=${encodeURIComponent(
       subject
     )}&body=${encodeURIComponent(body)}`;
     if (emailsFound.length > 0) {
