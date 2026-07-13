@@ -11,14 +11,48 @@ const client = new Anthropic();
 
 const MODEL = process.env.GENERATION_MODEL || "claude-sonnet-4-6";
 
+export interface GenerateOptions {
+  tone?: string;
+  length?: string;
+  cta?: string;
+  additionalInstructions?: string;
+}
+
+const TONE_MAP: Record<string, string> = {
+  formal: "最も丁寧で格式高い文体。「〜でございます」「〜賜りますようお願い申し上げます」等を使い、堅実で信頼感のある印象を与える。",
+  balanced: "ビジネスメールとして標準的な丁寧さ。「〜いたします」「〜させていただきます」等を基調に、硬すぎず軽すぎないバランス。",
+  friendly: "丁寧さを保ちつつも親しみやすい文体。「〜ですね」「〜と思います」等を混ぜ、距離感を縮めるカジュアルな敬語を使う。",
+};
+
+const LENGTH_MAP: Record<string, string> = {
+  short: "本文200字前後。要点を絞り、簡潔に伝える。150〜250字の範囲内に収める。",
+  standard: "本文300字前後。バランスよく情報を盛り込む。250〜400字の範囲内に収める。",
+  long: "本文450字前後。詳しい提案理由や導入効果まで丁寧に書く。400〜550字の範囲内に収める。",
+};
+
+const CTA_MAP: Record<string, string> = {
+  online_meeting: "「15〜30分のオンラインでのご説明」等、気軽なオンライン商談を提案。日時候補の打診を含める。",
+  phone: "「お電話で10分ほどご説明」等、電話での簡単な説明を提案。都合の良い時間帯を聞く。",
+  send_materials: "「詳しい資料をお送り」等、まずは資料送付を提案。返信だけで済む軽いアクションにする。",
+  seminar: "「近日開催の無料セミナーへのご招待」等、セミナーやウェビナーへの参加を提案。日程と参加方法を簡潔に案内。",
+};
+
 const FORM_ONLY_INSTRUCTIONS = `【フォーム用文面】
 メールアドレスが見つからなかったため、問い合わせフォーム用の文面を作成してください:
 - 宛名行なし（いきなり挨拶+名乗りから）
 - 署名ブロックは簡略版（「{会社名} {名前}」程度）
 - 件名は「お問い合わせ件名」欄に貼る想定`;
 
-function buildSystemPrompt(isFormOnly: boolean): string {
+function buildSystemPrompt(isFormOnly: boolean, options?: GenerateOptions): string {
   const formOnlySection = isFormOnly ? `\n\n${FORM_ONLY_INSTRUCTIONS}` : "";
+
+  const toneInstruction = TONE_MAP[options?.tone ?? ""] ?? TONE_MAP.balanced;
+  const lengthInstruction = LENGTH_MAP[options?.length ?? ""] ?? LENGTH_MAP.standard;
+  const ctaInstruction = CTA_MAP[options?.cta ?? ""] ?? CTA_MAP.online_meeting;
+
+  const additionalSection = options?.additionalInstructions
+    ? `\n\n【追加の指示（最優先で従うこと）】\n${options.additionalInstructions}`
+    : "";
 
   return `あなたは営業メール作成AIです。指定された人格として、分析結果に基づいた営業メールを作成します。
 
@@ -31,18 +65,25 @@ function buildSystemPrompt(isFormOnly: boolean): string {
 5. 締め: 「ご検討のほどよろしくお願いいたします」等の結び + 署名ブロック。
 6. 禁止: 絵文字、顔文字、過度な「！」（本文全体で最大1個）、機種依存文字、全角英数字の混在。
 7. 相手固有のフック: 分析結果のhookを必ず本文に反映する。「貴社のような企業様へ」等の汎用表現は禁止。
-8. 300文字前後: 文章量指示に従うが、200〜450字の範囲内に収める。
-9. 商談依頼で締める: 「15〜30分のオンラインでのご説明」等、具体的で軽いネクストアクション + 候補の打診。
-10. 分析結果に無い固有名詞・数値を本文に書かない（ハルシネーション禁止）。
+8. 分析結果に無い固有名詞・数値を本文に書かない（ハルシネーション禁止）。
+
+【トーン】
+${toneInstruction}
+
+【文章量】
+${lengthInstruction}
+
+【行動喚起（CTA）】
+${ctaInstruction}
 
 【本文構成の型】
-宛名 → 挨拶+名乗り（1-2文） → 連絡のきっかけ=相手固有のフック（HPで◯◯を拝見し…） → 提案の要点（相手の文脈×自社の強み、1-3文） → 商談依頼（15-30分・オンライン可・候補打診） → 結びの挨拶 → 署名
+宛名 → 挨拶+名乗り（1-2文） → 連絡のきっかけ=相手固有のフック（HPで◯◯を拝見し…） → 提案の要点（相手の文脈×自社の強み、1-3文） → CTA → 結びの挨拶 → 署名
 
 【件名ルール】
 - 20〜35文字目安
 - 「〜のご提案」「〜の件」等の慣例形
 - 相手社名 or 相手事業への言及を含めて開封率を上げる
-- 釣りタイトル・記号乱用（【】連打、！等）禁止${formOnlySection}
+- 釣りタイトル・記号乱用（【】連打、！等）禁止${formOnlySection}${additionalSection}
 
 出力は必ず以下のJSON形式のみで返してください:
 {"subject": "件名", "body": "本文（署名含む）"}`;
@@ -118,12 +159,13 @@ export async function generateEmail(
   analysis: AnalysisResult,
   service: Service,
   persona: Persona,
-  isFormOnly: boolean = false
+  isFormOnly: boolean = false,
+  options?: GenerateOptions
 ): Promise<GenerationResult> {
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 2048,
-    system: buildSystemPrompt(isFormOnly),
+    system: buildSystemPrompt(isFormOnly, options),
     messages: [
       {
         role: "user",

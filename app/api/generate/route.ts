@@ -14,7 +14,7 @@ import { validateEmail } from "@/lib/quality-check";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { serviceId, personaId, url, force, forceLow } = body ?? {};
+    const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions } = body ?? {};
 
     if (!serviceId || !personaId || !url) {
       return NextResponse.json(
@@ -67,11 +67,13 @@ export async function POST(request: NextRequest) {
     const isFormOnly =
       crawlResult.contactEmails.length === 0 && Boolean(crawlResult.formUrl);
 
-    let generation = await generateEmail(analysis, service, persona, isFormOnly);
+    const genOptions = { tone, length, cta, additionalInstructions };
+
+    let generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
     let qualityCheck = validateEmail(generation.body, generation.subject, analysis);
 
     if (!qualityCheck.passed) {
-      generation = await generateEmail(analysis, service, persona, isFormOnly);
+      generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
       qualityCheck = validateEmail(generation.body, generation.subject, analysis);
     }
 

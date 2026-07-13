@@ -95,6 +95,11 @@ export default function GeneratePage() {
   const [selectedPersonaId, setSelectedPersonaId] = useState("");
   const [url, setUrl] = useState("");
 
+  const [tone, setTone] = useState("balanced");
+  const [length, setLength] = useState("standard");
+  const [cta, setCta] = useState("online_meeting");
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
+
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [duplicateProspect, setDuplicateProspect] = useState<Prospect | null>(
@@ -188,6 +193,10 @@ export default function GeneratePage() {
           url: url.trim(),
           force: opts?.force ?? false,
           forceLow: opts?.forceLow ?? false,
+          tone,
+          length,
+          cta,
+          additionalInstructions: additionalInstructions.trim() || undefined,
         }),
       });
 
@@ -344,6 +353,111 @@ export default function GeneratePage() {
               disabled={isBusy}
               placeholder="https://example.co.jp"
               className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-(--color-border) pt-5 space-y-4">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">カスタマイズ</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
+                トーン
+              </label>
+              <div className="flex flex-col gap-1.5">
+                {([
+                  { value: "formal", label: "丁寧・堅め" },
+                  { value: "balanced", label: "バランス" },
+                  { value: "friendly", label: "親しみやすい" },
+                ] as const).map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tone"
+                      value={opt.value}
+                      checked={tone === opt.value}
+                      onChange={(e) => setTone(e.target.value)}
+                      disabled={isBusy}
+                      className="accent-(--color-primary)"
+                    />
+                    <span className={`text-sm ${tone === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
+                      {opt.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
+                文章量
+              </label>
+              <div className="flex flex-col gap-1.5">
+                {([
+                  { value: "short", label: "短め（200字）" },
+                  { value: "standard", label: "標準（300字）" },
+                  { value: "long", label: "長め（450字）" },
+                ] as const).map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="length"
+                      value={opt.value}
+                      checked={length === opt.value}
+                      onChange={(e) => setLength(e.target.value)}
+                      disabled={isBusy}
+                      className="accent-(--color-primary)"
+                    />
+                    <span className={`text-sm ${length === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
+                      {opt.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
+                行動喚起（CTA）
+              </label>
+              <div className="flex flex-col gap-1.5">
+                {([
+                  { value: "online_meeting", label: "オンライン商談" },
+                  { value: "phone", label: "電話" },
+                  { value: "send_materials", label: "資料送付" },
+                  { value: "seminar", label: "セミナー招待" },
+                ] as const).map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="cta"
+                      value={opt.value}
+                      checked={cta === opt.value}
+                      onChange={(e) => setCta(e.target.value)}
+                      disabled={isBusy}
+                      className="accent-(--color-primary)"
+                    />
+                    <span className={`text-sm ${cta === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
+                      {opt.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
+              追加の指示（任意）
+            </label>
+            <textarea
+              rows={2}
+              value={additionalInstructions}
+              onChange={(e) => setAdditionalInstructions(e.target.value)}
+              disabled={isBusy}
+              placeholder="例: 導入事例に触れてほしい、価格には触れないで、など"
+              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
             />
           </div>
         </div>
