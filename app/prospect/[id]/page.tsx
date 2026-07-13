@@ -169,7 +169,8 @@ export default function ProspectPage() {
   }
 
   function handleOpenGmail() {
-    let gmailUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
+    const authUser = "cypherone.inc@gmail.com";
+    let gmailUrl = `https://mail.google.com/mail/?authuser=${encodeURIComponent(authUser)}&view=cm&su=${encodeURIComponent(
       subject
     )}&body=${encodeURIComponent(body)}`;
     if (emailsFound.length > 0) {
