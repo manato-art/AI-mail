@@ -251,7 +251,7 @@ export default function GeneratePage() {
   const missingPersonas = !loadingOptions && personas.length === 0;
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">営業メールを作成</h1>
         <p className="mt-1 text-sm text-(--color-muted)">
@@ -260,39 +260,36 @@ export default function GeneratePage() {
       </div>
 
       {(missingServices || missingPersonas) && (
-        <div className="mb-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-4 text-sm space-y-1 animate-fade-in">
-          <div className="flex gap-2.5">
-            <Warning className="shrink-0 mt-0.5" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
-            <div className="space-y-1">
-              {missingServices && (
-                <p className="text-gray-700 dark:text-gray-300">
-                  サービスが未登録です。
-                  <Link
-                    href="/services"
-                    className="text-(--color-primary) font-medium underline underline-offset-2 ml-1"
-                  >
-                    サービスを登録
-                  </Link>
-                </p>
-              )}
-              {missingPersonas && (
-                <p className="text-gray-700 dark:text-gray-300">
-                  人格が未登録です。
-                  <Link
-                    href="/personas"
-                    className="text-(--color-primary) font-medium underline underline-offset-2 ml-1"
-                  >
-                    人格を登録
-                  </Link>
-                </p>
-              )}
-            </div>
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-4 text-sm animate-fade-in">
+          <Warning className="shrink-0 mt-0.5" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+          <div className="space-y-1">
+            {missingServices && (
+              <p className="text-gray-700 dark:text-gray-300">
+                サービスが未登録です。
+                <Link href="/services" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                  サービスを登録
+                </Link>
+              </p>
+            )}
+            {missingPersonas && (
+              <p className="text-gray-700 dark:text-gray-300">
+                人格が未登録です。
+                <Link href="/personas" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                  人格を登録
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-(--color-border) p-5 md:p-6 space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 左カラム: 基本入力 */}
+        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4 self-start">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
+            基本設定
+          </h2>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               サービス
@@ -306,9 +303,7 @@ export default function GeneratePage() {
               >
                 <option value="">選択してください</option>
                 {services.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                  </option>
+                  <option key={service.id} value={service.id}>{service.name}</option>
                 ))}
               </select>
               <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
@@ -328,122 +323,131 @@ export default function GeneratePage() {
               >
                 <option value="">選択してください</option>
                 {personas.map((persona) => (
-                  <option key={persona.id} value={persona.id}>
-                    {persona.name}（{persona.title}）
-                  </option>
+                  <option key={persona.id} value={persona.id}>{persona.name}（{persona.title}）</option>
                 ))}
               </select>
               <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
             </div>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            企業URL
-          </label>
-          <div className="relative">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-              <Globe size={20} />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              企業URL
+            </label>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <Globe size={20} />
+              </div>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                disabled={isBusy}
+                placeholder="https://example.co.jp"
+                className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+              />
             </div>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              disabled={isBusy}
-              placeholder="https://example.co.jp"
-              className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-            />
           </div>
+
+          <button
+            type="button"
+            onClick={() => handleGenerate()}
+            disabled={!canSubmit}
+            className="w-full h-11 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+          >
+            {isBusy ? (
+              <>
+                <SpinnerGap className="animate-spin" size={18} />
+                生成中...
+              </>
+            ) : (
+              <>
+                <PaperPlaneTilt size={18} weight="fill" />
+                メールを生成
+              </>
+            )}
+          </button>
         </div>
 
-        <div className="border-t border-(--color-border) pt-5 space-y-4">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">カスタマイズ</p>
+        {/* 右カラム: カスタマイズ */}
+        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4 self-start">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
+            カスタマイズ
+          </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
-                トーン
-              </label>
-              <div className="flex flex-col gap-1.5">
-                {([
-                  { value: "formal", label: "丁寧・堅め" },
-                  { value: "balanced", label: "バランス" },
-                  { value: "friendly", label: "親しみやすい" },
-                ] as const).map((opt) => (
-                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="tone"
-                      value={opt.value}
-                      checked={tone === opt.value}
-                      onChange={(e) => setTone(e.target.value)}
-                      disabled={isBusy}
-                      className="accent-(--color-primary)"
-                    />
-                    <span className={`text-sm ${tone === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
-                      {opt.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
+          <div>
+            <label className="block text-xs font-medium text-(--color-muted) mb-2">トーン</label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: "formal", label: "丁寧・堅め" },
+                { value: "balanced", label: "バランス" },
+                { value: "friendly", label: "親しみやすい" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTone(opt.value)}
+                  disabled={isBusy}
+                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    tone === opt.value
+                      ? "bg-(--color-primary) text-white"
+                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
-                文章量
-              </label>
-              <div className="flex flex-col gap-1.5">
-                {([
-                  { value: "short", label: "短め（200字）" },
-                  { value: "standard", label: "標準（300字）" },
-                  { value: "long", label: "長め（450字）" },
-                ] as const).map((opt) => (
-                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="length"
-                      value={opt.value}
-                      checked={length === opt.value}
-                      onChange={(e) => setLength(e.target.value)}
-                      disabled={isBusy}
-                      className="accent-(--color-primary)"
-                    />
-                    <span className={`text-sm ${length === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
-                      {opt.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
+          <div>
+            <label className="block text-xs font-medium text-(--color-muted) mb-2">文章量</label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: "short", label: "短め（200字）" },
+                { value: "standard", label: "標準（300字）" },
+                { value: "long", label: "長め（450字）" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLength(opt.value)}
+                  disabled={isBusy}
+                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    length === opt.value
+                      ? "bg-(--color-primary) text-white"
+                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
-                行動喚起（CTA）
-              </label>
-              <div className="flex flex-col gap-1.5">
-                {([
-                  { value: "online_meeting", label: "オンライン商談" },
-                  { value: "phone", label: "電話" },
-                  { value: "send_materials", label: "資料送付" },
-                  { value: "seminar", label: "セミナー招待" },
-                ] as const).map((opt) => (
-                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="cta"
-                      value={opt.value}
-                      checked={cta === opt.value}
-                      onChange={(e) => setCta(e.target.value)}
-                      disabled={isBusy}
-                      className="accent-(--color-primary)"
-                    />
-                    <span className={`text-sm ${cta === opt.value ? "font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400"}`}>
-                      {opt.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
+          <div>
+            <label className="block text-xs font-medium text-(--color-muted) mb-2">行動喚起（CTA）</label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: "online_meeting", label: "オンライン商談" },
+                { value: "phone", label: "電話" },
+                { value: "send_materials", label: "資料送付" },
+                { value: "seminar", label: "セミナー招待" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setCta(opt.value)}
+                  disabled={isBusy}
+                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    cta === opt.value
+                      ? "bg-(--color-primary) text-white"
+                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -461,25 +465,6 @@ export default function GeneratePage() {
             />
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => handleGenerate()}
-          disabled={!canSubmit}
-          className="w-full h-12 rounded-xl bg-(--color-primary) hover:bg-(--color-primary-hover) text-white font-semibold text-base flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99] cursor-pointer"
-        >
-          {isBusy ? (
-            <>
-              <SpinnerGap className="animate-spin" size={20} />
-              生成中...
-            </>
-          ) : (
-            <>
-              <PaperPlaneTilt size={20} weight="fill" />
-              メールを生成
-            </>
-          )}
-        </button>
       </div>
 
       {isBusy && <ProgressCard status={status} />}

@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowCounterClockwise,
   ArrowSquareOut,
-  Buildings,
+  CaretLeft,
   Check,
   Copy,
   EnvelopeSimple,
   Globe,
+  Notebook,
   SpinnerGap,
   WarningCircle,
 } from "@phosphor-icons/react";
@@ -21,7 +22,7 @@ const COMPATIBILITY_LABELS: Record<string, string> = {
   low: "低",
 };
 
-const COMPATIBILITY_STYLES: Record<string, string> = {
+const COMPATIBILITY_BG: Record<string, string> = {
   high: "bg-(--color-success-light) text-(--color-success)",
   medium: "bg-(--color-warning-light) text-(--color-warning)",
   low: "bg-(--color-danger-light) text-(--color-danger)",
@@ -47,6 +48,7 @@ function countBodyLength(body: string): number {
 
 export default function ProspectPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const [prospect, setProspect] = useState<Prospect | null>(null);
@@ -211,223 +213,234 @@ export default function ProspectPage() {
     );
   }
 
+  const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400";
+
   return (
     <div className="animate-fade-in">
+      {/* Header */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+        >
+          <CaretLeft size={16} weight="bold" />
+        </button>
+        <h1 className="text-xl font-bold tracking-tight">
           {prospect.company_name || prospect.domain} 宛のメール
         </h1>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-(--color-border) bg-(--color-card) px-3 py-1 text-xs font-medium text-(--color-muted)">
-          <Globe size={14} />
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-(--color-primary-light) px-3 py-1 text-xs font-semibold text-(--color-primary)">
+          <Globe size={12} />
           {prospect.domain}
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.5fr]">
-        <div className="h-fit rounded-xl border border-(--color-border) bg-(--color-card) p-6">
-          <div className="mb-5 flex items-center gap-2">
-            <Buildings size={16} className="text-(--color-muted)" />
-            <h2 className="text-base font-semibold">企業分析</h2>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
+        {/* Left: Analysis Card */}
+        <div className="h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+          <div className="flex items-center gap-2 border-b border-(--color-border) px-5 py-3.5">
+            <Notebook size={15} className="text-(--color-muted)" />
+            <h2 className="text-sm font-semibold">企業分析</h2>
           </div>
 
-          <dl className="space-y-5">
+          <div className="space-y-4 p-5">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wider text-(--color-muted)">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
                 会社名
-              </dt>
-              <dd className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+              </p>
+              <p className="mt-1 text-[15px] font-semibold">
                 {prospect.company_name || "-"}
-              </dd>
+              </p>
             </div>
 
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wider text-(--color-muted)">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
                 事業概要
-              </dt>
-              <dd className="mt-1 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
                 {analysis?.business_summary || "-"}
-              </dd>
+              </p>
             </div>
 
             <div>
-              <dt className="mb-1.5 text-xs font-medium uppercase tracking-wider text-(--color-muted)">
-                相性
-              </dt>
-              <dd>
-                <span
-                  className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
-                    COMPATIBILITY_STYLES[prospect.compatibility_score] ??
-                    "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
-                  }`}
-                >
-                  {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
-                    prospect.compatibility_score}
-                </span>
-                {analysis?.compatibility.reason && (
-                  <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                    {analysis.compatibility.reason}
-                  </p>
-                )}
-              </dd>
-            </div>
-
-            <div>
-              <dt className="mb-1.5 text-xs font-medium uppercase tracking-wider text-(--color-muted)">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
                 提案ポイント
-              </dt>
-              <dd>
-                {analysis && analysis.proposal_points.length > 0 ? (
-                  <ul className="space-y-2">
-                    {analysis.proposal_points.map((point, index) => (
-                      <li
-                        key={index}
-                        className="flex gap-2 text-sm leading-relaxed text-gray-700"
-                      >
-                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-(--color-muted)" />
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-gray-400 dark:text-gray-500">-</p>
-                )}
-              </dd>
+              </p>
+              {analysis && analysis.proposal_points.length > 0 ? (
+                <ul className="mt-1.5 space-y-2">
+                  {analysis.proposal_points.map((point, index) => (
+                    <li
+                      key={index}
+                      className="flex gap-2 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400"
+                    >
+                      <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-primary)" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">-</p>
+              )}
             </div>
-          </dl>
+          </div>
+
+          {/* Compatibility Banner */}
+          <div className="flex items-center gap-3 border-t border-(--color-border) px-5 py-3.5">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${compatStyle}`}
+            >
+              {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold">
+                相性: {COMPATIBILITY_LABELS[prospect.compatibility_score] ?? prospect.compatibility_score}
+              </p>
+              {analysis?.compatibility.reason && (
+                <p className="mt-0.5 text-[12px] leading-snug text-gray-500 dark:text-gray-400">
+                  {analysis.compatibility.reason}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-5 rounded-xl border border-(--color-border) bg-(--color-card) p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <EnvelopeSimple size={16} className="text-(--color-muted)" />
-              <h2 className="text-base font-semibold">メール</h2>
+        {/* Right: Mail Editor */}
+        <div>
+          <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <EnvelopeSimple size={15} className="text-(--color-muted)" />
+                <h2 className="text-sm font-semibold">メール</h2>
+              </div>
+              {prospect.is_form_only === 1 && (
+                <span className="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-semibold text-gray-500 dark:bg-slate-700 dark:text-gray-400">
+                  フォーム用文面
+                </span>
+              )}
             </div>
-            {prospect.is_form_only === 1 && (
-              <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-slate-700 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-                フォーム用文面
-              </span>
+
+            <div className="space-y-4 p-5">
+              <div>
+                <label
+                  htmlFor="subject"
+                  className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)"
+                >
+                  件名
+                </label>
+                <input
+                  id="subject"
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="body"
+                  className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)"
+                >
+                  本文
+                </label>
+                <textarea
+                  id="body"
+                  rows={12}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  className="min-h-[220px] w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                />
+                <p className="mt-1 text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                  {bodyCharCount}文字
+                </p>
+              </div>
+            </div>
+
+            {prospect.form_url && (
+              <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                  フォームURL
+                </p>
+                <a
+                  href={prospect.form_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 block break-all text-[13px] text-(--color-primary) underline underline-offset-2 hover:text-(--color-primary-hover)"
+                >
+                  {prospect.form_url}
+                </a>
+              </div>
+            )}
+
+            {emailsFound.length > 0 && (
+              <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                  送信先
+                </p>
+                {emailsFound.map((email) => (
+                  <p key={email} className="mt-0.5 text-[13px] text-gray-600 dark:text-gray-400">
+                    {email}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
 
-          <div>
-            <label
-              htmlFor="subject"
-              className="mb-1.5 block text-sm font-medium text-gray-700"
-            >
-              件名
-            </label>
-            <input
-              id="subject"
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="body"
-              className="mb-1.5 block text-sm font-medium text-gray-700"
-            >
-              本文
-            </label>
-            <textarea
-              id="body"
-              rows={12}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              className="min-h-[260px] w-full rounded-lg border border-(--color-border) px-3.5 py-3 text-sm leading-relaxed focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-            />
-            <p className="mt-1.5 text-right text-xs text-gray-400 dark:text-gray-500">
-              {bodyCharCount}文字
-            </p>
-          </div>
-
-          {emailsFound.length > 0 && (
-            <div>
-              <p className="mb-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">送信先</p>
-              <ul className="space-y-0.5">
-                {emailsFound.map((email) => (
-                  <li key={email} className="text-sm text-gray-600 dark:text-gray-400">
-                    {email}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {prospect.form_url && (
-            <div>
-              <p className="mb-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
-                フォームURL
-              </p>
-              <a
-                href={prospect.form_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="break-all text-sm text-(--color-primary) underline underline-offset-2 hover:text-(--color-primary-hover)"
-              >
-                {prospect.form_url}
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-(--color-border) bg-white/85 dark:bg-slate-900/85 px-4 py-4 backdrop-blur-sm lg:-mx-6 lg:px-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={handleRegenerate}
-            disabled={regenerating}
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover) disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <ArrowCounterClockwise
-              size={16}
-              className={regenerating ? "animate-spin" : ""}
-            />
-            {regenerating ? "再生成中..." : "再生成"}
-          </button>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
-          >
-            <Copy size={16} />
-            コピー
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenGmail}
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
-          >
-            <ArrowSquareOut size={16} />
-            Gmailで開く
-          </button>
-          {prospect.form_url && (
+          {/* Action Bar */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleOpenForm}
-              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover)"
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
             >
-              <ArrowSquareOut size={16} />
-              フォームを開く
+              <ArrowCounterClockwise
+                size={15}
+                className={regenerating ? "animate-spin" : ""}
+              />
+              {regenerating ? "再生成中..." : "再生成"}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="ml-auto inline-flex h-12 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? (
-              <SpinnerGap size={16} className="animate-spin" />
-            ) : (
-              <Check size={16} weight="bold" />
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
+            >
+              <Copy size={15} />
+              コピー
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenGmail}
+              className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
+            >
+              <ArrowSquareOut size={15} />
+              Gmailで開く
+            </button>
+            {prospect.form_url && (
+              <button
+                type="button"
+                onClick={handleOpenForm}
+                className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300"
+              >
+                <ArrowSquareOut size={15} />
+                フォームを開く
+              </button>
             )}
-            {saving ? "保存中..." : "保存"}
-          </button>
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? (
+                <SpinnerGap size={16} className="animate-spin" />
+              ) : (
+                <Check size={16} weight="bold" />
+              )}
+              {saving ? "保存中..." : "保存"}
+            </button>
+          </div>
         </div>
       </div>
 

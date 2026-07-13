@@ -288,7 +288,7 @@ export default function DashboardPage() {
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="rounded-xl border border-(--color-border) bg-(--color-card) p-4"
+            className="rounded-xl border border-(--color-border) bg-(--color-card) p-4 transition-shadow hover:shadow-md"
           >
             <div className="flex items-center gap-3">
               <div
