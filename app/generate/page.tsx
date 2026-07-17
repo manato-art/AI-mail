@@ -385,30 +385,39 @@ export default function GeneratePage() {
             カスタマイズ
           </h2>
 
-          {templates.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">テンプレート</label>
-              <div className="relative">
-                <select
-                  value={selectedTemplateId}
-                  onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  disabled={isBusy}
-                  className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-                >
-                  <option value="">使用しない（自由生成）</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
-              </div>
-              {selectedTemplateId && (
-                <p className="mt-1 text-[11px] text-(--color-muted)">
-                  テンプレートの構成に沿ってメールを生成します
-                </p>
-              )}
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-medium text-(--color-muted) mb-1.5">テンプレート</label>
+            {templates.length > 0 ? (
+              <>
+                <div className="relative">
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    disabled={isBusy}
+                    className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                  >
+                    <option value="">使用しない（自由生成）</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+                </div>
+                {selectedTemplateId && (
+                  <p className="mt-1 text-[11px] text-(--color-muted)">
+                    テンプレートの構成に沿ってメールを生成します
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-(--color-muted)">
+                テンプレートがありません。
+                <Link href="/templates" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                  作成する
+                </Link>
+              </p>
+            )}
+          </div>
 
           <div>
             <label className="block text-xs font-medium text-(--color-muted) mb-2">トーン</label>
