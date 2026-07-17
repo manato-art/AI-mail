@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   EnvelopeSimple,
   FloppyDisk,
+  Key,
   Moon,
   Sun,
   Monitor,
@@ -36,6 +37,11 @@ export default function SettingsPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
+  const [eightApiKey, setEightApiKey] = useState("");
+  const [eightApiKeyDraft, setEightApiKeyDraft] = useState("");
+  const [savingEight, setSavingEight] = useState(false);
+  const [eightSaved, setEightSaved] = useState(false);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -55,6 +61,8 @@ export default function SettingsPage() {
           setSenderDraft(settings.sender_email || "");
           setDefaultServiceId(settings.default_service_id || "");
           setDefaultPersonaId(settings.default_persona_id || "");
+          setEightApiKey(settings.eight_api_key || "");
+          setEightApiKeyDraft(settings.eight_api_key || "");
           setServices(svcData);
           setPersonas(perData);
         }
@@ -101,6 +109,26 @@ export default function SettingsPage() {
       setTimeout(() => setDefaultsSaved(false), 2000);
     } catch { /* ignore */ }
     finally { setSavingDefaults(false); }
+  }
+
+  async function handleSaveEight() {
+    setSavingEight(true);
+    setEightSaved(false);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eight_api_key: eightApiKeyDraft.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEightApiKey(data.eight_api_key);
+        setEightApiKeyDraft(data.eight_api_key);
+        setEightSaved(true);
+        setTimeout(() => setEightSaved(false), 2000);
+      }
+    } catch { /* ignore */ }
+    finally { setSavingEight(false); }
   }
 
   async function handleClearHistory() {
@@ -296,6 +324,43 @@ export default function SettingsPage() {
                 )}
                 {defaultsSaved ? "保存済み" : "保存"}
               </button>
+            </div>
+          </section>
+
+          {/* Eight API Key */}
+          <section className="rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
+            <div className="border-b border-(--color-border) px-5 py-4">
+              <h2 className="text-sm font-semibold">Eight（名刺管理）連携</h2>
+              <p className="mt-0.5 text-xs text-(--color-muted)">一括送信で名刺データを取り込むためのAPIキー</p>
+            </div>
+            <div className="p-5">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Key size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted) pointer-events-none" />
+                  <input
+                    type="password"
+                    value={eightApiKeyDraft}
+                    onChange={(e) => setEightApiKeyDraft(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-(--color-border) pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                    placeholder="Eight APIキー"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveEight}
+                  disabled={savingEight || eightApiKeyDraft.trim() === eightApiKey}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingEight ? (
+                    <SpinnerGap size={14} className="animate-spin" />
+                  ) : eightSaved ? (
+                    <Check size={14} weight="bold" />
+                  ) : (
+                    <FloppyDisk size={14} />
+                  )}
+                  {eightSaved ? "保存済み" : "保存"}
+                </button>
+              </div>
             </div>
           </section>
         </div>

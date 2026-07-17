@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AddressBook,
   CaretDown,
   Check,
   Eye,
+  MagnifyingGlass,
   Plus,
   SpinnerGap,
   Trash,
@@ -14,8 +16,19 @@ import {
   CaretLeft,
   CaretRight,
   FileArrowUp,
+  Key,
 } from "@phosphor-icons/react";
+import Link from "next/link";
 import type { Prospect } from "@/lib/types";
+
+interface EightContact {
+  id: string;
+  company_name: string;
+  person_name: string;
+  email: string;
+  department: string;
+  position: string;
+}
 
 interface Recipient {
   id: string;
@@ -60,6 +73,16 @@ export default function BulkSendPage() {
   const [pasteText, setPasteText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [eightOpen, setEightOpen] = useState(false);
+  const [eightApiKey, setEightApiKey] = useState("");
+  const [eightHasKey, setEightHasKey] = useState(false);
+  const [eightQuery, setEightQuery] = useState("");
+  const [eightContacts, setEightContacts] = useState<EightContact[]>([]);
+  const [eightChecked, setEightChecked] = useState<Set<string>>(new Set());
+  const [eightLoading, setEightLoading] = useState(false);
+  const [eightSavingKey, setEightSavingKey] = useState(false);
+  const [eightSearched, setEightSearched] = useState(false);
+
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
@@ -88,6 +111,7 @@ export default function BulkSendPage() {
         if (!cancelled) {
           setProspects(pData);
           if (sData.sender_email) setSenderEmail(sData.sender_email);
+          if (sData.eight_api_key) setEightHasKey(true);
         }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
@@ -198,6 +222,80 @@ export default function BulkSendPage() {
       return next;
     });
     showToast(`${toSend.length}件のGmail作成画面を開きました`);
+  }
+
+  async function handleEightSaveKey() {
+    if (!eightApiKey.trim()) return;
+    setEightSavingKey(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eight_api_key: eightApiKey.trim() }),
+      });
+      if (res.ok) {
+        setEightHasKey(true);
+        showToast("Eight APIキーを保存しました");
+      }
+    } catch {
+      showToast("APIキーの保存に失敗しました");
+    } finally {
+      setEightSavingKey(false);
+    }
+  }
+
+  async function handleEightSearch() {
+    setEightLoading(true);
+    setEightSearched(true);
+    try {
+      const res = await fetch(`/api/eight/contacts?q=${encodeURIComponent(eightQuery)}`);
+      const data = await res.json();
+      if (res.ok) {
+        setEightContacts(data.contacts ?? []);
+        setEightChecked(new Set());
+      } else {
+        showToast(data.error ?? "名刺の取得に失敗しました");
+      }
+    } catch {
+      showToast("Eight APIとの通信に失敗しました");
+    } finally {
+      setEightLoading(false);
+    }
+  }
+
+  function handleEightToggle(id: string) {
+    setEightChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function handleEightToggleAll() {
+    if (eightChecked.size === eightContacts.length) {
+      setEightChecked(new Set());
+    } else {
+      setEightChecked(new Set(eightContacts.map((c) => c.id)));
+    }
+  }
+
+  function handleEightImport() {
+    const selected = eightContacts.filter((c) => eightChecked.has(c.id));
+    if (selected.length === 0) { showToast("名刺を選択してください"); return; }
+    const newRecipients = selected.map((c) => ({
+      id: uid(),
+      company: c.company_name,
+      person: c.person_name,
+      email: c.email,
+      checked: true,
+    }));
+    setRecipients((prev) => [...prev, ...newRecipients]);
+    setEightOpen(false);
+    setEightContacts([]);
+    setEightChecked(new Set());
+    setEightQuery("");
+    setEightSearched(false);
+    showToast(`${selected.length}件の名刺を追加しました`);
   }
 
   const allChecked = recipients.length > 0 && recipients.every((r) => r.checked);
@@ -389,10 +487,18 @@ export default function BulkSendPage() {
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 border-r border-(--color-border) py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
             >
               <UploadSimple size={14} weight="bold" />
-              一括追加（スプシ / CSV）
+              スプシ / CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => setEightOpen(true)}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+            >
+              <AddressBook size={14} weight="bold" />
+              Eightから取り込み
             </button>
           </div>
         </div>
@@ -581,6 +687,174 @@ export default function BulkSendPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Eight Import Modal */}
+      {eightOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setEightOpen(false); }}
+        >
+          <div className="flex w-full max-w-[680px] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl" style={{ maxHeight: "85vh" }}>
+            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
+              <h3 className="flex items-center gap-2 text-[15px] font-semibold">
+                <AddressBook size={18} />
+                Eightから名刺を取り込み
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEightOpen(false)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {!eightHasKey ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-amber-200 bg-(--color-warning-light) p-4 dark:border-amber-800">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Eight APIキーが未設定です</p>
+                    <p className="mt-1 text-xs text-(--color-muted)">
+                      Eightの名刺データを取得するにはAPIキーが必要です。
+                      <Link href="/settings" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1" onClick={() => setEightOpen(false)}>
+                        設定ページ
+                      </Link>
+                      からも設定できます。
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">APIキー</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Key size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted) pointer-events-none" />
+                        <input
+                          type="password"
+                          value={eightApiKey}
+                          onChange={(e) => setEightApiKey(e.target.value)}
+                          placeholder="Eight APIキーを入力"
+                          className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleEightSaveKey}
+                        disabled={!eightApiKey.trim() || eightSavingKey}
+                        className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {eightSavingKey ? <SpinnerGap size={14} className="animate-spin" /> : <Check size={14} weight="bold" />}
+                        保存
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted) pointer-events-none" />
+                      <input
+                        type="text"
+                        value={eightQuery}
+                        onChange={(e) => setEightQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleEightSearch(); }}
+                        placeholder="企業名・氏名で検索"
+                        className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) pl-9 pr-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleEightSearch}
+                      disabled={eightLoading}
+                      className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {eightLoading ? <SpinnerGap size={14} className="animate-spin" /> : <MagnifyingGlass size={14} weight="bold" />}
+                      検索
+                    </button>
+                  </div>
+
+                  {eightLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+                    </div>
+                  ) : eightContacts.length > 0 ? (
+                    <div className="overflow-hidden rounded-lg border border-(--color-border)">
+                      <table className="w-full text-[13px]">
+                        <thead>
+                          <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
+                            <th className="w-[40px] px-3 py-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={eightChecked.size === eightContacts.length && eightContacts.length > 0}
+                                onChange={handleEightToggleAll}
+                                className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+                              />
+                            </th>
+                            <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">企業名</th>
+                            <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">氏名</th>
+                            <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">役職</th>
+                            <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">メール</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eightContacts.map((c) => (
+                            <tr
+                              key={c.id}
+                              className={`border-b border-(--color-border) last:border-0 transition-colors cursor-pointer ${eightChecked.has(c.id) ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"}`}
+                              onClick={() => handleEightToggle(c.id)}
+                            >
+                              <td className="px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={eightChecked.has(c.id)}
+                                  onChange={() => handleEightToggle(c.id)}
+                                  className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+                                />
+                              </td>
+                              <td className="px-3 py-2.5 font-medium">{c.company_name}</td>
+                              <td className="px-3 py-2.5">{c.person_name}</td>
+                              <td className="px-3 py-2.5 text-(--color-muted)">{c.position || c.department || "-"}</td>
+                              <td className="px-3 py-2.5 text-(--color-primary)">{c.email || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : eightSearched ? (
+                    <div className="flex flex-col items-center gap-2 py-12 text-center">
+                      <AddressBook size={28} className="text-gray-300 dark:text-gray-600" />
+                      <p className="text-sm text-(--color-muted)">名刺が見つかりませんでした</p>
+                      <p className="text-xs text-(--color-muted)">Eight API未接続のため、APIキー受領後に取得可能になります</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-12 text-center">
+                      <MagnifyingGlass size={28} className="text-gray-300 dark:text-gray-600" />
+                      <p className="text-sm text-(--color-muted)">検索して名刺を取り込みましょう</p>
+                      <p className="text-xs text-(--color-muted)">空欄で検索すると全件取得します</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {eightHasKey && eightContacts.length > 0 && (
+              <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-3.5 dark:bg-slate-700/50">
+                <span className="text-xs text-(--color-muted)">
+                  <strong className="font-semibold text-(--color-foreground)">{eightChecked.size}</strong> / {eightContacts.length} 件選択
+                </span>
+                <button
+                  type="button"
+                  onClick={handleEightImport}
+                  disabled={eightChecked.size === 0}
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Check size={14} weight="bold" />
+                  {eightChecked.size}件を追加
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
