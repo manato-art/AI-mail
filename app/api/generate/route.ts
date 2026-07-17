@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getService,
   getPersona,
+  getTemplate,
   findProspectByDomain,
   createProspect,
 } from "@/lib/db";
@@ -14,7 +15,7 @@ import { validateEmail } from "@/lib/quality-check";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions } = body ?? {};
+    const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions, templateId } = body ?? {};
 
     if (!serviceId || !personaId || !url) {
       return NextResponse.json(
@@ -67,7 +68,15 @@ export async function POST(request: NextRequest) {
     const isFormOnly =
       crawlResult.contactEmails.length === 0 && Boolean(crawlResult.formUrl);
 
-    const genOptions = { tone, length, cta, additionalInstructions };
+    const template = templateId ? getTemplate(Number(templateId)) : undefined;
+    const genOptions = {
+      tone,
+      length,
+      cta,
+      additionalInstructions,
+      templateSubject: template?.subject,
+      templateBody: template?.body,
+    };
 
     let generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
     let qualityCheck = validateEmail(generation.body, generation.subject, analysis);

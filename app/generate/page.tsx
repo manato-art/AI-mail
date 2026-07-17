@@ -17,6 +17,7 @@ import type {
   Prospect,
   QualityCheckResult,
   Service,
+  Template,
 } from "@/lib/types";
 
 type Status =
@@ -89,10 +90,12 @@ export default function GeneratePage() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
 
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedPersonaId, setSelectedPersonaId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [url, setUrl] = useState("");
 
   const [tone, setTone] = useState("balanced");
@@ -122,9 +125,10 @@ export default function GeneratePage() {
 
     async function loadOptions() {
       try {
-        const [servicesRes, personasRes] = await Promise.all([
+        const [servicesRes, personasRes, templatesRes] = await Promise.all([
           fetch("/api/services"),
           fetch("/api/personas"),
+          fetch("/api/templates"),
         ]);
         const servicesData: Service[] = servicesRes.ok
           ? await servicesRes.json()
@@ -132,14 +136,19 @@ export default function GeneratePage() {
         const personasData: Persona[] = personasRes.ok
           ? await personasRes.json()
           : [];
+        const templatesData: Template[] = templatesRes.ok
+          ? await templatesRes.json()
+          : [];
         if (!cancelled) {
           setServices(servicesData);
           setPersonas(personasData);
+          setTemplates(templatesData);
         }
       } catch {
         if (!cancelled) {
           setServices([]);
           setPersonas([]);
+          setTemplates([]);
         }
       } finally {
         if (!cancelled) {
@@ -197,6 +206,7 @@ export default function GeneratePage() {
           length,
           cta,
           additionalInstructions: additionalInstructions.trim() || undefined,
+          templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
         }),
       });
 
@@ -374,6 +384,31 @@ export default function GeneratePage() {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
             カスタマイズ
           </h2>
+
+          {templates.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-(--color-muted) mb-1.5">テンプレート</label>
+              <div className="relative">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  disabled={isBusy}
+                  className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                >
+                  <option value="">使用しない（自由生成）</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+              </div>
+              {selectedTemplateId && (
+                <p className="mt-1 text-[11px] text-(--color-muted)">
+                  テンプレートの構成に沿ってメールを生成します
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-(--color-muted) mb-2">トーン</label>

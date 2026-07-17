@@ -16,6 +16,8 @@ export interface GenerateOptions {
   length?: string;
   cta?: string;
   additionalInstructions?: string;
+  templateSubject?: string;
+  templateBody?: string;
 }
 
 const TONE_MAP: Record<string, string> = {
@@ -54,6 +56,19 @@ function buildSystemPrompt(isFormOnly: boolean, options?: GenerateOptions): stri
     ? `\n\n【追加の指示（最優先で従うこと）】\n${options.additionalInstructions}`
     : "";
 
+  const templateSection = options?.templateSubject && options?.templateBody
+    ? `\n\n【テンプレート準拠（最重要）】
+以下のテンプレートの構成・言い回し・段落構成・トーンを踏襲してメールを作成してください。
+テンプレートの内容をそのままコピーするのではなく、相手企業の分析結果に合わせて具体的な内容を差し替えつつ、テンプレートの「型」に沿ってください。
+
+--- テンプレート件名 ---
+${options.templateSubject}
+
+--- テンプレート本文 ---
+${options.templateBody}
+--- テンプレートここまで ---`
+    : "";
+
   return `あなたは営業メール作成AIです。指定された人格として、分析結果に基づいた営業メールを作成します。
 
 【絶対ルール — 人格設定より常に優先】
@@ -83,7 +98,7 @@ ${ctaInstruction}
 - 20〜35文字目安
 - 「〜のご提案」「〜の件」等の慣例形
 - 相手社名 or 相手事業への言及を含めて開封率を上げる
-- 釣りタイトル・記号乱用（【】連打、！等）禁止${formOnlySection}${additionalSection}
+- 釣りタイトル・記号乱用（【】連打、！等）禁止${formOnlySection}${templateSection}${additionalSection}
 
 出力は必ず以下のJSON形式のみで返してください:
 {"subject": "件名", "body": "本文（署名含む）"}`;
