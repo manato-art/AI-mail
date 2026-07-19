@@ -50,7 +50,7 @@ export default function KeywordSearchPage() {
   const [aiAuto, setAiAuto] = useState(true);
   const [maxCount, setMaxCount] = useState("20");
 
-  const [hasGoogleKeys, setHasGoogleKeys] = useState(true);
+  const [searchReady, setSearchReady] = useState(true);
   const [sentDomains, setSentDomains] = useState<Set<string>>(new Set());
   const [sentNames, setSentNames] = useState<Set<string>>(new Set());
   const [excludeSent, setExcludeSent] = useState(false);
@@ -88,7 +88,8 @@ export default function KeywordSearchPage() {
         const prospects: Prospect[] = prospectsRes.ok ? await prospectsRes.json() : [];
         if (cancelled) return;
 
-        setHasGoogleKeys(Boolean(settings.google_search_api_key && settings.google_search_engine_id));
+        const mode = settings.search_mode || "api";
+        setSearchReady(mode === "scrape" || Boolean(settings.serper_api_key));
 
         const domains = new Set<string>();
         const names = new Set<string>();
@@ -110,7 +111,7 @@ export default function KeywordSearchPage() {
 
   const canRun =
     !isBusy &&
-    hasGoogleKeys &&
+    searchReady &&
     Boolean(keyword.trim()) &&
     (aiAuto || Boolean(siteInput.trim()));
 
@@ -314,15 +315,15 @@ export default function KeywordSearchPage() {
         </p>
       </div>
 
-      {!hasGoogleKeys && (
+      {!searchReady && (
         <div className="mb-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm animate-fade-in dark:border-amber-800">
           <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
           <p className="text-gray-700 dark:text-gray-300">
-            Google検索APIが未設定です。
+            検索APIキーが未設定です。
             <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
               設定ページ
             </Link>
-            からAPIキーと検索エンジンIDを登録してください（無料・初回のみ約10分）。
+            からAPIキーを登録するか、スクレイピングモードに切り替えてください。
           </p>
         </div>
       )}
