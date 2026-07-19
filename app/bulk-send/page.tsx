@@ -23,6 +23,7 @@ import {
 import type { Attachment, Prospect, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
 import { resolveEmailVariables } from "@/lib/variables";
+import type { ColumnKind } from "@/lib/import-parse";
 
 interface Recipient {
   id: string;
@@ -91,6 +92,10 @@ export default function BulkSendPage() {
   const [importTab, setImportTab] = useState<"paste" | "csv">("paste");
   const [pasteText, setPasteText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sheet, setSheet] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [columnKinds, setColumnKinds] = useState<ColumnKind[]>([]);
+  const [parsing, setParsing] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
   const [isSending, setIsSending] = useState(false);
@@ -233,23 +238,87 @@ export default function BulkSendPage() {
     showToast(`${parsed.length}件の宛先を追加しました`);
   }
 
-  function handleCsvFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (!text) return;
-      const lines = text.split("\n").filter((l) => l.trim());
-      const firstLine = lines[0]?.toLowerCase() || "";
-      const hasHeader = firstLine.includes("企業") || firstLine.includes("会社") || firstLine.includes("メール") || firstLine.includes("email") || firstLine.includes("company");
-      const dataLines = hasHeader ? lines.slice(1) : lines;
-      const parsed = parseSpreadsheetText(dataLines.join("\n"));
-      if (parsed.length === 0) { showToast("有効な宛先が見つかりませんでした"); return; }
-      setRecipients((prev) => [...prev, ...parsed.map((p) => ({ ...p, id: uid(), checked: true }))]);
-      setImportOpen(false);
-      showToast(`${parsed.length}件の宛先を追加しました`);
-    };
-    reader.readAsText(file);
+  /**
+   * ファイル取込はサーバでパースする。
+   * .xlsx はZIP+XMLなのでブラウザ側の readAsText では読めない（従来はここが壊れていた）。
+   * Shift_JIS の判定もサーバ側でまとめて行う。
+   */
+  async function handleImportFile(file: File) {
+    setParsing(true);
+    setImportError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/import/parse", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportError(data.error || "ファイルを読み取れませんでした");
+        return;
+      }
+      setSheet({ headers: data.headers, rows: data.rows });
+      setColumnKinds(data.columnKinds);
+      if (data.truncated) {
+        showToast(`先頭${data.rows.length}件のみ読み込みました`);
+      }
+    } catch {
+      setImportError("ファイルの読み込みに失敗しました");
+    } finally {
+      setParsing(false);
+    }
   }
+
+  /** 列の割り当てを確定して宛先リストに反映する */
+  function handleApplyMapping() {
+    if (!sheet) return;
+    const emailIdx = columnKinds.indexOf("email");
+    if (emailIdx < 0) {
+      setImportError("メールアドレスの列を1つ選んでください");
+      return;
+    }
+    const companyIdx = columnKinds.indexOf("company");
+    const personIdx = columnKinds.indexOf("person");
+
+    const seen = new Set(recipients.map((r) => r.email.trim().toLowerCase()));
+    const added: Recipient[] = [];
+    let skipped = 0;
+
+    for (const row of sheet.rows) {
+      const email = (row[emailIdx] ?? "").trim();
+      if (!email || !email.includes("@")) { skipped++; continue; }
+      const key = email.toLowerCase();
+      if (seen.has(key)) { skipped++; continue; }
+      seen.add(key);
+      added.push({
+        id: uid(),
+        company: companyIdx >= 0 ? (row[companyIdx] ?? "").trim() : "",
+        person: personIdx >= 0 ? (row[personIdx] ?? "").trim() : "",
+        email,
+        checked: true,
+      });
+    }
+
+    if (added.length === 0) {
+      setImportError("追加できる宛先がありませんでした（重複またはメールアドレス不正）");
+      return;
+    }
+
+    setRecipients((prev) => [...prev, ...added]);
+    closeImport();
+    showToast(
+      skipped > 0
+        ? `${added.length}件を追加しました（${skipped}件はスキップ）`
+        : `${added.length}件の宛先を追加しました`
+    );
+  }
+
+  function closeImport() {
+    setImportOpen(false);
+    setSheet(null);
+    setColumnKinds([]);
+    setImportError(null);
+    setPasteText("");
+  }
+
 
   async function handleSendAll() {
     if (!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending) return;
@@ -907,14 +976,14 @@ export default function BulkSendPage() {
       {importOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setImportOpen(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeImport(); }}
         >
           <div className="w-full max-w-[640px] overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
               <h3 className="text-[15px] font-semibold">宛先を一括追加</h3>
               <button
                 type="button"
-                onClick={() => setImportOpen(false)}
+                onClick={closeImport}
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
               >
                 <X size={16} />
@@ -955,28 +1024,98 @@ export default function BulkSendPage() {
                     の3列を選択してコピー → ここに貼り付けてください。
                   </p>
                 </>
+              ) : sheet ? (
+                <>
+                  <p className="mb-2 text-[12px] text-(--color-muted)">
+                    それぞれの列が何かを指定してください（{sheet.rows.length}行を読み込みました）
+                  </p>
+                  <div className="max-h-[280px] overflow-auto rounded-lg border border-(--color-border)">
+                    <table className="w-full text-[12px]">
+                      <thead className="sticky top-0 bg-gray-50 dark:bg-slate-800">
+                        <tr>
+                          {columnKinds.map((kind, i) => (
+                            <th key={i} className="border-b border-(--color-border) p-2 text-left">
+                              <select
+                                value={kind}
+                                onChange={(e) =>
+                                  setColumnKinds((prev) =>
+                                    prev.map((k, idx) => (idx === i ? (e.target.value as ColumnKind) : k))
+                                  )
+                                }
+                                className="h-8 w-full rounded-md border border-(--color-border) bg-(--color-card) px-1.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                              >
+                                <option value="company">企業名</option>
+                                <option value="person">担当者名</option>
+                                <option value="email">メールアドレス</option>
+                                <option value="ignore">使わない</option>
+                              </select>
+                              {sheet.headers[i] && (
+                                <span className="mt-1 block truncate text-[10px] font-normal text-(--color-muted)">
+                                  {sheet.headers[i]}
+                                </span>
+                              )}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sheet.rows.slice(0, 5).map((row, ri) => (
+                          <tr key={ri} className="border-b border-(--color-border) last:border-0">
+                            {columnKinds.map((kind, ci) => (
+                              <td
+                                key={ci}
+                                className={`max-w-[160px] truncate p-2 ${kind === "ignore" ? "text-(--color-muted) opacity-50" : ""}`}
+                              >
+                                {row[ci] ?? ""}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {sheet.rows.length > 5 && (
+                    <p className="mt-1.5 text-[11px] text-(--color-muted)">
+                      先頭5行のみ表示しています（全{sheet.rows.length}行を取り込みます）
+                    </p>
+                  )}
+                </>
               ) : (
                 <>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".csv,.xlsx,.xls"
+                    accept=".csv,.tsv,.txt,.xlsx,.xls"
                     className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-(--color-border) px-6 py-10 transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-light)"
+                    disabled={parsing}
+                    className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-(--color-border) px-6 py-10 transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-light) disabled:opacity-50"
                   >
-                    <FileArrowUp size={32} className="text-(--color-muted)" />
-                    <p className="text-[13px] text-(--color-muted)">クリックまたはドラッグ&ドロップでCSVをアップロード</p>
-                    <p className="text-[11px] text-(--color-muted)">.csv 対応</p>
+                    {parsing ? (
+                      <SpinnerGap size={32} className="animate-spin text-(--color-primary)" />
+                    ) : (
+                      <FileArrowUp size={32} className="text-(--color-muted)" />
+                    )}
+                    <p className="text-[13px] text-(--color-muted)">
+                      {parsing ? "読み込み中..." : "クリックしてファイルを選択"}
+                    </p>
+                    <p className="text-[11px] text-(--color-muted)">CSV・Excel（.xlsx）対応 / 最大10MB</p>
                   </button>
                   <p className="mt-2 text-[11px] leading-relaxed text-(--color-muted)">
-                    1行目がヘッダーの場合は自動でスキップします。
+                    ヘッダー行と文字コード（UTF-8 / Shift_JIS）は自動で判定します。
+                    読み込んだあとに、どの列が企業名・担当者名・メールアドレスかを指定できます。
                   </p>
                 </>
+              )}
+
+              {importError && (
+                <p className="mt-2.5 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[12px] text-(--color-danger)">
+                  {importError}
+                </p>
               )}
             </div>
 
@@ -985,18 +1124,42 @@ export default function BulkSendPage() {
                 {importTab === "paste" && parsedPreview.length > 0 && (
                   <>検出: <strong className="font-semibold text-(--color-foreground)">{parsedPreview.length}</strong> 件の宛先</>
                 )}
+                {sheet && (
+                  <>読み込み: <strong className="font-semibold text-(--color-foreground)">{sheet.rows.length}</strong> 行</>
+                )}
               </span>
-              {importTab === "paste" && (
-                <button
-                  type="button"
-                  onClick={handleImport}
-                  disabled={parsedPreview.length === 0}
-                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Check size={14} weight="bold" />
-                  {parsedPreview.length}件を追加
-                </button>
-              )}
+              <div className="flex gap-2">
+                {sheet && (
+                  <button
+                    type="button"
+                    onClick={() => { setSheet(null); setColumnKinds([]); setImportError(null); }}
+                    className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors hover:text-(--color-foreground)"
+                  >
+                    別のファイル
+                  </button>
+                )}
+                {importTab === "paste" && (
+                  <button
+                    type="button"
+                    onClick={handleImport}
+                    disabled={parsedPreview.length === 0}
+                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Check size={14} weight="bold" />
+                    {parsedPreview.length}件を追加
+                  </button>
+                )}
+                {sheet && (
+                  <button
+                    type="button"
+                    onClick={handleApplyMapping}
+                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover)"
+                  >
+                    <Check size={14} weight="bold" />
+                    この内容で追加
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -13,6 +13,8 @@
     "@phosphor-icons/react": "^2.1.10",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
+    "encoding-japanese": "^2.2.0",
+    "exceljs": "^4.4.0",
     "googleapis": "^173.0.0",
     "next": "16.2.10",
     "nodemailer": "^9.0.3",
@@ -23,6 +25,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/encoding-japanese": "^2.2.1",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
@@ -31,5 +34,8 @@
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "uuid": "^11.1.0"
   }
 }
