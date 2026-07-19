@@ -50,6 +50,7 @@ export default function KeywordSearchPage() {
   const [aiAuto, setAiAuto] = useState(true);
   const [maxCount, setMaxCount] = useState("20");
 
+  const [searchMode, setSearchMode] = useState<"api" | "scrape">("api");
   const [searchReady, setSearchReady] = useState(true);
   const [sentDomains, setSentDomains] = useState<Set<string>>(new Set());
   const [sentNames, setSentNames] = useState<Set<string>>(new Set());
@@ -72,6 +73,24 @@ export default function KeywordSearchPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
 
+  async function toggleSearchMode() {
+    const next = searchMode === "api" ? "scrape" : "api";
+    setSearchMode(next);
+    setSearchReady(next === "scrape" || Boolean(true));
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ search_mode: next }),
+      });
+      if (res.ok) {
+        const settings = await res.json();
+        setSearchReady(next === "scrape" || Boolean(settings.serper_api_key));
+      }
+      showToast(next === "scrape" ? "スクレイピングモードに切替" : "APIモードに切替");
+    } catch { /* ignore */ }
+  }
+
   useEffect(() => {
     return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
   }, []);
@@ -88,7 +107,8 @@ export default function KeywordSearchPage() {
         const prospects: Prospect[] = prospectsRes.ok ? await prospectsRes.json() : [];
         if (cancelled) return;
 
-        const mode = settings.search_mode || "api";
+        const mode = (settings.search_mode || "api") as "api" | "scrape";
+        setSearchMode(mode);
         setSearchReady(mode === "scrape" || Boolean(settings.serper_api_key));
 
         const domains = new Set<string>();
@@ -308,11 +328,22 @@ export default function KeywordSearchPage() {
 
   return (
     <div className="animate-fade-in pb-20">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold tracking-tight">キーワード検索</h1>
-        <p className="mt-1 text-sm text-(--color-muted)">
-          キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">キーワード検索</h1>
+          <p className="mt-1 text-sm text-(--color-muted)">
+            キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={toggleSearchMode}
+          disabled={isBusy}
+          className="mt-0.5 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 py-1.5 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:opacity-40"
+        >
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${searchMode === "api" ? "bg-emerald-500" : "bg-amber-500"}`} />
+          {searchMode === "api" ? "API" : "スクレイピング"}
+        </button>
       </div>
 
       {!searchReady && (
