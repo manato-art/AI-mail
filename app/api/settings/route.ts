@@ -5,8 +5,7 @@ const KEYS = [
   "sender_email",
   "default_service_id",
   "default_persona_id",
-  "google_search_api_key",
-  "google_search_engine_id",
+  "serper_api_key",
 ] as const;
 
 export function GET() {

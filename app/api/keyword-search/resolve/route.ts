@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/db";
-import { extractContactName, googleSearch } from "@/lib/keyword-search";
+import { extractContactName, webSearch } from "@/lib/keyword-search";
 import { crawlWebsite } from "@/lib/crawl";
 import { validateUrl } from "@/lib/ssrf";
 
@@ -47,17 +47,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "企業名を指定してください" }, { status: 400 });
     }
 
-    const apiKey = getSetting("google_search_api_key");
-    const engineId = getSetting("google_search_engine_id");
-    if (!apiKey || !engineId) {
+    const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "Google検索APIが未設定です。設定ページからAPIキーと検索エンジンIDを登録してください" },
+        { error: "検索APIが未設定です。設定ページからSerper APIキーを登録してください" },
         { status: 400 }
       );
     }
 
-    const items = await googleSearch(apiKey, engineId, `${companyName} 公式サイト`);
-    const candidate = items.find((item) => item.link && !isExcludedDomain(item.displayLink, sourceSite));
+    const items = await webSearch(apiKey, `${companyName} 公式サイト`);
+    const candidate = items.find((item: { link: string; displayLink: string }) => item.link && !isExcludedDomain(item.displayLink, sourceSite));
 
     if (!candidate) {
       return NextResponse.json({ found: false });

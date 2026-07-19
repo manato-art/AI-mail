@@ -6,49 +6,55 @@ const client = new Anthropic();
 
 const MODEL = process.env.KEYWORD_SEARCH_MODEL || "claude-sonnet-4-6";
 
-const GOOGLE_SEARCH_ENDPOINT = "https://www.googleapis.com/customsearch/v1";
+const SERPER_ENDPOINT = "https://google.serper.dev/search";
 const RESULTS_PER_PAGE = 10;
 
-export interface GoogleSearchItem {
+export interface SearchResultItem {
   title: string;
   link: string;
   snippet: string;
   displayLink: string;
 }
 
-export async function googleSearch(
+export async function webSearch(
   apiKey: string,
-  engineId: string,
   query: string,
-  start: number = 1
-): Promise<GoogleSearchItem[]> {
-  const url = new URL(GOOGLE_SEARCH_ENDPOINT);
-  url.searchParams.set("key", apiKey);
-  url.searchParams.set("cx", engineId);
-  url.searchParams.set("q", query);
-  url.searchParams.set("num", String(RESULTS_PER_PAGE));
-  url.searchParams.set("start", String(start));
-  url.searchParams.set("hl", "ja");
-  url.searchParams.set("gl", "jp");
+  page: number = 0
+): Promise<SearchResultItem[]> {
+  const res = await fetch(SERPER_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "X-API-KEY": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      q: query,
+      gl: "jp",
+      hl: "ja",
+      num: RESULTS_PER_PAGE,
+      page: page + 1,
+    }),
+  });
 
-  const res = await fetch(url.toString());
   if (!res.ok) {
-    if (res.status === 429 || res.status === 403) {
-      throw new Error(
-        "Google検索APIの利用上限に達したか、キーが無効です（無料枠: 100クエリ/日）"
-      );
+    const body = await res.text().catch(() => "");
+    if (res.status === 429) {
+      throw new Error("検索APIの利用上限に達しました");
     }
-    throw new Error(`Google検索APIエラー（${res.status}）`);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");
+    }
+    throw new Error(`検索APIエラー（${res.status}）: ${body.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  const items = Array.isArray(data.items) ? data.items : [];
-  return items.map(
-    (item: { title?: string; link?: string; snippet?: string; displayLink?: string }) => ({
+  const organic = Array.isArray(data.organic) ? data.organic : [];
+  return organic.map(
+    (item: { title?: string; link?: string; snippet?: string; domain?: string }) => ({
       title: item.title ?? "",
       link: item.link ?? "",
       snippet: item.snippet ?? "",
-      displayLink: item.displayLink ?? "",
+      displayLink: item.domain ?? "",
     })
   );
 }
@@ -132,7 +138,7 @@ export interface CompanyExtraction {
 export async function extractCompanies(
   keyword: string,
   site: string,
-  items: GoogleSearchItem[],
+  items: SearchResultItem[],
   maxCount: number
 ): Promise<CompanyExtraction> {
   const itemsText = items

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/db";
-import { extractCompanies, googleSearch, type GoogleSearchItem } from "@/lib/keyword-search";
+import { extractCompanies, webSearch, type SearchResultItem } from "@/lib/keyword-search";
 
 const MAX_COMPANIES = 50;
 const MAX_SEARCH_PAGES = 5;
@@ -18,20 +18,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "キーワードと検索元サイトを指定してください" }, { status: 400 });
     }
 
-    const apiKey = getSetting("google_search_api_key") || process.env.GOOGLE_SEARCH_API_KEY;
-    const engineId = getSetting("google_search_engine_id") || process.env.GOOGLE_SEARCH_ENGINE_ID;
-    if (!apiKey || !engineId) {
+    const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "Google検索APIが未設定です。設定ページからAPIキーと検索エンジンIDを登録してください" },
+        { error: "検索APIが未設定です。設定ページからSerper APIキーを登録してください" },
         { status: 400 }
       );
     }
 
     const query = `site:${site} ${keyword}`;
-    const items: GoogleSearchItem[] = [];
+    const items: SearchResultItem[] = [];
 
     for (let page = 0; page < MAX_SEARCH_PAGES; page++) {
-      const pageItems = await googleSearch(apiKey, engineId, query, page * 10 + 1);
+      const pageItems = await webSearch(apiKey, query, page);
       items.push(...pageItems);
       if (pageItems.length < 10) break;
       if (items.length >= maxCount * 2) break;
