@@ -7,14 +7,20 @@ import {
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { runSendGuard } from "@/lib/send-guard";
-import { sendEmail } from "@/lib/gmail";
+import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { getSetting } from "@/lib/db";
+import { loadEmailAttachments } from "@/lib/attachments";
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
 const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
 
 export async function POST(request: NextRequest) {
-  let body: { prospectId: number; senderId: number; toEmail: string };
+  let body: {
+    prospectId: number;
+    senderId: number;
+    toEmail: string;
+    attachmentIds?: number[];
+  };
   try {
     body = await request.json();
   } catch {
@@ -22,6 +28,9 @@ export async function POST(request: NextRequest) {
   }
 
   const { prospectId, senderId, toEmail: rawToEmail } = body;
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : [];
 
   if (!prospectId || !senderId || !rawToEmail) {
     return NextResponse.json(
@@ -64,6 +73,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Resolve attachments before flipping status: a missing file must fail the
+  // request outright, not strand the prospect in "sending".
+  let attachments: EmailAttachment[];
+  try {
+    attachments = loadEmailAttachments(attachmentIds);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "添付資料の読み込みに失敗しました";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
+
   // Persist "sending" state BEFORE calling send API (二重送信防止)
   updateProspectStatus(prospectId, "sending");
 
@@ -78,6 +97,7 @@ export async function POST(request: NextRequest) {
       subject: prospect.subject,
       body: prospect.body,
       unsubscribeEmail,
+      attachments,
     });
 
     createSendLog({

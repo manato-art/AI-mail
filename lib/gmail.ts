@@ -64,6 +64,12 @@ export async function exchangeCode(code: string): Promise<{
   };
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
 export interface SendEmailParams {
   encryptedRefreshToken: string;
   from: string;
@@ -72,6 +78,7 @@ export interface SendEmailParams {
   subject: string;
   body: string;
   unsubscribeEmail: string;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendEmailResult {
@@ -91,6 +98,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     to: params.to,
     subject: params.subject,
     text: params.body,
+    attachments: params.attachments,
     headers: {
       "List-Unsubscribe": `<mailto:${params.unsubscribeEmail}?subject=unsubscribe>`,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

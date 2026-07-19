@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookmarkSimple,
   Copy,
   PencilSimple,
+  Paperclip,
   Plus,
   SpinnerGap,
   Trash,
+  UploadSimple,
   X,
   Check,
   FloppyDisk,
 } from "@phosphor-icons/react";
-import type { Template } from "@/lib/types";
+import type { Attachment, Template, TemplateWithAttachments } from "@/lib/types";
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -20,8 +22,14 @@ function formatDate(iso: string): string {
   return date.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<TemplateWithAttachments[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -29,6 +37,12 @@ export default function TemplatesPage() {
   const [editBody, setEditBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  const [library, setLibrary] = useState<Attachment[]>([]);
+  const [editAttachmentIds, setEditAttachmentIds] = useState<number[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,9 +61,16 @@ export default function TemplatesPage() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/templates");
-        const data = res.ok ? await res.json() : [];
-        if (!cancelled) setTemplates(data);
+        const [tplRes, attRes] = await Promise.all([
+          fetch("/api/templates"),
+          fetch("/api/attachments"),
+        ]);
+        const tplData = tplRes.ok ? await tplRes.json() : [];
+        const attData = attRes.ok ? await attRes.json() : [];
+        if (!cancelled) {
+          setTemplates(tplData);
+          setLibrary(attData);
+        }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
     }
@@ -57,12 +78,14 @@ export default function TemplatesPage() {
     return () => { cancelled = true; };
   }, []);
 
-  function startEdit(t: Template) {
+  function startEdit(t: TemplateWithAttachments) {
     setEditingId(t.id);
     setEditName(t.name);
     setEditSubject(t.subject);
     setEditBody(t.body);
+    setEditAttachmentIds(t.attachments.map((a) => a.id));
     setCreating(false);
+    setPickerOpen(false);
   }
 
   function startCreate() {
@@ -70,12 +93,71 @@ export default function TemplatesPage() {
     setEditName("");
     setEditSubject("");
     setEditBody("");
+    setEditAttachmentIds([]);
     setCreating(true);
+    setPickerOpen(false);
   }
 
   function cancelEdit() {
     setEditingId(null);
     setCreating(false);
+    setEditAttachmentIds([]);
+    setPickerOpen(false);
+  }
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/attachments", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "アップロードに失敗しました");
+        return;
+      }
+      const created: Attachment = data;
+      setLibrary((prev) => [created, ...prev]);
+      setEditAttachmentIds((prev) => [...prev, created.id]);
+      showToast(`${created.filename} を追加しました`);
+    } catch {
+      showToast("アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+      if (uploadInputRef.current) uploadInputRef.current.value = "";
+    }
+  }
+
+  function toggleAttachment(id: number) {
+    setEditAttachmentIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  async function handleDeleteFromLibrary(attachment: Attachment) {
+    if (!confirm(`「${attachment.filename}」を資料一覧から削除しますか？\nこの資料を使っている全テンプレートから外れます。`)) return;
+    try {
+      const res = await fetch(`/api/attachments/${attachment.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setLibrary((prev) => prev.filter((a) => a.id !== attachment.id));
+      setEditAttachmentIds((prev) => prev.filter((x) => x !== attachment.id));
+      setTemplates((prev) =>
+        prev.map((t) => ({ ...t, attachments: t.attachments.filter((a) => a.id !== attachment.id) }))
+      );
+      showToast("資料を削除しました");
+    } catch {
+      showToast("資料の削除に失敗しました");
+    }
+  }
+
+  async function saveAttachmentLinks(templateId: number): Promise<Attachment[]> {
+    const res = await fetch(`/api/templates/${templateId}/attachments`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attachmentIds: editAttachmentIds }),
+    });
+    if (!res.ok) throw new Error("添付資料の紐付けに失敗しました");
+    return res.json();
   }
 
   async function handleSave() {
@@ -90,7 +172,8 @@ export default function TemplatesPage() {
         });
         if (!res.ok) throw new Error();
         const created: Template = await res.json();
-        setTemplates((prev) => [created, ...prev]);
+        const attachments = await saveAttachmentLinks(created.id);
+        setTemplates((prev) => [{ ...created, attachments }, ...prev]);
         showToast("テンプレートを作成しました");
       } else if (editingId !== null) {
         const res = await fetch(`/api/templates/${editingId}`, {
@@ -100,12 +183,15 @@ export default function TemplatesPage() {
         });
         if (!res.ok) throw new Error();
         const updated: Template = await res.json();
-        setTemplates((prev) => prev.map((t) => (t.id === editingId ? updated : t)));
+        const attachments = await saveAttachmentLinks(updated.id);
+        setTemplates((prev) =>
+          prev.map((t) => (t.id === editingId ? { ...updated, attachments } : t))
+        );
         showToast("テンプレートを更新しました");
       }
       cancelEdit();
-    } catch {
-      showToast("保存に失敗しました");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "保存に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -133,6 +219,15 @@ export default function TemplatesPage() {
   }
 
   const isEditing = creating || editingId !== null;
+
+  // Ordered by the user's selection order, not library order.
+  const selectedAttachments = useMemo(
+    () =>
+      editAttachmentIds
+        .map((id) => library.find((a) => a.id === id))
+        .filter((a): a is Attachment => Boolean(a)),
+    [editAttachmentIds, library]
+  );
 
   if (loading) {
     return (
@@ -185,7 +280,15 @@ export default function TemplatesPage() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{t.name}</p>
                 <p className="mt-0.5 truncate text-xs text-(--color-muted)">{t.subject || "件名なし"}</p>
-                <p className="mt-0.5 text-[10px] text-(--color-muted)">{formatDate(t.updated_at)}</p>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <p className="text-[10px] text-(--color-muted)">{formatDate(t.updated_at)}</p>
+                  {t.attachments.length > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-primary)">
+                      <Paperclip size={10} weight="bold" />
+                      {t.attachments.length}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex shrink-0 gap-1">
                 <button type="button" onClick={() => handleCopy(t)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-primary-light) hover:text-(--color-primary)" title="コピー">
@@ -242,6 +345,115 @@ export default function TemplatesPage() {
                   placeholder="メール本文"
                 />
               </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">添付資料</label>
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen((v) => !v)}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+                  >
+                    <Plus size={11} weight="bold" />
+                    資料を選ぶ
+                  </button>
+                </div>
+
+                {selectedAttachments.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-(--color-border) px-3 py-3 text-center text-xs text-(--color-muted)">
+                    添付なし
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {selectedAttachments.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center gap-2 rounded-lg border border-(--color-border) px-3 py-2"
+                      >
+                        <Paperclip size={13} className="shrink-0 text-(--color-muted)" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">{a.filename}</p>
+                          <p className="text-[10px] text-(--color-muted)">{formatBytes(a.size_bytes)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAttachment(a.id)}
+                          className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                          title="このテンプレートから外す"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {pickerOpen && (
+                  <div className="mt-2 rounded-lg border border-(--color-border) bg-(--color-card-hover) p-3 animate-fade-in">
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUpload(file);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploading}
+                      className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-(--color-primary)/50 text-xs font-semibold text-(--color-primary) transition-colors hover:bg-(--color-primary-light) disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {uploading ? <SpinnerGap size={13} className="animate-spin" /> : <UploadSimple size={13} />}
+                      {uploading ? "アップロード中..." : "新しい資料をアップロード"}
+                    </button>
+
+                    {library.length > 0 && (
+                      <div className="mt-2 max-h-52 space-y-1 overflow-y-auto">
+                        {library.map((a) => {
+                          const checked = editAttachmentIds.includes(a.id);
+                          return (
+                            <div key={a.id} className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleAttachment(a.id)}
+                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-(--color-card)"
+                              >
+                                <span
+                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                                    checked
+                                      ? "border-(--color-primary) bg-(--color-primary) text-white"
+                                      : "border-(--color-border)"
+                                  }`}
+                                >
+                                  {checked && <Check size={10} weight="bold" />}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs">{a.filename}</span>
+                                  <span className="block text-[10px] text-(--color-muted)">{formatBytes(a.size_bytes)}</span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFromLibrary(a)}
+                                className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                                title="資料一覧から削除"
+                              >
+                                <Trash size={11} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <p className="mt-2 text-[10px] leading-relaxed text-(--color-muted)">
+                      PDF・Word・Excel・PowerPoint・画像・テキスト・CSV・ZIP／1ファイル10MBまで
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={handleSave}

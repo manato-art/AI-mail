@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import type {
+  Attachment,
   Persona,
   PersonaInput,
   Prospect,
@@ -84,6 +85,21 @@ function createTables(instance: Database.Database): void {
       body TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL,
+      stored_name TEXT NOT NULL UNIQUE,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS template_attachments (
+      template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+      attachment_id INTEGER NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+      PRIMARY KEY (template_id, attachment_id)
     );
 
     CREATE TABLE IF NOT EXISTS senders (
@@ -255,6 +271,8 @@ function getDb(): Database.Database {
   const dbPath = path.join(dataDir, "sales-mail.db");
   const instance = new Database(dbPath);
   instance.pragma("journal_mode = WAL");
+  // Required for ON DELETE CASCADE on template_attachments (off by default in SQLite)
+  instance.pragma("foreign_keys = ON");
 
   createTables(instance);
   migrateSchema(instance);
@@ -603,6 +621,65 @@ export function updateTemplate(id: number, data: { name?: string; subject?: stri
 export function deleteTemplate(id: number): boolean {
   const result = getDb().prepare("DELETE FROM templates WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+// --- Attachments ---
+
+export function getAllAttachments(): Attachment[] {
+  return getDb()
+    .prepare("SELECT * FROM attachments ORDER BY created_at DESC, id DESC")
+    .all() as Attachment[];
+}
+
+export function getAttachment(id: number): Attachment | undefined {
+  return getDb()
+    .prepare("SELECT * FROM attachments WHERE id = ?")
+    .get(id) as Attachment | undefined;
+}
+
+export function createAttachment(data: {
+  filename: string;
+  stored_name: string;
+  mime_type: string;
+  size_bytes: number;
+}): Attachment {
+  const result = getDb()
+    .prepare(
+      "INSERT INTO attachments (filename, stored_name, mime_type, size_bytes) VALUES (@filename, @stored_name, @mime_type, @size_bytes)"
+    )
+    .run(data);
+  return getAttachment(Number(result.lastInsertRowid)) as Attachment;
+}
+
+export function deleteAttachment(id: number): boolean {
+  const result = getDb().prepare("DELETE FROM attachments WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+export function getTemplateAttachments(templateId: number): Attachment[] {
+  return getDb()
+    .prepare(
+      `SELECT a.* FROM attachments a
+       JOIN template_attachments ta ON ta.attachment_id = a.id
+       WHERE ta.template_id = ?
+       ORDER BY a.created_at DESC, a.id DESC`
+    )
+    .all(templateId) as Attachment[];
+}
+
+export function setTemplateAttachments(templateId: number, attachmentIds: number[]): Attachment[] {
+  const instance = getDb();
+  const replace = instance.transaction((ids: number[]) => {
+    instance.prepare("DELETE FROM template_attachments WHERE template_id = ?").run(templateId);
+    const insert = instance.prepare(
+      "INSERT OR IGNORE INTO template_attachments (template_id, attachment_id) VALUES (?, ?)"
+    );
+    for (const attachmentId of ids) {
+      insert.run(templateId, attachmentId);
+    }
+  });
+  replace(attachmentIds);
+  return getTemplateAttachments(templateId);
 }
 
 // --- Senders ---

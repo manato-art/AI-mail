@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAllTemplates, createTemplate } from "@/lib/db";
+import { getAllTemplates, createTemplate, getTemplateAttachments } from "@/lib/db";
+import type { TemplateWithAttachments } from "@/lib/types";
 
 export function GET() {
-  return NextResponse.json(getAllTemplates());
+  const templates: TemplateWithAttachments[] = getAllTemplates().map((template) => ({
+    ...template,
+    attachments: getTemplateAttachments(template.id),
+  }));
+  return NextResponse.json(templates);
 }
 
 export async function POST(request: Request) {
