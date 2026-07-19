@@ -15,7 +15,7 @@ const TABS: TabItem[] = [
 
 export default function CollectionLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-[1100px]">
+    <div>
       <TabNav items={TABS} title="企業リスト" />
       {children}
     </div>

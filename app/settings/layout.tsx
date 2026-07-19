@@ -24,7 +24,7 @@ const TABS: TabItem[] = [
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-[1100px]">
+    <div>
       <TabNav items={TABS} title="設定" />
       {children}
     </div>
