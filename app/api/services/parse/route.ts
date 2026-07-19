@@ -66,8 +66,8 @@ export async function POST(request: NextRequest) {
       lp_url: String(parsed.lp_url ?? ""),
     });
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "仕様書の解析に失敗しました。";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // 外部APIの生エラーは内部情報を含み得るのでログにとどめる（CLAUDE.md 制約6）
+    console.error("service parse failed:", err);
+    return NextResponse.json({ error: "仕様書の解析に失敗しました。" }, { status: 500 });
   }
 }

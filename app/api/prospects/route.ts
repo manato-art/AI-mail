@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllProspects, deleteAllProspects } from "@/lib/db";
+
+/** 誤爆・外部からの叩きで全件消えないよう、明示的な合言葉を要求する */
+const DELETE_CONFIRMATION = "DELETE_ALL_PROSPECTS";
 
 export async function GET() {
   try {
@@ -10,7 +13,22 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  let confirmation: unknown;
+  try {
+    const body = await request.json();
+    confirmation = body?.confirm;
+  } catch {
+    confirmation = undefined;
+  }
+
+  if (confirmation !== DELETE_CONFIRMATION) {
+    return NextResponse.json(
+      { error: "確認キーが一致しないため削除を中止しました" },
+      { status: 400 }
+    );
+  }
+
   try {
     deleteAllProspects();
     return NextResponse.json({ ok: true });

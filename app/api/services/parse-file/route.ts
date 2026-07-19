@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
       lp_url: String(parsed.lp_url ?? ""),
     });
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "ファイルの解析に失敗しました。";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // 生エラーは絶対パスや外部APIの内部情報を含み得るのでログにとどめる（CLAUDE.md 制約6）
+    console.error("service file parse failed:", err);
+    return NextResponse.json({ error: "ファイルの解析に失敗しました。" }, { status: 500 });
   }
 }

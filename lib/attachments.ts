@@ -94,6 +94,48 @@ export function deleteAttachmentFile(storedName: string): void {
   }
 }
 
+/** 添付を削除・差し替えたら呼ぶ。消し忘れると古い中身を送り続ける */
+export function invalidateAttachmentCache(id?: number): void {
+  if (id === undefined) attachmentCache.clear();
+  else attachmentCache.delete(id);
+}
+
+interface CacheEntry {
+  mtimeMs: number;
+  size: number;
+  attachment: EmailAttachment;
+}
+
+/**
+ * 一括送信は宛先ごとに同じ添付を読み直すため、500件送ると同じファイルを
+ * 500回ディスクから読むことになる。mtime とサイズが一致する間は使い回す。
+ */
+const attachmentCache = new Map<number, CacheEntry>();
+
+function loadOne(id: number): EmailAttachment {
+  const record = getAttachment(id);
+  if (!record) {
+    throw new Error(`添付資料が見つかりません（ID: ${id}）`);
+  }
+  if (!attachmentFileExists(record.stored_name)) {
+    throw new Error(`添付資料の実体が見つかりません（${record.filename}）`);
+  }
+
+  const stat = fs.statSync(resolveStoredPath(record.stored_name));
+  const cached = attachmentCache.get(id);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached.attachment;
+  }
+
+  const attachment: EmailAttachment = {
+    filename: record.filename,
+    content: readAttachmentFile(record.stored_name),
+    contentType: record.mime_type,
+  };
+  attachmentCache.set(id, { mtimeMs: stat.mtimeMs, size: stat.size, attachment });
+  return attachment;
+}
+
 /**
  * Loads attachments for sending. Throws instead of silently dropping a file —
  * an email that quietly goes out without its 資料 is worse than a failed send.
@@ -105,26 +147,13 @@ export function loadEmailAttachments(attachmentIds: number[]): EmailAttachment[]
   let totalBytes = 0;
 
   for (const id of attachmentIds) {
-    const record = getAttachment(id);
-    if (!record) {
-      throw new Error(`添付資料が見つかりません（ID: ${id}）`);
-    }
-    if (!attachmentFileExists(record.stored_name)) {
-      throw new Error(`添付資料の実体が見つかりません（${record.filename}）`);
-    }
-
-    const content = readAttachmentFile(record.stored_name);
-    totalBytes += content.length;
+    const attachment = loadOne(id);
+    totalBytes += attachment.content.length;
     if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
       const limitMb = Math.floor(MAX_TOTAL_ATTACHMENT_BYTES / 1024 / 1024);
       throw new Error(`添付の合計サイズが${limitMb}MBを超えています`);
     }
-
-    loaded.push({
-      filename: record.filename,
-      content,
-      contentType: record.mime_type,
-    });
+    loaded.push(attachment);
   }
 
   return loaded;

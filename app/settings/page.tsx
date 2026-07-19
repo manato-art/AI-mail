@@ -36,6 +36,14 @@ interface SenderInfo {
   booking_url: string;
 }
 
+const GMAIL_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Gmailの接続がキャンセルされました。もう一度お試しください。",
+  invalid_state:
+    "接続の検証に失敗しました。この画面の「Gmailアカウントを接続」から始め直してください（古いリンクを開いた場合もこの表示になります）。",
+  no_code: "Googleから認可コードが返りませんでした。もう一度お試しください。",
+  token_exchange_failed: "Gmailとの接続に失敗しました。時間をおいてもう一度お試しください。",
+};
+
 export default function SettingsPage() {
   return (
     <Suspense fallback={null}>
@@ -279,9 +287,19 @@ function SettingsContent() {
   async function handleClearHistory() {
     if (!confirm("生成履歴をすべて削除しますか？この操作は取り消せません。")) return;
     try {
-      await fetch("/api/prospects", { method: "DELETE" });
+      const res = await fetch("/api/prospects", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE_ALL_PROSPECTS" }),
+      });
+      if (!res.ok) {
+        showToast("削除に失敗しました");
+        return;
+      }
       window.location.reload();
-    } catch { /* ignore */ }
+    } catch {
+      showToast("削除に失敗しました");
+    }
   }
 
   if (loading) {
@@ -328,9 +346,9 @@ function SettingsContent() {
         </div>
       )}
       {gmailError && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg bg-(--color-danger-light) px-4 py-3 text-sm font-medium text-(--color-danger)">
-          <Warning size={16} weight="bold" />
-          Gmail接続に失敗しました（{gmailError}）
+        <div className="mb-4 flex items-start gap-2 rounded-lg bg-(--color-danger-light) px-4 py-3 text-sm font-medium text-(--color-danger)">
+          <Warning className="mt-0.5 shrink-0" size={16} weight="bold" />
+          <span>{GMAIL_ERROR_MESSAGES[gmailError] ?? `Gmail接続に失敗しました（${gmailError}）`}</span>
         </div>
       )}
 

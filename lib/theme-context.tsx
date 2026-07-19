@@ -72,6 +72,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const storedTheme = localStorage.getItem("theme") as Theme | null;
     const storedAccent = localStorage.getItem("accent") || "blue";
     const initial = storedTheme === "light" || storedTheme === "dark" || storedTheme === "system" ? storedTheme : "system";
+    // localStorage はブラウザ専用。遅延初期化にするとサーバ描画と食い違うため、
+    // マウント後に一度だけ読んで反映する（初回描画のちらつきは layout.tsx の
+    // インラインスクリプトが先に data-theme を当てて防いでいる）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setThemeState(initial);
     setAccentState(storedAccent);
     const r = initial === "system" ? getSystemTheme() : initial;

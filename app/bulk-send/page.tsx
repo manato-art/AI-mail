@@ -95,6 +95,8 @@ export default function BulkSendPage() {
   const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
   const [isSending, setIsSending] = useState(false);
   const [allowWarnings, setAllowWarnings] = useState(false);
+  /** 送信ループの中断フラグ。現在の1件を送り終えてから止まる */
+  const cancelRef = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -144,6 +146,9 @@ export default function BulkSendPage() {
       sessionStorage.removeItem("bulk-send-import");
       const imported: { company: string; person: string; email: string }[] = JSON.parse(raw);
       if (!Array.isArray(imported) || imported.length === 0) return;
+      // sessionStorage はブラウザ専用なので、遅延初期化にするとサーバ描画と
+      // 食い違ってハイドレーションエラーになる。マウント後に一度だけ読むのが正しい
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRecipients((prev) => [
         ...prev,
         ...imported.map((item) => ({
@@ -156,6 +161,16 @@ export default function BulkSendPage() {
       ]);
     } catch { /* ignore */ }
   }, []);
+
+  // 送信中の離脱を警告する。閉じられると何件送ったかの記録が画面から消える
+  useEffect(() => {
+    if (!isSending) return;
+    function warn(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isSending]);
 
   const sorted = useMemo(
     () => [...prospects].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
@@ -250,10 +265,16 @@ export default function BulkSendPage() {
     if (!confirm(confirmMsg)) return;
 
     setIsSending(true);
+    cancelRef.current = false;
     let okCount = 0;
     let failCount = 0;
+    let stoppedAt = -1;
 
-    for (const r of toSend) {
+    for (const [index, r] of toSend.entries()) {
+      if (cancelRef.current) {
+        stoppedAt = index;
+        break;
+      }
       setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sending" } }));
       const { subject, body } = buildEmail(r);
       try {
@@ -292,11 +313,23 @@ export default function BulkSendPage() {
     }
 
     setIsSending(false);
+    cancelRef.current = false;
+
+    if (stoppedAt >= 0) {
+      const remaining = toSend.length - stoppedAt;
+      showToast(`中断しました（送信済 ${okCount}件 / 失敗 ${failCount}件 / 未送信 ${remaining}件）`);
+      return;
+    }
     showToast(
       failCount === 0
         ? `${okCount}件を送信しました`
         : `送信完了: 成功${okCount}件 / 失敗${failCount}件`
     );
+  }
+
+  function handleCancelSending() {
+    cancelRef.current = true;
+    showToast("現在の1件を送り終えたら停止します");
   }
 
   const sentProspects = useMemo(() => {
@@ -747,19 +780,31 @@ export default function BulkSendPage() {
               要確認の指摘があっても送信する
             </label>
           </div>
-          <button
-            type="button"
-            onClick={handleSendAll}
-            disabled={!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending}
-            className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isSending ? (
-              <SpinnerGap size={16} className="animate-spin" />
-            ) : (
-              <PaperPlaneTilt size={16} weight="fill" />
+          <div className="flex items-center gap-2">
+            {isSending && (
+              <button
+                type="button"
+                onClick={handleCancelSending}
+                className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-4 text-sm font-semibold text-(--color-danger) transition-colors hover:bg-(--color-danger-light)"
+              >
+                <X size={15} weight="bold" />
+                中断
+              </button>
             )}
-            {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
-          </button>
+            <button
+              type="button"
+              onClick={handleSendAll}
+              disabled={!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending}
+              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSending ? (
+                <SpinnerGap size={16} className="animate-spin" />
+              ) : (
+                <PaperPlaneTilt size={16} weight="fill" />
+              )}
+              {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
+            </button>
+          </div>
         </div>
       )}
 

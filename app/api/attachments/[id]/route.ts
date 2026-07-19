@@ -3,6 +3,7 @@ import { getAttachment, deleteAttachment } from "@/lib/db";
 import {
   attachmentFileExists,
   deleteAttachmentFile,
+  invalidateAttachmentCache,
   readAttachmentFile,
 } from "@/lib/attachments";
 
@@ -36,6 +37,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   // Remove the row first: an orphaned file is recoverable, a row pointing at a
   // deleted file breaks every send that references it.
   deleteAttachment(attachment.id);
+  invalidateAttachmentCache(attachment.id);
   try {
     deleteAttachmentFile(attachment.stored_name);
   } catch {
