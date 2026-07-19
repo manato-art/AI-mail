@@ -61,8 +61,13 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (data.booking_url !== undefined || data.booking_tool !== undefined) {
-    const tool = (data.booking_tool ?? "calendly") as BookingTool;
-    const url = (data.booking_url ?? "").trim();
+    // 片方だけ送られたとき、もう片方を既定値で潰さない（部分更新でのデータ消失を防ぐ）
+    const current = getAllSenders().find((s) => s.id === id);
+    if (!current) {
+      return NextResponse.json({ error: "Sender not found" }, { status: 404 });
+    }
+    const tool = (data.booking_tool ?? current.booking_tool) as BookingTool;
+    const url = (data.booking_url ?? current.booking_url).trim();
 
     if (!BOOKING_TOOLS.includes(tool)) {
       return NextResponse.json({ error: "booking_tool の値が不正です" }, { status: 400 });

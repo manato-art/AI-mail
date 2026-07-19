@@ -14,7 +14,8 @@ const BOOKING_INVITE_LINES = [
   "日程が合わない場合は、その旨お知らせいただけますと幸いです。",
 ];
 
-const SIGNATURE_MARKERS = ["━━━", "\n---"];
+/** send-guard.ts の checkSignaturePresent と同じ定義に揃える（ズレると挿入位置がずれる） */
+const SIGNATURE_MARKERS = ["━━━", "---"];
 
 function findSignatureIndex(body: string): number {
   for (const marker of SIGNATURE_MARKERS) {

@@ -14,6 +14,7 @@ import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
+import { resolveEmailVariables } from "@/lib/variables";
 import type { AnalysisResult } from "@/lib/types";
 
 function parseAnalysis(json: string): AnalysisResult | null {
@@ -92,11 +93,27 @@ export async function POST(request: NextRequest) {
 
   const toEmail = TEST_MODE ? TEST_MODE_RECIPIENT : rawToEmail;
 
+  const baseAnalysis = parseAnalysis(baseProspect.analysis_json);
+  const service = getService(baseProspect.service_id);
+  const persona = getPersona(baseProspect.persona_id);
+
+  // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
+  const resolved = resolveEmailVariables(subject, mailBody, {
+    company_name: company,
+    person_name: typeof body.person === "string" ? body.person.trim() : undefined,
+    sender_name: persona?.name,
+    service_name: service?.name,
+    lp_url: service?.lp_url ?? undefined,
+    booking_url: sender.booking_url,
+  });
+  const outgoingSubject = resolved.subject;
+  const outgoingBody = resolved.body;
+
   // Guard runs against the real recipient even in test mode (same as /api/send)
   const guardResult = runSendGuard({
     toEmail: rawToEmail,
-    subject,
-    body: mailBody,
+    subject: outgoingSubject,
+    body: outgoingBody,
     senderId,
   });
 
@@ -109,14 +126,15 @@ export async function POST(request: NextRequest) {
 
   // F18: 事実誤認の検知。宛先ごとに社名を差し替えて送るため、
   // 照合対象の社名もこの宛先のものへ差し替える（元テンプレの社名で照合すると必ず不一致になる）
-  const baseAnalysis = parseAnalysis(baseProspect.analysis_json);
   if (baseAnalysis) {
     const danger = runDangerCheck({
-      subject,
-      body: mailBody,
-      analysis: company ? { ...baseAnalysis, company_name: company } : baseAnalysis,
-      service: getService(baseProspect.service_id),
-      persona: getPersona(baseProspect.persona_id),
+      subject: outgoingSubject,
+      body: outgoingBody,
+      // 企業名は必ずこの宛先のもので上書きする。未入力(空)なら社名照合は成立しないので
+      // 空のまま渡し、danger-check 側で「機械検知できない」警告に落とす
+      analysis: { ...baseAnalysis, company_name: company },
+      service,
+      persona,
     });
 
     if (!danger.canSend) {
@@ -155,10 +173,10 @@ export async function POST(request: NextRequest) {
     analysis_json: "{}",
     service_id: baseProspect.service_id,
     persona_id: baseProspect.persona_id,
-    subject,
-    body: mailBody,
-    generated_subject: subject,
-    generated_body: mailBody,
+    subject: outgoingSubject,
+    body: outgoingBody,
+    generated_subject: outgoingSubject,
+    generated_body: outgoingBody,
     emails_found_json: JSON.stringify([rawToEmail]),
     form_url: null,
     is_form_only: 0,
@@ -179,8 +197,8 @@ export async function POST(request: NextRequest) {
       from: sender.email,
       fromName: sender.display_name,
       to: toEmail,
-      subject,
-      body: mailBody,
+      subject: outgoingSubject,
+      body: outgoingBody,
       unsubscribeEmail,
       attachments,
     });
@@ -189,7 +207,7 @@ export async function POST(request: NextRequest) {
       prospect_id: prospect.id,
       sender_id: senderId,
       to_email: toEmail,
-      subject,
+      subject: outgoingSubject,
       gmail_message_id: result.messageId,
       gmail_thread_id: result.threadId,
     });

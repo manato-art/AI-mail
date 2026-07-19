@@ -62,6 +62,7 @@ function SettingsContent() {
 
   const [searchMode, setSearchMode] = useState<"api" | "scrape">("api");
   const [serperApiKey, setSerperApiKey] = useState("");
+  const [serperKeyConfigured, setSerperKeyConfigured] = useState(false);
   const [savingSearch, setSavingSearch] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
 
@@ -75,7 +76,7 @@ function SettingsContent() {
 
   function showToast(msg: string) {
     setToast(null);
-    requestAnimationFrame(() => setToast(msg));
+    setTimeout(() => setToast(msg), 0);
   }
 
   const gmailSuccess = searchParams.get("gmail_success") === "true";
@@ -101,7 +102,9 @@ function SettingsContent() {
           setDefaultServiceId(settings.default_service_id || "");
           setDefaultPersonaId(settings.default_persona_id || "");
           setSearchMode(settings.search_mode === "scrape" ? "scrape" : "api");
-          setSerperApiKey(settings.serper_api_key || "");
+          // APIキーはサーバから返らない（漏洩防止）。設定済みかどうかだけ受け取る
+          setSerperApiKey("");
+          setSerperKeyConfigured(settings.serper_api_key_configured === "true");
           setServices(svcData);
           setPersonas(perData);
           setGmailSenders(sendersData);
@@ -560,10 +563,14 @@ function SettingsContent() {
                     value={serperApiKey}
                     onChange={(e) => setSerperApiKey(e.target.value)}
                     className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                    placeholder="serper.dev のAPIキー"
+                    placeholder={serperKeyConfigured ? "設定済み（変更する場合のみ入力）" : "serper.dev のAPIキー"}
                     autoComplete="off"
                   />
-                  <p className="mt-1 text-[11px] text-(--color-muted)">serper.dev で登録すると2,500クエリ無料</p>
+                  <p className="mt-1 text-[11px] text-(--color-muted)">
+                    {serperKeyConfigured
+                      ? "登録済みのキーは画面に表示されません。変更したい場合のみ新しいキーを入力してください"
+                      : "serper.dev で登録すると2,500クエリ無料"}
+                  </p>
                 </div>
               )}
               {searchMode === "scrape" && (

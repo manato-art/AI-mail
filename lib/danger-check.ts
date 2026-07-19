@@ -23,6 +23,22 @@ export interface DangerCheckResult {
 const NUMERIC_CLAIM_PATTERN =
   /\d+(?:[.,]\d+)*\s*(?:社|名|人|件|年|ヶ月|ケ月|カ月|か月|ヵ月|週間|日間|時間|%|％|割|倍|位|冠|周年|億|万|千|円|点|種類)/g;
 
+/**
+ * 相手企業を指す語。ハルシネーション照合はこの近傍の数値だけを対象にする。
+ *
+ * 全ての数値を照合対象にすると「3点ほどご提案」「1名が対応します」のような
+ * 相手について何も主張していない定型表現まで弾いてしまい、送信機能が使えなくなる
+ * （実測で正常な営業メール7件中5件が誤ブロックされた）。
+ * 止めたいのは「創業50年の御社」のように相手企業について検証できない事実を書く行為。
+ */
+const TARGET_COMPANY_MARKERS = ["御社", "貴社", "貴店", "そちら"];
+
+/** 宛名行（「◯◯株式会社 ご担当者様」等）。ここの社名は事実主張の文脈ではない */
+const ADDRESSEE_LINE_PATTERN = /(?:様|御中|ご担当者)$/;
+
+/** 西暦（2026年など）は事実主張ではないので照合から除く */
+const CALENDAR_YEAR_PATTERN = /^(?:19|20)\d{2}年$/;
+
 const ABBREVIATION_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /㈱|\(株\)|（株）/, label: "(株)" },
   { pattern: /㈲|\(有\)|（有）/, label: "(有)" },
@@ -67,19 +83,53 @@ const LOW_COMPATIBILITY_OVERCLAIMS = [
   "最適なソリューション",
 ];
 
-/** 全角→半角・カンマ除去。表記ゆれ（3,000社 と 3000社）を同一視するため */
+/**
+ * 全角→半角・カンマ除去。表記ゆれ（3,000社 と 3000社）を同一視するため。
+ * 改行は残す — 潰すと宛名行と本文が地続きになり、文脈判定が壊れる。
+ */
 function normalizeNumeric(text: string): string {
   return text
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .replace(/[，,]/g, "")
     .replace(/[．]/g, ".")
     .replace(/[％]/g, "%")
-    .replace(/\s+/g, "");
+    .replace(/[ \t　]+/g, "");
 }
 
 function extractNumericClaims(text: string): string[] {
   const normalized = normalizeNumeric(text);
   return [...new Set(normalized.match(NUMERIC_CLAIM_PATTERN) ?? [])];
+}
+
+/**
+ * 相手企業に言及している行の数値だけを抜き出す。
+ * 「3点ほどご提案します」は素通しし、「創業50年の御社」は拾う。
+ * 判定を行単位にしているのは、日本語のメールでは1行がほぼ1つの文脈だから。
+ */
+function extractClaimsAboutTarget(text: string, companyName?: string | null): string[] {
+  const markers = [...TARGET_COMPANY_MARKERS];
+  const name = companyName ? normalizeNumeric(companyName) : "";
+  if (name) markers.push(name);
+
+  const claims = new Set<string>();
+  for (const line of normalizeNumeric(text).split("\n")) {
+    if (ADDRESSEE_LINE_PATTERN.test(line)) continue;
+    if (!markers.some((marker) => line.includes(marker))) continue;
+
+    for (const match of line.matchAll(NUMERIC_CLAIM_PATTERN)) {
+      if (CALENDAR_YEAR_PATTERN.test(match[0])) continue;
+      claims.add(match[0]);
+    }
+  }
+  return [...claims];
+}
+
+/**
+ * 照合の母集合として使える分析結果があるか。
+ * 空の analysis（一括送信で作られた行など）で照合すると全ての数値が幻覚扱いになる。
+ */
+function hasUsableCorpus(analysis: AnalysisResult): boolean {
+  return Boolean(analysis.company_name?.trim() || analysis.business_summary?.trim());
 }
 
 /**
@@ -114,16 +164,22 @@ function buildAllowedCorpus(
   return parts.filter(Boolean).join(" ");
 }
 
-function checkHallucinatedNumbers(body: string, corpus: string): DangerFinding[] {
+function checkHallucinatedNumbers(
+  body: string,
+  corpus: string,
+  analysis: AnalysisResult
+): DangerFinding[] {
+  if (!hasUsableCorpus(analysis)) return [];
+
   const allowed = new Set(extractNumericClaims(corpus));
-  const claimed = extractNumericClaims(body);
+  const claimed = extractClaimsAboutTarget(body, analysis.company_name);
   const invented = claimed.filter((claim) => !allowed.has(claim));
 
   if (invented.length === 0) return [];
   return [
     {
       severity: "block",
-      message: `分析結果・商材情報に存在しない数値が本文にあります（事実誤認の疑い）: ${invented.join("、")}`,
+      message: `相手企業について、分析結果に無い数値を書いています（事実誤認の疑い）: ${invented.join("、")}`,
     },
   ];
 }
@@ -132,7 +188,13 @@ function checkCompanyName(body: string, analysis: AnalysisResult): DangerFinding
   const findings: DangerFinding[] = [];
   const name = analysis.company_name?.trim();
 
-  if (name && !body.includes(name)) {
+  if (!name) {
+    // 照合対象が無いので機械検知が働かないことを可視化する（ブロックはしない）
+    findings.push({
+      severity: "warn",
+      message: "企業名が未設定のため、宛先取り違えの機械検知ができません",
+    });
+  } else if (!body.includes(name)) {
     findings.push({
       severity: "block",
       message: `本文に相手企業の正式名称「${name}」が含まれていません（宛先取り違えの疑い）`,
@@ -187,7 +249,7 @@ export function runDangerCheck(params: {
   const target = `${subject}\n${body}`;
 
   const findings: DangerFinding[] = [
-    ...checkHallucinatedNumbers(target, corpus),
+    ...checkHallucinatedNumbers(target, corpus, analysis),
     ...checkCompanyName(body, analysis),
     ...checkWordList(target, EXAGGERATION_WORDS, "warn", "景品表示法リスクのある断定・誇大表現"),
     ...checkWordList(body, DOUBLE_HONORIFICS, "warn", "二重敬語"),

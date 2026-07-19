@@ -9,10 +9,31 @@ const PRIVATE_IPV4_PATTERNS: RegExp[] = [
   /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/,
   /^192\.168\.\d{1,3}\.\d{1,3}$/,
   /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
-  /^0\.0\.0\.0$/,
+  /^0\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,
+  // リンクローカル。169.254.169.254 はクラウドの認証情報エンドポイント
+  /^169\.254\.\d{1,3}\.\d{1,3}$/,
+  // CGNAT
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/,
 ];
 
-const PRIVATE_HOSTNAMES = new Set(["localhost", "::1"]);
+/** IPv6 のループバック・リンクローカル・ユニークローカル */
+const PRIVATE_IPV6_PATTERNS: RegExp[] = [
+  /^::1$/,
+  /^::$/,
+  /^fe80:/i,
+  /^f[cd][0-9a-f]{2}:/i,
+  // IPv4射影アドレス（::ffff:127.0.0.1 / ::ffff:7f00:1）
+  /^::ffff:/i,
+];
+
+const PRIVATE_HOSTNAMES = new Set([
+  "localhost",
+  "::1",
+  // クラウドのメタデータサービス
+  "metadata.google.internal",
+  "metadata.goog",
+  "instance-data",
+]);
 
 function isPrivateHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
@@ -22,6 +43,15 @@ function isPrivateHostname(hostname: string): boolean {
   }
 
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+
+  // .internal / .local は内部ネットワーク向けの名前空間
+  if (normalized.endsWith(".internal") || normalized.endsWith(".local")) {
+    return true;
+  }
+
+  if (PRIVATE_IPV6_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return true;
   }
 

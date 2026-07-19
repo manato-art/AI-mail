@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowCounterClockwise,
@@ -105,7 +105,7 @@ export default function ProspectPage() {
 
   function showToast(message: string) {
     setToast(null);
-    requestAnimationFrame(() => setToast(message));
+    setTimeout(() => setToast(message), 0);
   }
 
   useEffect(() => {

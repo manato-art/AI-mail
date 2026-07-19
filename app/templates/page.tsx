@@ -49,7 +49,7 @@ export default function TemplatesPage() {
 
   function showToast(msg: string) {
     setToast(null);
-    requestAnimationFrame(() => setToast(msg));
+    setTimeout(() => setToast(msg), 0);
   }
 
   useEffect(() => {

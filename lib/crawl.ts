@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types";
+import { validateUrl } from "@/lib/ssrf";
 
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_PAGES = 5;
@@ -37,20 +38,40 @@ interface FetchedPage {
   finalUrl: string;
 }
 
+/** リダイレクト追従の上限。無制限だとループに嵌る */
+const MAX_REDIRECTS = 5;
+
 async function fetchPage(url: string): Promise<FetchedPage | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ja,en;q=0.8",
-      },
-    });
+    // redirect:"follow" だと入口の validateUrl を回避して内部ホストへ到達できてしまうため、
+    // 手動で追従し、毎ホップ SSRF 検証をかけ直す
+    let currentUrl = url;
+    let res: Response;
+
+    for (let hop = 0; ; hop++) {
+      res = await fetch(currentUrl, {
+        signal: controller.signal,
+        redirect: "manual",
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ja,en;q=0.8",
+        },
+      });
+
+      if (res.status < 300 || res.status >= 400) break;
+
+      const location = res.headers.get("location");
+      if (!location || hop >= MAX_REDIRECTS) return null;
+
+      const next = new URL(location, currentUrl).toString();
+      const validated = validateUrl(next);
+      if (!validated.valid) return null;
+      currentUrl = validated.normalized;
+    }
 
     if (!res.ok) {
       return null;
@@ -66,7 +87,7 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
     }
 
     const html = await res.text();
-    return { html, finalUrl: res.url || url };
+    return { html, finalUrl: res.url || currentUrl };
   } catch {
     return null;
   } finally {

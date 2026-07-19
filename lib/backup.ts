@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import Database from "better-sqlite3";
+import { vacuumInto } from "@/lib/db";
 
 const MAX_BACKUPS = 7;
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -13,12 +15,6 @@ interface ScheduleHolder {
 
 export function backupDatabase(): string {
   const dataDir = process.env.DATABASE_DIR || path.join(process.cwd(), "data");
-  const dbPath = path.join(dataDir, "sales-mail.db");
-
-  if (!fs.existsSync(dbPath)) {
-    throw new Error("Database file not found");
-  }
-
   const backupDir = path.join(dataDir, "backups");
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
@@ -27,11 +23,39 @@ export function backupDatabase(): string {
   const timestamp = new Date().toISOString().slice(0, 10);
   const backupPath = path.join(backupDir, `sales-mail-${timestamp}.db`);
 
-  fs.copyFileSync(dbPath, backupPath);
+  // VACUUM INTO は出力先が既存だと失敗する。同日2回目は取り直しになる
+  if (fs.existsSync(backupPath)) {
+    fs.unlinkSync(backupPath);
+  }
+
+  vacuumInto(backupPath);
+
+  if (!isBackupUsable(backupPath)) {
+    fs.unlinkSync(backupPath);
+    throw new Error("バックアップの検証に失敗しました（中身が空）");
+  }
 
   pruneOldBackups(backupDir);
 
   return backupPath;
+}
+
+/**
+ * 取ったバックアップが実際に読めるかを確認する。
+ * 「バックアップがある」という誤った安心を作らないための検証。
+ * ファイルサイズでは判定しない（空のDBでも4096バイトになり、今回の欠陥を見逃す）。
+ */
+function isBackupUsable(backupPath: string): boolean {
+  try {
+    const db = new Database(backupPath, { readonly: true });
+    const row = db
+      .prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type = 'table'")
+      .get() as { count: number };
+    db.close();
+    return row.count > 0;
+  } catch {
+    return false;
+  }
 }
 
 function pruneOldBackups(backupDir: string): void {

@@ -101,7 +101,7 @@ export default function BulkSendPage() {
 
   function showToast(msg: string) {
     setToast(null);
-    requestAnimationFrame(() => setToast(msg));
+    setTimeout(() => setToast(msg), 0);
   }
 
   useEffect(() => {
@@ -155,6 +155,13 @@ export default function BulkSendPage() {
   const sorted = useMemo(
     () => [...prospects].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [prospects]
+  );
+
+  // 一括送信で作られた行（input_url が空）はテンプレ候補から外す。
+  // それを次のテンプレに選ぶと、既に置換済みの社名がさらに置換対象になり多段で汚染される
+  const templateCandidates = useMemo(
+    () => sorted.filter((p) => Boolean(p.input_url)),
+    [sorted]
   );
 
   const selectedProspect = useMemo(
@@ -368,6 +375,20 @@ export default function BulkSendPage() {
         </div>
       )}
 
+      {/* 構造的なリスクの明示: テンプレ元1社向けに書かれた本文をN社に流用する */}
+      {selectedProspect && (
+        <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
+          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+          <div className="text-gray-700 dark:text-gray-300">
+            この本文は
+            <strong className="mx-1">{selectedProspect.company_name || selectedProspect.domain}</strong>
+            向けに生成されたものです。差し替わるのは企業名と宛名だけなので、
+            <strong>その1社にしか当てはまらない記述（実績・沿革・ニュースへの言及など）が残っていないか</strong>
+            を必ずプレビューで確認してください。
+          </div>
+        </div>
+      )}
+
       {/* Test mode badge */}
       {testMode && (
         <div className="mt-5 rounded-xl border border-(--color-border) bg-(--color-primary-light) px-4 py-3 text-[13px] font-medium text-(--color-primary)">
@@ -388,7 +409,7 @@ export default function BulkSendPage() {
               className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             >
               <option value="">テンプレートを選択</option>
-              {sorted.map((p) => (
+              {templateCandidates.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.company_name || p.domain} — {p.subject.slice(0, 40)}
                 </option>

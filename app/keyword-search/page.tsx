@@ -69,7 +69,7 @@ export default function KeywordSearchPage() {
 
   function showToast(msg: string) {
     setToast(null);
-    requestAnimationFrame(() => setToast(msg));
+    setTimeout(() => setToast(msg), 0);
   }
 
   async function toggleSearchMode() {
@@ -84,7 +84,7 @@ export default function KeywordSearchPage() {
       });
       if (res.ok) {
         const settings = await res.json();
-        setSearchReady(next === "scrape" || Boolean(settings.serper_api_key));
+        setSearchReady(next === "scrape" || settings.serper_api_key_configured === "true");
       }
       showToast(next === "scrape" ? "スクレイピングモードに切替" : "APIモードに切替");
     } catch { /* ignore */ }
@@ -104,7 +104,7 @@ export default function KeywordSearchPage() {
 
         const mode = (settings.search_mode || "api") as "api" | "scrape";
         setSearchMode(mode);
-        setSearchReady(mode === "scrape" || Boolean(settings.serper_api_key));
+        setSearchReady(mode === "scrape" || settings.serper_api_key_configured === "true");
 
         const domains = new Set<string>();
         const names = new Set<string>();

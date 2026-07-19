@@ -11,6 +11,7 @@ import {
 import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { applyBookingLink } from "@/lib/booking";
+import { resolveEmailVariables } from "@/lib/variables";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { getSetting } from "@/lib/db";
 import { loadEmailAttachments } from "@/lib/attachments";
@@ -76,11 +77,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sender not found" }, { status: 404 });
   }
 
-  // F14: 日程調整リンクはDBを汚さず送信時のみ本文に添える
-  const outgoingBody = body.includeBookingLink
-    ? applyBookingLink(prospect.body, sender.booking_url)
-    : prospect.body;
-
   if (body.includeBookingLink && !sender.booking_url.trim()) {
     return NextResponse.json(
       { error: "日程調整URLが未設定です。設定ページで登録してください" },
@@ -88,9 +84,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const analysis = parseAnalysis(prospect.analysis_json);
+  const service = getService(prospect.service_id);
+  const persona = getPersona(prospect.persona_id);
+
+  // F14: 日程調整リンクはDBを汚さず送信時のみ本文に添える
+  const bodyWithBooking = body.includeBookingLink
+    ? applyBookingLink(prospect.body, sender.booking_url)
+    : prospect.body;
+
+  // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
+  const resolved = resolveEmailVariables(prospect.subject, bodyWithBooking, {
+    company_name: prospect.company_name || analysis?.company_name,
+    person_name: analysis?.representative_name ?? undefined,
+    sender_name: persona?.name,
+    service_name: service?.name,
+    lp_url: service?.lp_url ?? undefined,
+    booking_url: sender.booking_url,
+  });
+  const outgoingSubject = resolved.subject;
+  const outgoingBody = resolved.body;
+
   const guardResult = runSendGuard({
     toEmail: TEST_MODE ? rawToEmail : toEmail,
-    subject: prospect.subject,
+    subject: outgoingSubject,
     body: outgoingBody,
     senderId,
     prospectId,
@@ -104,14 +121,13 @@ export async function POST(request: NextRequest) {
   }
 
   // F18: 危険ワード・事実誤認の検知。ブロックは押し切れない、警告は確認の上で押し切れる
-  const analysis = parseAnalysis(prospect.analysis_json);
   if (analysis) {
     const danger = runDangerCheck({
-      subject: prospect.subject,
+      subject: outgoingSubject,
       body: outgoingBody,
       analysis,
-      service: getService(prospect.service_id),
-      persona: getPersona(prospect.persona_id),
+      service,
+      persona,
     });
 
     if (!danger.canSend) {
@@ -154,7 +170,7 @@ export async function POST(request: NextRequest) {
       from: sender.email,
       fromName: sender.display_name,
       to: toEmail,
-      subject: prospect.subject,
+      subject: outgoingSubject,
       body: outgoingBody,
       unsubscribeEmail,
       attachments,
@@ -164,7 +180,7 @@ export async function POST(request: NextRequest) {
       prospect_id: prospectId,
       sender_id: senderId,
       to_email: toEmail,
-      subject: prospect.subject,
+      subject: outgoingSubject,
       gmail_message_id: result.messageId,
       gmail_thread_id: result.threadId,
     });

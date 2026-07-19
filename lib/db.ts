@@ -563,6 +563,17 @@ export function updateProspect(
   return getProspect(id);
 }
 
+/**
+ * WAL を含めた完全な状態を1ファイルに書き出す（バックアップ用）。
+ *
+ * fs.copyFileSync では -wal を置き去りにするため、WAL モードでは
+ * 中身が空のファイルができてしまう（実測でテーブル数0）。
+ * VACUUM INTO は SQLite がコミット済みの全データを整合した状態で書き出す。
+ */
+export function vacuumInto(destPath: string): void {
+  getDb().prepare("VACUUM INTO ?").run(destPath);
+}
+
 export function getSetting(key: string): string | undefined {
   const row = getDb()
     .prepare("SELECT value FROM settings WHERE key = ?")
@@ -807,14 +818,15 @@ export function getTodaySendCount(senderId: number): number {
 export const DUPLICATE_SEND_BLOCK_DAYS = 90;
 
 export function hasSentToEmail(toEmail: string): boolean {
+  // 大文字小文字・前後空白の違いでガードをすり抜けないよう、比較側も正規化する
   const row = getDb()
     .prepare(
       `SELECT id FROM send_log
-       WHERE to_email = ?
+       WHERE lower(trim(to_email)) = ?
          AND sent_at >= datetime('now', 'localtime', ?)
        LIMIT 1`
     )
-    .get(toEmail, `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
+    .get(normalizeEmailKey(toEmail), `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
   return !!row;
 }
 
@@ -839,7 +851,7 @@ export function addSuppression(data: {
        VALUES (@target, @target_type, @reason, @note)`
     )
     .run({
-      target: data.target.toLowerCase(),
+      target: normalizeEmailKey(data.target).replace(/^@/, ""),
       target_type: data.target_type,
       reason: data.reason,
       note: data.note ?? "",
@@ -849,8 +861,17 @@ export function addSuppression(data: {
     .get(data.target.toLowerCase(), data.target_type) as Suppression;
 }
 
+/**
+ * 抑止リスト・送信ログの照合キー。
+ * trim を欠くと " a@example.com " のような値が法定チェックをすり抜ける
+ * （メール送信側は前後空白を除去して配信するため、実際には届いてしまう）。
+ */
+export function normalizeEmailKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export function isEmailSuppressed(email: string): Suppression | null {
-  const emailLower = email.toLowerCase();
+  const emailLower = normalizeEmailKey(email);
   const domain = emailLower.split("@")[1];
 
   const emailMatch = getDb()
