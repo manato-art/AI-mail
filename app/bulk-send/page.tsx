@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CaretDown,
   Check,
+  ClockCounterClockwise,
   Eye,
+  MagnifyingGlass,
   Plus,
   SpinnerGap,
   Trash,
@@ -64,6 +66,10 @@ export default function BulkSendPage() {
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyChecked, setHistoryChecked] = useState<Set<number>>(new Set());
 
   function showToast(msg: string) {
     setToast(msg);
@@ -199,6 +205,44 @@ export default function BulkSendPage() {
       return next;
     });
     showToast(`${toSend.length}件のGmail作成画面を開きました`);
+  }
+
+  const sentProspects = useMemo(() => {
+    const q = historySearch.toLowerCase();
+    return sorted
+      .filter((p) => p.send_status === "sent" && p.emails_found_json)
+      .filter((p) =>
+        !q ||
+        (p.company_name || "").toLowerCase().includes(q) ||
+        (p.domain || "").toLowerCase().includes(q) ||
+        (p.emails_found_json || "").toLowerCase().includes(q)
+      );
+  }, [sorted, historySearch]);
+
+  function handleHistoryImport() {
+    const toAdd: Omit<Recipient, "id" | "checked">[] = [];
+    const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
+
+    for (const p of sentProspects) {
+      if (!historyChecked.has(p.id)) continue;
+      const emails: string[] = p.emails_found_json ? JSON.parse(p.emails_found_json) : [];
+      for (const email of emails) {
+        if (existingEmails.has(email.toLowerCase())) continue;
+        toAdd.push({ company: p.company_name || p.domain, person: "", email });
+        existingEmails.add(email.toLowerCase());
+      }
+    }
+
+    if (toAdd.length === 0) {
+      showToast("追加できる宛先がありません（既に追加済みの可能性があります）");
+      return;
+    }
+
+    setRecipients((prev) => [...prev, ...toAdd.map((r) => ({ ...r, id: uid(), checked: true }))]);
+    setHistoryOpen(false);
+    setHistoryChecked(new Set());
+    setHistorySearch("");
+    showToast(`${toAdd.length}件の宛先を送信履歴から追加しました`);
   }
 
   const allChecked = recipients.length > 0 && recipients.every((r) => r.checked);
@@ -390,10 +434,18 @@ export default function BulkSendPage() {
             <button
               type="button"
               onClick={() => setImportOpen(true)}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 border-r border-(--color-border) py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
             >
               <UploadSimple size={14} weight="bold" />
               スプシ / CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => { setHistoryOpen(true); setHistoryChecked(new Set()); setHistorySearch(""); }}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+            >
+              <ClockCounterClockwise size={14} weight="bold" />
+              送信履歴から追加
             </button>
           </div>
         </div>
@@ -484,6 +536,101 @@ export default function BulkSendPage() {
             )}
             {sendingIds.size > 0 ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
           </button>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setHistoryOpen(false); }}
+        >
+          <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
+            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
+              <h3 className="text-[15px] font-semibold">送信履歴から宛先を追加</h3>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 pt-4 pb-3">
+              <div className="relative">
+                <MagnifyingGlass size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="企業名・ドメイン・メールアドレスで検索"
+                  className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 pb-3">
+              {sentProspects.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <p className="text-sm text-(--color-muted)">
+                    {historySearch ? "該当する送信履歴がありません" : "送信済みの宛先がありません"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {sentProspects.map((p) => {
+                    const emails: string[] = p.emails_found_json ? JSON.parse(p.emails_found_json) : [];
+                    const checked = historyChecked.has(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${checked ? "border-(--color-primary) bg-(--color-primary-light)/40" : "border-(--color-border) hover:border-(--color-primary)/50 hover:bg-(--color-card-hover)"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setHistoryChecked((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(p.id)) next.delete(p.id);
+                              else next.add(p.id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary)"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
+                          <p className="truncate text-[12px] text-(--color-muted)">{emails.join(", ")}</p>
+                        </div>
+                        <span className="shrink-0 text-[11px] text-(--color-muted)">
+                          {new Date(p.created_at).toLocaleDateString("ja-JP")}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-3.5 dark:bg-slate-700/50">
+              <span className="text-xs text-(--color-muted)">
+                {historyChecked.size > 0 && (
+                  <>選択中: <strong className="font-semibold text-(--color-foreground)">{historyChecked.size}</strong> 件</>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={handleHistoryImport}
+                disabled={historyChecked.size === 0}
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus size={14} weight="bold" />
+                宛先に追加
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
