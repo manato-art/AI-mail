@@ -18,8 +18,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "キーワードと検索元サイトを指定してください" }, { status: 400 });
     }
 
-    const apiKey = getSetting("google_search_api_key");
-    const engineId = getSetting("google_search_engine_id");
+    const apiKey = getSetting("google_search_api_key") || process.env.GOOGLE_SEARCH_API_KEY;
+    const engineId = getSetting("google_search_engine_id") || process.env.GOOGLE_SEARCH_ENGINE_ID;
     if (!apiKey || !engineId) {
       return NextResponse.json(
         { error: "Google検索APIが未設定です。設定ページからAPIキーと検索エンジンIDを登録してください" },
