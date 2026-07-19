@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   EnvelopeSimple,
   FloppyDisk,
@@ -15,7 +15,6 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import { useTheme, ACCENT_COLORS } from "@/lib/theme-context";
-import { useSearchParams } from "next/navigation";
 import { Toast } from "@/components/toast";
 
 type Theme = "light" | "dark" | "system";
@@ -44,17 +43,19 @@ const GMAIL_ERROR_MESSAGES: Record<string, string> = {
   token_exchange_failed: "Gmailとの接続に失敗しました。時間をおいてもう一度お試しください。",
 };
 
-export default function SettingsPage() {
-  return (
-    <Suspense fallback={null}>
-      <SettingsContent />
-    </Suspense>
-  );
+/**
+ * Gmail接続の結果はURLパラメータで戻ってくる。
+ * useSearchParams() を使うとページ全体がサーバ描画を放棄し、
+ * JSが読めない状況で真っ白になる（ログイン画面で実際に起きた）ため使わない。
+ */
+function readGmailResult(): { success: boolean; error: string | null } {
+  if (typeof window === "undefined") return { success: false, error: null };
+  const params = new URLSearchParams(window.location.search);
+  return { success: params.get("gmail_success") === "true", error: params.get("gmail_error") };
 }
 
-function SettingsContent() {
+export default function SettingsPage() {
   const { theme, setTheme, accent, setAccent } = useTheme();
-  const searchParams = useSearchParams();
 
   const [senderEmail, setSenderEmail] = useState("");
   const [senderDraft, setSenderDraft] = useState("");
@@ -90,8 +91,19 @@ function SettingsContent() {
     setTimeout(() => setToast(msg), 0);
   }
 
-  const gmailSuccess = searchParams.get("gmail_success") === "true";
-  const gmailError = searchParams.get("gmail_error");
+  const [gmailResult, setGmailResult] = useState<{ success: boolean; error: string | null }>({
+    success: false,
+    error: null,
+  });
+  const gmailSuccess = gmailResult.success;
+  const gmailError = gmailResult.error;
+
+  useEffect(() => {
+    // location はブラウザ専用。遅延初期化にするとサーバ描画と食い違って
+    // ハイドレーションエラーになるため、マウント後に一度だけ読む
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGmailResult(readGmailResult());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
