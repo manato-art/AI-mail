@@ -372,8 +372,7 @@ export default function KeywordSearchPage() {
   return (
     <div className="animate-fade-in pb-20">
       <div className="mb-6">
-        <h1 className="text-xl font-bold tracking-tight">キーワード検索</h1>
-        <p className="mt-1 text-sm text-(--color-muted)">
+        <p className="text-sm text-(--color-muted)">
           キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
         </p>
       </div>

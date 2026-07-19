@@ -317,7 +317,6 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="animate-fade-in">
-        <h1 className="mb-6 text-xl font-bold tracking-tight">設定</h1>
         <div className="flex items-center justify-center py-20">
           <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
         </div>
@@ -327,7 +326,6 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="mb-6 text-xl font-bold tracking-tight">設定</h1>
 
       {/* アクセス保護の状態。未設定だと本番URLを知っている誰でも操作できてしまう */}
       {!authEnabled && (

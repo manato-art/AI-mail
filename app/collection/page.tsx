@@ -194,11 +194,10 @@ export default function CollectionPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-[1100px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">企業リストの在庫</h1>
-          <p className="mt-1 text-[13px] text-(--color-muted)">
+          <p className="text-[13px] text-(--color-muted)">
             登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
             最終実行: {formatDateTime(status?.lastRunAt ?? null)}
           </p>

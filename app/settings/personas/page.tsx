@@ -213,9 +213,6 @@ export default function PersonasPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">
-          人格管理（メール作成者）
-        </h1>
         <button
           type="button"
           onClick={openCreateForm}

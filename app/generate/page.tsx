@@ -276,7 +276,7 @@ export default function GeneratePage() {
             {missingServices && (
               <p className="text-gray-700 dark:text-gray-300">
                 サービスが未登録です。
-                <Link href="/services" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                <Link href="/settings/services" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
                   サービスを登録
                 </Link>
               </p>
@@ -284,7 +284,7 @@ export default function GeneratePage() {
             {missingPersonas && (
               <p className="text-gray-700 dark:text-gray-300">
                 人格が未登録です。
-                <Link href="/personas" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                <Link href="/settings/personas" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
                   人格を登録
                 </Link>
               </p>
@@ -412,7 +412,7 @@ export default function GeneratePage() {
             ) : (
               <p className="text-xs text-(--color-muted)">
                 テンプレートがありません。
-                <Link href="/templates" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                <Link href="/settings/templates" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
                   作成する
                 </Link>
               </p>

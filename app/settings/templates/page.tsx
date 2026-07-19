@@ -255,7 +255,6 @@ export default function TemplatesPage() {
   if (loading) {
     return (
       <div className="animate-fade-in">
-        <h1 className="mb-6 text-xl font-bold tracking-tight">テンプレート</h1>
         <div className="flex items-center justify-center py-20">
           <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
         </div>
@@ -267,7 +266,6 @@ export default function TemplatesPage() {
     <div className="animate-fade-in">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold tracking-tight">テンプレート</h1>
           {templates.length > 0 && (
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
               {templates.length}

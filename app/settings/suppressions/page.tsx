@@ -138,7 +138,6 @@ export default function SuppressionsPage() {
   if (loading) {
     return (
       <div className="animate-fade-in">
-        <h1 className="mb-6 text-xl font-bold tracking-tight">送信しないリスト</h1>
         <div className="flex items-center justify-center py-20">
           <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
         </div>
@@ -149,7 +148,6 @@ export default function SuppressionsPage() {
   return (
     <div className="animate-fade-in pb-20">
       <div className="mb-1">
-        <h1 className="text-xl font-bold tracking-tight">送信しないリスト</h1>
         <p className="text-[13px] text-(--color-muted)">
           ここに登録した宛先には、どの経路からも送信できなくなります
         </p>

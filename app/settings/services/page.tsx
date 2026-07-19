@@ -161,7 +161,6 @@ export default function ServicesPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">サービス管理</h1>
         <button
           type="button"
           onClick={openCreateForm}

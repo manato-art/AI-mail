@@ -512,7 +512,7 @@ export default function BulkSendPage() {
           <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
           <div className="text-gray-700 dark:text-gray-300">
             一括送信にはテンプレートが必要です。
-            <Link href="/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+            <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
               テンプレート
             </Link>
             で作成してください。企業名は
@@ -583,7 +583,7 @@ export default function BulkSendPage() {
         <p className="mt-3 text-[12px] text-(--color-muted)">
           このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
           添付したい場合は
-          <Link href="/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+          <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
             テンプレート
           </Link>
           で「資料の添付を許可」をONにしてください。
