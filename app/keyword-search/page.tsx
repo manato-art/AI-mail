@@ -65,6 +65,7 @@ export default function KeywordSearchPage() {
   const [resolvedCount, setResolvedCount] = useState(0);
   const cancelRef = useRef(false);
 
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
@@ -305,6 +306,48 @@ export default function KeywordSearchPage() {
       return;
     }
     router.push("/bulk-send");
+  }
+
+  /**
+   * F1: 検索結果を企業リストに保存する。
+   * これまで結果はページ内の state だけで、リロードすると消えていた。
+   */
+  async function handleSaveToCompanies() {
+    if (selectedRows.length === 0) {
+      showToast("企業を選択してください");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "keyword_search",
+          sourceDetail: decidedSite?.site ? `${decidedSite.site} / ${keyword.trim()}` : keyword.trim(),
+          rows: selectedRows.map((r) => ({
+            name: r.name,
+            domain: r.domain,
+            hpUrl: r.homepage,
+            email: r.email,
+            personName: r.personName,
+            emailSourceUrl: r.homepage,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "保存に失敗しました");
+        return;
+      }
+      showToast(
+        `企業${data.companiesAdded}件 / 連絡先${data.contactsAdded}件を保存しました（重複は除外）`
+      );
+    } catch {
+      showToast("保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const allDisplayChecked = displayRows.length > 0 && displayRows.every((r) => r.checked);
@@ -719,15 +762,27 @@ export default function KeywordSearchPage() {
           <p className="text-[13px] text-(--color-muted)">
             <span className="text-lg font-bold text-(--color-foreground)">{selectedRows.length}</span> / {displayRows.length} 件選択中
           </p>
-          <button
-            type="button"
-            onClick={handleAddToBulkSend}
-            disabled={selectedRows.length === 0}
-            className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <PaperPlaneTilt size={16} weight="fill" />
-            選択した{selectedRows.length}件を一括送信リストに追加
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveToCompanies}
+              disabled={selectedRows.length === 0 || saving}
+              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-(--color-border) px-5 text-sm font-semibold text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+              title="リロードしても消えないように企業リストへ保存します"
+            >
+              {saving ? <SpinnerGap size={16} className="animate-spin" /> : <Buildings size={16} />}
+              {saving ? "保存中..." : "企業リストに保存"}
+            </button>
+            <button
+              type="button"
+              onClick={handleAddToBulkSend}
+              disabled={selectedRows.length === 0}
+              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <PaperPlaneTilt size={16} weight="fill" />
+              選択した{selectedRows.length}件を一括送信リストに追加
+            </button>
+          </div>
         </div>
       )}
 

@@ -4,7 +4,9 @@ import Database from "better-sqlite3";
 import type {
   Attachment,
   BookingTool,
+  Company,
   ComposeMode,
+  Contact,
   Persona,
   PersonaInput,
   Prospect,
@@ -125,6 +127,30 @@ function createTables(instance: Database.Database): void {
       gmail_message_id TEXT,
       gmail_thread_id TEXT,
       sent_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      domain TEXT UNIQUE,
+      source TEXT NOT NULL DEFAULT 'manual',
+      source_detail TEXT NOT NULL DEFAULT '',
+      hp_url TEXT,
+      lp_url TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+      company_name TEXT NOT NULL DEFAULT '',
+      person_name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL UNIQUE,
+      email_source_url TEXT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      lp_url TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS suppressions (
@@ -864,6 +890,120 @@ export function hasSentToEmail(toEmail: string): boolean {
     )
     .get(normalizeEmailKey(toEmail), `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
   return !!row;
+}
+
+// --- Companies / Contacts（F1: 企業リスト） ---
+
+export interface CompanyInput {
+  name: string;
+  domain?: string | null;
+  /** 収集経路。後で「この経路は反応が良い」を分析するため必ず記録する（仕様書F1） */
+  source: string;
+  source_detail?: string;
+  hp_url?: string | null;
+  lp_url?: string | null;
+}
+
+export interface ContactInput {
+  company_id?: number | null;
+  company_name: string;
+  person_name?: string;
+  email: string;
+  /** 公表アドレスであることの確認記録（特電法の例外要件の基礎・仕様書F2） */
+  email_source_url?: string | null;
+  source: string;
+  lp_url?: string | null;
+  notes?: string;
+}
+
+export function getAllCompanies(): Company[] {
+  return getDb()
+    .prepare("SELECT * FROM companies ORDER BY created_at DESC, id DESC")
+    .all() as Company[];
+}
+
+export function getAllContacts(): Contact[] {
+  return getDb()
+    .prepare("SELECT * FROM contacts ORDER BY created_at DESC, id DESC")
+    .all() as Contact[];
+}
+
+/**
+ * 同一ドメインは重複登録しない（仕様書F1）。
+ * ドメインが無い（手動追加など）場合は名前で重複を避ける。
+ */
+export function upsertCompany(data: CompanyInput): Company {
+  const instance = getDb();
+  const domain = data.domain?.toLowerCase().replace(/^www\./, "") || null;
+
+  if (domain) {
+    const existing = instance
+      .prepare("SELECT * FROM companies WHERE domain = ?")
+      .get(domain) as Company | undefined;
+    if (existing) return existing;
+  } else {
+    const existing = instance
+      .prepare("SELECT * FROM companies WHERE domain IS NULL AND name = ?")
+      .get(data.name) as Company | undefined;
+    if (existing) return existing;
+  }
+
+  const result = instance
+    .prepare(
+      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url)
+       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url)`
+    )
+    .run({
+      name: data.name,
+      domain,
+      source: data.source,
+      source_detail: data.source_detail ?? "",
+      hp_url: data.hp_url ?? null,
+      lp_url: data.lp_url ?? null,
+    });
+
+  return instance
+    .prepare("SELECT * FROM companies WHERE id = ?")
+    .get(Number(result.lastInsertRowid)) as Company;
+}
+
+/** メールアドレスで重複排除する。既存があれば上書きせずそのまま返す */
+export function upsertContact(data: ContactInput): Contact {
+  const instance = getDb();
+  const email = normalizeEmailKey(data.email);
+
+  const existing = instance
+    .prepare("SELECT * FROM contacts WHERE email = ?")
+    .get(email) as Contact | undefined;
+  if (existing) return existing;
+
+  const result = instance
+    .prepare(
+      `INSERT INTO contacts (company_id, company_name, person_name, email, email_source_url, source, lp_url, notes)
+       VALUES (@company_id, @company_name, @person_name, @email, @email_source_url, @source, @lp_url, @notes)`
+    )
+    .run({
+      company_id: data.company_id ?? null,
+      company_name: data.company_name,
+      person_name: data.person_name ?? "",
+      email,
+      email_source_url: data.email_source_url ?? null,
+      source: data.source,
+      lp_url: data.lp_url ?? null,
+      notes: data.notes ?? "",
+    });
+
+  return instance
+    .prepare("SELECT * FROM contacts WHERE id = ?")
+    .get(Number(result.lastInsertRowid)) as Contact;
+}
+
+export function deleteCompany(id: number): boolean {
+  return getDb().prepare("DELETE FROM companies WHERE id = ?").run(id).changes > 0;
+}
+
+export function deleteContact(id: number): boolean {
+  return getDb().prepare("DELETE FROM contacts WHERE id = ?").run(id).changes > 0;
 }
 
 // --- Suppressions ---

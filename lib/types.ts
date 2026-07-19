@@ -175,6 +175,34 @@ export interface SendLog {
   sent_at: string;
 }
 
+/** F1: 収集した企業。同一ドメインは重複登録しない */
+export interface Company {
+  id: number;
+  name: string;
+  domain: string | null;
+  /** 収集経路（keyword_search / csv_import / manual）。分析のため必須記録 */
+  source: string;
+  source_detail: string;
+  hp_url: string | null;
+  lp_url: string | null;
+  created_at: string;
+}
+
+/** F1/F2: 送信可能な連絡先 */
+export interface Contact {
+  id: number;
+  company_id: number | null;
+  company_name: string;
+  person_name: string;
+  email: string;
+  /** 公表アドレスであることの確認記録（特電法の例外要件の基礎） */
+  email_source_url: string | null;
+  source: string;
+  lp_url: string | null;
+  notes: string;
+  created_at: string;
+}
+
 export type SuppressionReason =
   | "optout"
   | "bounce"
