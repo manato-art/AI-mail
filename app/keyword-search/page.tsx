@@ -335,49 +335,48 @@ export default function KeywordSearchPage() {
         </p>
       </div>
 
-      {/* Search mode toggle */}
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => { if (searchMode !== "api") toggleSearchMode(); }}
-          disabled={isBusy}
-          className={`cursor-pointer rounded-xl border-2 p-4 text-left transition-all disabled:opacity-40 ${
-            searchMode === "api"
-              ? "border-(--color-primary) bg-(--color-primary-light)"
-              : "border-(--color-border) hover:border-(--color-primary)/40"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`inline-block h-2 w-2 rounded-full ${searchMode === "api" ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"}`} />
-            <span className="text-sm font-semibold">API モード</span>
-          </div>
-          <p className="mt-1.5 text-xs text-(--color-muted)">
-            Serper.dev 経由で高速・安定検索。登録で2,500クエリ無料。
-            {searchMode === "api" && !searchReady && (
-              <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
-                APIキーを設定
-              </Link>
-            )}
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => { if (searchMode !== "scrape") toggleSearchMode(); }}
-          disabled={isBusy}
-          className={`cursor-pointer rounded-xl border-2 p-4 text-left transition-all disabled:opacity-40 ${
-            searchMode === "scrape"
-              ? "border-(--color-primary) bg-(--color-primary-light)"
-              : "border-(--color-border) hover:border-(--color-primary)/40"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`inline-block h-2 w-2 rounded-full ${searchMode === "scrape" ? "bg-amber-500" : "bg-gray-300 dark:bg-gray-600"}`} />
-            <span className="text-sm font-semibold">スクレイピング</span>
-          </div>
-          <p className="mt-1.5 text-xs text-(--color-muted)">
-            DuckDuckGo をスクレイピング。APIキー不要・完全無料。大量利用時にブロックされる場合あり。
-          </p>
-        </button>
+      {/* Search mode toggle — segmented control */}
+      <div className="mb-5">
+        <div className="inline-flex rounded-lg border border-(--color-border) bg-gray-100 p-1 dark:bg-slate-800">
+          <button
+            type="button"
+            onClick={() => { if (searchMode !== "api") toggleSearchMode(); }}
+            disabled={isBusy}
+            className={`cursor-pointer rounded-md px-4 py-2 text-sm font-medium transition-all disabled:opacity-40 ${
+              searchMode === "api"
+                ? "bg-(--color-card) text-(--color-foreground) shadow-sm"
+                : "text-(--color-muted) hover:text-(--color-foreground)"
+            }`}
+          >
+            API（高速・安定）
+          </button>
+          <button
+            type="button"
+            onClick={() => { if (searchMode !== "scrape") toggleSearchMode(); }}
+            disabled={isBusy}
+            className={`cursor-pointer rounded-md px-4 py-2 text-sm font-medium transition-all disabled:opacity-40 ${
+              searchMode === "scrape"
+                ? "bg-(--color-card) text-(--color-foreground) shadow-sm"
+                : "text-(--color-muted) hover:text-(--color-foreground)"
+            }`}
+          >
+            スクレイピング（無料）
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-(--color-muted)">
+          {searchMode === "api" ? (
+            <>
+              Serper.dev 経由で検索。登録で2,500クエリ無料。
+              {!searchReady && (
+                <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                  APIキーを設定
+                </Link>
+              )}
+            </>
+          ) : (
+            "DuckDuckGo をスクレイピング。APIキー不要・完全無料。大量利用時にブロックされる場合あり。"
+          )}
+        </p>
       </div>
 
       {/* Search form */}
