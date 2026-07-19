@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getProspect,
   getSender,
+  getService,
+  getPersona,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -9,8 +11,19 @@ import {
   getSetting,
 } from "@/lib/db";
 import { runSendGuard } from "@/lib/send-guard";
+import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
+import type { AnalysisResult } from "@/lib/types";
+
+function parseAnalysis(json: string): AnalysisResult | null {
+  try {
+    const parsed = JSON.parse(json) as AnalysisResult;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
 const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
@@ -27,6 +40,8 @@ export async function POST(request: NextRequest) {
     subject: string;
     body: string;
     attachmentIds?: number[];
+    /** F18の警告を画面で確認済み。ブロック指摘はこのフラグでは解除されない */
+    acknowledgedWarnings?: boolean;
   };
   try {
     body = await request.json();
@@ -90,6 +105,37 @@ export async function POST(request: NextRequest) {
       { error: "送信ガードにより送信できません", reasons: guardResult.reasons },
       { status: 422 }
     );
+  }
+
+  // F18: 事実誤認の検知。宛先ごとに社名を差し替えて送るため、
+  // 照合対象の社名もこの宛先のものへ差し替える（元テンプレの社名で照合すると必ず不一致になる）
+  const baseAnalysis = parseAnalysis(baseProspect.analysis_json);
+  if (baseAnalysis) {
+    const danger = runDangerCheck({
+      subject,
+      body: mailBody,
+      analysis: company ? { ...baseAnalysis, company_name: company } : baseAnalysis,
+      service: getService(baseProspect.service_id),
+      persona: getPersona(baseProspect.persona_id),
+    });
+
+    if (!danger.canSend) {
+      return NextResponse.json(
+        { error: "事実誤認の疑いがあるため送信できません", reasons: danger.blocks },
+        { status: 422 }
+      );
+    }
+
+    if (danger.warnings.length > 0 && !body.acknowledgedWarnings) {
+      return NextResponse.json(
+        {
+          error: "送信前に確認が必要な指摘があります",
+          warnings: danger.warnings,
+          requiresAcknowledgement: true,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   // Resolve attachments before creating any DB rows: a missing file must fail

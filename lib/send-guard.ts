@@ -3,16 +3,80 @@ import {
   hasSentToEmail,
   getTodaySendCount,
   getSender,
+  getAllSenders,
   DUPLICATE_SEND_BLOCK_DAYS,
 } from "@/lib/db";
 import type { SendGuardResult } from "@/lib/types";
 
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
 
-const OWN_DOMAINS = (process.env.OWN_DOMAINS ?? "")
-  .split(",")
-  .map((d) => d.trim().toLowerCase())
-  .filter(Boolean);
+/**
+ * 送信元がフリーメールの場合、そのドメインを自社扱いにすると
+ * gmail.com 宛が全てブロックされてしまうため除外する。
+ */
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.co.jp",
+  "yahoo.com",
+  "outlook.com",
+  "outlook.jp",
+  "hotmail.com",
+  "hotmail.co.jp",
+  "live.jp",
+  "icloud.com",
+  "me.com",
+  "docomo.ne.jp",
+  "ezweb.ne.jp",
+  "au.com",
+  "softbank.ne.jp",
+  "i.softbank.jp",
+  "nifty.com",
+  "biglobe.ne.jp",
+  "so-net.ne.jp",
+  "ocn.ne.jp",
+]);
+
+function parseEnvOwnDomains(): string[] {
+  return (process.env.OWN_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+    .filter(Boolean);
+}
+
+/**
+ * 接続済み送信者アカウントのドメイン。OWN_DOMAINS の設定漏れで
+ * 自社ドメインブロックが丸ごと無効化されるのを防ぐフォールバック。
+ */
+function senderOwnDomains(): string[] {
+  try {
+    return getAllSenders()
+      .map((s) => s.email.toLowerCase().split("@")[1])
+      .filter((d): d is string => Boolean(d) && !FREE_EMAIL_DOMAINS.has(d));
+  } catch {
+    return [];
+  }
+}
+
+export function getOwnDomains(): string[] {
+  return [...new Set([...parseEnvOwnDomains(), ...senderOwnDomains()])];
+}
+
+export interface OwnDomainStatus {
+  /** env・送信者アカウントのどちらからも1件も得られていない = ブロックが効いていない */
+  isProtected: boolean;
+  isEnvConfigured: boolean;
+  domains: string[];
+}
+
+export function getOwnDomainStatus(): OwnDomainStatus {
+  const domains = getOwnDomains();
+  return {
+    isProtected: domains.length > 0,
+    isEnvConfigured: parseEnvOwnDomains().length > 0,
+    domains,
+  };
+}
 
 export function checkUnresolvedVariables(subject: string, body: string): string[] {
   const subjectMatches = subject.match(UNRESOLVED_VARIABLE_PATTERN) ?? [];
@@ -20,9 +84,15 @@ export function checkUnresolvedVariables(subject: string, body: string): string[
   return [...subjectMatches, ...bodyMatches];
 }
 
-export function checkOwnDomainBlock(toEmail: string): boolean {
+/** サブドメイン（mail.example.com）も自社扱いにする */
+export function isOwnDomain(toEmail: string, ownDomains: string[]): boolean {
   const domain = toEmail.toLowerCase().split("@")[1];
-  return OWN_DOMAINS.includes(domain);
+  if (!domain) return false;
+  return ownDomains.some((own) => domain === own || domain.endsWith(`.${own}`));
+}
+
+export function checkOwnDomainBlock(toEmail: string): boolean {
+  return isOwnDomain(toEmail, getOwnDomains());
 }
 
 export function checkSignaturePresent(body: string): boolean {
@@ -35,9 +105,15 @@ export function runSendGuard(params: {
   body: string;
   senderId: number;
   prospectId?: number;
+  /**
+   * フォローアップ（同一スレッドの追撃・仕様書F12）は同じ宛先へ意図的に再送するため、
+   * 二重送信ガードの対象外にする。抑止リスト照合など他のガードは常に適用される。
+   */
+  isFollowup?: boolean;
 }): SendGuardResult {
   const reasons: string[] = [];
 
+  // 抑止リスト照合は特定電子メール法上の義務。isFollowup でも決してスキップしない
   const suppression = isEmailSuppressed(params.toEmail);
   if (suppression) {
     reasons.push(
@@ -60,7 +136,7 @@ export function runSendGuard(params: {
     reasons.push("署名ブロックが検出されません（特定電子メール法の表示義務）");
   }
 
-  if (hasSentToEmail(params.toEmail)) {
+  if (!params.isFollowup && hasSentToEmail(params.toEmail)) {
     reasons.push(`このアドレスには過去${DUPLICATE_SEND_BLOCK_DAYS}日以内に送信済みです（二重送信防止）`);
   }
 

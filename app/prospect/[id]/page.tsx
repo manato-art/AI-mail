@@ -270,17 +270,33 @@ export default function ProspectPage() {
     try {
       await handleSave();
 
-      const res = await fetch("/api/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prospectId: Number(id),
-          senderId: selectedSenderId,
-          toEmail: emailsFound[0],
-        }),
-      });
+      async function postSend(acknowledgedWarnings: boolean) {
+        const res = await fetch("/api/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prospectId: Number(id),
+            senderId: selectedSenderId,
+            toEmail: emailsFound[0],
+            acknowledgedWarnings,
+          }),
+        });
+        return { res, data: await res.json() };
+      }
 
-      const data = await res.json();
+      let { res, data } = await postSend(false);
+
+      // F18の警告は人が確認したうえで押し切れる（ブロック指摘はここを通らない）
+      if (res.status === 409 && Array.isArray(data.warnings)) {
+        const proceed = confirm(
+          `送信前に確認したい点があります:\n\n・${data.warnings.join("\n・")}\n\nこのまま送信しますか？`
+        );
+        if (!proceed) {
+          setSendError("送信を中止しました（要確認の指摘あり）");
+          return;
+        }
+        ({ res, data } = await postSend(true));
+      }
 
       if (!res.ok) {
         const errorMsg = data.reasons

@@ -92,6 +92,7 @@ export default function BulkSendPage() {
 
   const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
   const [isSending, setIsSending] = useState(false);
+  const [allowWarnings, setAllowWarnings] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -263,13 +264,16 @@ export default function BulkSendPage() {
             subject,
             body,
             attachmentIds: [...selectedAttachmentIds],
+            acknowledgedWarnings: allowWarnings,
           }),
         });
         const data = await res.json();
         if (!res.ok) {
           const msg = Array.isArray(data.reasons)
             ? data.reasons.join(" / ")
-            : data.error || "送信に失敗しました";
+            : Array.isArray(data.warnings)
+              ? `要確認: ${data.warnings.join(" / ")}（送信していません）`
+              : data.error || "送信に失敗しました";
           setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: msg } }));
           failCount++;
         } else {
@@ -706,9 +710,21 @@ export default function BulkSendPage() {
       {/* Footer action bar */}
       {recipients.length > 0 && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] text-(--color-muted)">
-            <span className="text-lg font-bold text-(--color-foreground)">{checkedRecipients.length}</span> / {recipients.length} 件選択中
-          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-[13px] text-(--color-muted)">
+              <span className="text-lg font-bold text-(--color-foreground)">{checkedRecipients.length}</span> / {recipients.length} 件選択中
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-(--color-muted)">
+              <input
+                type="checkbox"
+                checked={allowWarnings}
+                onChange={(e) => setAllowWarnings(e.target.checked)}
+                disabled={isSending}
+                className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+              />
+              要確認の指摘があっても送信する
+            </label>
+          </div>
           <button
             type="button"
             onClick={handleSendAll}

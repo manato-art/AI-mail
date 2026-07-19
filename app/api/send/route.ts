@@ -2,14 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getProspect,
   getSender,
+  getService,
+  getPersona,
   createSendLog,
   updateProspectStatus,
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { runSendGuard } from "@/lib/send-guard";
+import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { getSetting } from "@/lib/db";
 import { loadEmailAttachments } from "@/lib/attachments";
+import type { AnalysisResult } from "@/lib/types";
+
+function parseAnalysis(json: string): AnalysisResult | null {
+  try {
+    const parsed = JSON.parse(json) as AnalysisResult;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
 const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
@@ -20,6 +33,8 @@ export async function POST(request: NextRequest) {
     senderId: number;
     toEmail: string;
     attachmentIds?: number[];
+    /** F18の警告を画面で確認済み。ブロック指摘はこのフラグでは解除されない */
+    acknowledgedWarnings?: boolean;
   };
   try {
     body = await request.json();
@@ -71,6 +86,36 @@ export async function POST(request: NextRequest) {
       { error: "送信ガードにより送信できません", reasons: guardResult.reasons },
       { status: 422 }
     );
+  }
+
+  // F18: 危険ワード・事実誤認の検知。ブロックは押し切れない、警告は確認の上で押し切れる
+  const analysis = parseAnalysis(prospect.analysis_json);
+  if (analysis) {
+    const danger = runDangerCheck({
+      subject: prospect.subject,
+      body: prospect.body,
+      analysis,
+      service: getService(prospect.service_id),
+      persona: getPersona(prospect.persona_id),
+    });
+
+    if (!danger.canSend) {
+      return NextResponse.json(
+        { error: "事実誤認の疑いがあるため送信できません", reasons: danger.blocks },
+        { status: 422 }
+      );
+    }
+
+    if (danger.warnings.length > 0 && !body.acknowledgedWarnings) {
+      return NextResponse.json(
+        {
+          error: "送信前に確認が必要な指摘があります",
+          warnings: danger.warnings,
+          requiresAcknowledgement: true,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   // Resolve attachments before flipping status: a missing file must fail the
