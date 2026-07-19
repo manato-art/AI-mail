@@ -92,6 +92,12 @@ export interface Template {
   fixed_part: string;
   /** hybrid で「この後どう続けるか」をAIに伝える指示 */
   ai_brief: string;
+  /**
+   * F22: このテンプレで資料を添付してよいか（0=不可）。
+   * 初回メールに添付すると迷惑メール判定・警戒を招くため、既定は不可。
+   * 返信後の2通目以降に使うテンプレだけ許可する運用。
+   */
+  allow_attachments: number;
   created_at: string;
   updated_at: string;
 }
@@ -185,6 +191,8 @@ export interface Company {
   source_detail: string;
   hp_url: string | null;
   lp_url: string | null;
+  /** F1: 採用・インターン・recruit ページのURL（検出できた場合） */
+  recruit_page_url: string | null;
   created_at: string;
 }
 

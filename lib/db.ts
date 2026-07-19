@@ -285,6 +285,10 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "templates", "compose_mode", "TEXT NOT NULL DEFAULT 'fixed_only'");
   addColumnIfMissing(instance, "templates", "fixed_part", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(instance, "templates", "ai_brief", "TEXT NOT NULL DEFAULT ''");
+  // F22: 初回メールに資料を添付する事故を構造的に防ぐため、既定は不許可
+  addColumnIfMissing(instance, "templates", "allow_attachments", "INTEGER NOT NULL DEFAULT 0");
+  // F1: 採用シグナル検出
+  addColumnIfMissing(instance, "companies", "recruit_page_url", "TEXT");
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -653,14 +657,15 @@ export interface TemplateInput {
   compose_mode?: ComposeMode;
   fixed_part?: string;
   ai_brief?: string;
+  allow_attachments?: number;
 }
 
 export function createTemplate(data: TemplateInput): Template {
   const instance = getDb();
   const result = instance
     .prepare(
-      `INSERT INTO templates (name, subject, body, compose_mode, fixed_part, ai_brief)
-       VALUES (@name, @subject, @body, @compose_mode, @fixed_part, @ai_brief)`
+      `INSERT INTO templates (name, subject, body, compose_mode, fixed_part, ai_brief, allow_attachments)
+       VALUES (@name, @subject, @body, @compose_mode, @fixed_part, @ai_brief, @allow_attachments)`
     )
     .run({
       name: data.name,
@@ -669,6 +674,7 @@ export function createTemplate(data: TemplateInput): Template {
       compose_mode: data.compose_mode ?? "fixed_only",
       fixed_part: data.fixed_part ?? "",
       ai_brief: data.ai_brief ?? "",
+      allow_attachments: data.allow_attachments ?? 0,
     });
   return getTemplate(Number(result.lastInsertRowid)) as Template;
 }
@@ -685,6 +691,7 @@ export function updateTemplate(
       `UPDATE templates
        SET name = @name, subject = @subject, body = @body,
            compose_mode = @compose_mode, fixed_part = @fixed_part, ai_brief = @ai_brief,
+           allow_attachments = @allow_attachments,
            updated_at = datetime('now','localtime')
        WHERE id = @id`
     )
@@ -696,6 +703,7 @@ export function updateTemplate(
       compose_mode: data.compose_mode ?? existing.compose_mode,
       fixed_part: data.fixed_part ?? existing.fixed_part,
       ai_brief: data.ai_brief ?? existing.ai_brief,
+      allow_attachments: data.allow_attachments ?? existing.allow_attachments,
     });
   return getTemplate(id);
 }
@@ -902,6 +910,7 @@ export interface CompanyInput {
   source_detail?: string;
   hp_url?: string | null;
   lp_url?: string | null;
+  recruit_page_url?: string | null;
 }
 
 export interface ContactInput {
@@ -950,8 +959,8 @@ export function upsertCompany(data: CompanyInput): Company {
 
   const result = instance
     .prepare(
-      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url)
-       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url)`
+      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url, recruit_page_url)
+       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url, @recruit_page_url)`
     )
     .run({
       name: data.name,
@@ -960,6 +969,7 @@ export function upsertCompany(data: CompanyInput): Company {
       source_detail: data.source_detail ?? "",
       hp_url: data.hp_url ?? null,
       lp_url: data.lp_url ?? null,
+      recruit_page_url: data.recruit_page_url ?? null,
     });
 
   return instance
@@ -996,6 +1006,13 @@ export function upsertContact(data: ContactInput): Contact {
   return instance
     .prepare("SELECT * FROM contacts WHERE id = ?")
     .get(Number(result.lastInsertRowid)) as Contact;
+}
+
+/** F4/F9: 宛先メールから登録済みの連絡先を引く */
+export function getContactByEmail(email: string): Contact | undefined {
+  return getDb()
+    .prepare("SELECT * FROM contacts WHERE email = ?")
+    .get(normalizeEmailKey(email)) as Contact | undefined;
 }
 
 export function deleteCompany(id: number): boolean {

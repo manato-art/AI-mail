@@ -126,6 +126,20 @@ export async function POST(request: NextRequest) {
 
   // F4: hybrid のときは fixed_part を一字一句そのまま置き、続きだけAIに書かせる
   const template = templateId ? getTemplate(templateId) : undefined;
+
+  // F22: 初回メールへの添付を構造的に防ぐ。UI側でも無効化しているが、
+  // API直叩きで抜けられるとガードにならないのでサーバ側でも弾く
+  if (attachmentIds.length > 0 && !template?.allow_attachments) {
+    return NextResponse.json(
+      {
+        error: "このテンプレートでは資料を添付できません",
+        reasons: [
+          "初回メールへの添付は迷惑メール判定や警戒を招くため既定で禁止しています。返信後に使うテンプレートで「資料の添付を許可」をONにしてください",
+        ],
+      },
+      { status: 422 }
+    );
+  }
   let outgoingBody: string;
   try {
     const composed = await composeBody({
@@ -190,6 +204,7 @@ export async function POST(request: NextRequest) {
       analysis: analysisForCheck,
       service,
       persona,
+      toEmail: rawToEmail,
     });
 
     if (!danger.canSend) {

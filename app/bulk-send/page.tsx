@@ -187,6 +187,15 @@ export default function BulkSendPage() {
     [templates, selectedTemplateId]
   );
 
+  /**
+   * F22: テンプレを変えたら選択済みの添付を落とす。
+   * 添付不可のテンプレに残したままだとサーバ側の422で全件失敗する。
+   */
+  function handleTemplateChange(nextId: string) {
+    setSelectedTemplateId(nextId);
+    setSelectedAttachmentIds(new Set());
+  }
+
   const checkedRecipients = useMemo(() => recipients.filter((r) => r.checked), [recipients]);
   const checkedPreviewList = checkedRecipients;
 
@@ -509,7 +518,7 @@ export default function BulkSendPage() {
           <div className="relative">
             <select
               value={selectedTemplateId}
-              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              onChange={(e) => handleTemplateChange(e.target.value)}
               className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             >
               <option value="">テンプレートを選択</option>
@@ -547,8 +556,20 @@ export default function BulkSendPage() {
         )}
       </div>
 
+      {/* F22: 添付が許可されていないテンプレでは、添付欄そのものを出さない */}
+      {selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
+        <p className="mt-3 text-[12px] text-(--color-muted)">
+          このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
+          添付したい場合は
+          <Link href="/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+            テンプレート
+          </Link>
+          で「資料の添付を許可」をONにしてください。
+        </p>
+      )}
+
       {/* Attachment picker */}
-      {attachmentsLib.length > 0 && (
+      {selectedTemplate?.allow_attachments && attachmentsLib.length > 0 && (
         <div className="mt-3">
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
             添付資料（全宛先に添付されます）

@@ -39,6 +39,7 @@ export default function TemplatesPage() {
   const [editComposeMode, setEditComposeMode] = useState<ComposeMode>("fixed_only");
   const [editFixedPart, setEditFixedPart] = useState("");
   const [editAiBrief, setEditAiBrief] = useState("");
+  const [editAllowAttachments, setEditAllowAttachments] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -84,6 +85,7 @@ export default function TemplatesPage() {
     setEditComposeMode(t.compose_mode ?? "fixed_only");
     setEditFixedPart(t.fixed_part ?? "");
     setEditAiBrief(t.ai_brief ?? "");
+    setEditAllowAttachments(Boolean(t.allow_attachments));
     setEditAttachmentIds(t.attachments.map((a) => a.id));
     setCreating(false);
     setPickerOpen(false);
@@ -97,6 +99,7 @@ export default function TemplatesPage() {
     setEditComposeMode("fixed_only");
     setEditFixedPart("");
     setEditAiBrief("");
+    setEditAllowAttachments(false);
     setEditAttachmentIds([]);
     setCreating(true);
     setPickerOpen(false);
@@ -179,6 +182,7 @@ export default function TemplatesPage() {
             compose_mode: editComposeMode,
             fixed_part: editFixedPart,
             ai_brief: editAiBrief,
+            allow_attachments: editAllowAttachments ? 1 : 0,
           }),
         });
         if (!res.ok) throw new Error();
@@ -197,6 +201,7 @@ export default function TemplatesPage() {
             compose_mode: editComposeMode,
             fixed_part: editFixedPart,
             ai_brief: editAiBrief,
+            allow_attachments: editAllowAttachments ? 1 : 0,
           }),
         });
         if (!res.ok) throw new Error();
@@ -454,11 +459,34 @@ export default function TemplatesPage() {
                   </p>
                 </div>
               </div>
-              <div>
+              {/* F22: 初回メールに資料を添付する事故を構造的に防ぐ */}
+              <div className="rounded-lg border border-(--color-border) bg-gray-50 p-3.5 dark:bg-slate-800">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={editAllowAttachments}
+                    onChange={(e) => setEditAllowAttachments(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 cursor-pointer accent-(--color-primary)"
+                  />
+                  <span className="text-[13px]">
+                    このテンプレートで資料の添付を許可する
+                    <span className="mt-1 block text-[11px] leading-relaxed text-(--color-muted)">
+                      <strong>初回メールには添付しない</strong>のが方針です（迷惑メール判定や警戒を招くため）。
+                      返信をもらった後の2通目以降や「資料希望」への返信に使うテンプレートだけONにしてください。
+                      OFFのままなら、一括送信の画面でも添付を選べません。
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div className={editAllowAttachments ? "" : "pointer-events-none opacity-40"}>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">添付資料</label>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                    添付資料{!editAllowAttachments && "（このテンプレートでは無効）"}
+                  </label>
                   <button
                     type="button"
+                    disabled={!editAllowAttachments}
                     onClick={() => setPickerOpen((v) => !v)}
                     className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
                   >

@@ -128,6 +128,8 @@ export async function POST(request: NextRequest) {
       analysis,
       service,
       persona,
+      // テストモードでも実際の宛先で照合する（誤差し込みはそこで起きるため）
+      toEmail: rawToEmail,
     });
 
     if (!danger.canSend) {

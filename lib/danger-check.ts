@@ -5,6 +5,8 @@
  * 生成時だけでなく送信直前にも通す。ブロック（送信不可）と警告（人が判断して押し切れる）を分ける。
  */
 
+import { getContactByEmail } from "@/lib/db";
+import { checkLegalDisclosures } from "@/lib/send-guard";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 export interface DangerFinding {
@@ -237,20 +239,65 @@ function checkCompatibilityContradiction(
   );
 }
 
+/**
+ * 宛名の企業名が、宛先メールアドレスの企業と食い違っていないかを見る（仕様書F4）。
+ * 誤差し込みは最悪の営業事故なので、登録済み連絡先と一致しない場合はブロックする。
+ *
+ * 未登録のアドレスは判定材料が無いので何も言わない（新規宛先を弾かないため）。
+ */
+function checkRecipientMatchesCompany(
+  toEmail: string | undefined,
+  companyName: string | undefined
+): DangerFinding[] {
+  const name = companyName?.trim();
+  if (!toEmail || !name) return [];
+
+  let registered;
+  try {
+    registered = getContactByEmail(toEmail);
+  } catch {
+    return [];
+  }
+  if (!registered) return [];
+
+  const known = registered.company_name?.trim();
+  if (!known || known === name) return [];
+
+  return [
+    {
+      severity: "block",
+      message: `宛先 ${toEmail} は「${known}」として登録されていますが、本文は「${name}」宛になっています（差し込み間違いの疑い）`,
+    },
+  ];
+}
+
 export function runDangerCheck(params: {
   subject: string;
   body: string;
   analysis: AnalysisResult;
   service?: Service | null;
   persona?: Persona | null;
+  /** F4: 誤差し込み検知に使う。テストモードでも実際の宛先を渡すこと */
+  toEmail?: string;
 }): DangerCheckResult {
-  const { subject, body, analysis, service, persona } = params;
+  const { subject, body, analysis, service, persona, toEmail } = params;
   const corpus = buildAllowedCorpus(analysis, service, persona);
   const target = `${subject}\n${body}`;
+
+  const legalMissing = checkLegalDisclosures(body, persona?.company_name);
 
   const findings: DangerFinding[] = [
     ...checkHallucinatedNumbers(target, corpus, analysis),
     ...checkCompanyName(body, analysis),
+    ...checkRecipientMatchesCompany(toEmail, analysis.company_name),
+    ...(legalMissing.length > 0
+      ? [
+          {
+            severity: "warn" as const,
+            message: `特定電子メール法の表示事項が署名に見当たりません: ${legalMissing.join("、")}`,
+          },
+        ]
+      : []),
     ...checkWordList(target, EXAGGERATION_WORDS, "warn", "景品表示法リスクのある断定・誇大表現"),
     ...checkWordList(body, DOUBLE_HONORIFICS, "warn", "二重敬語"),
     ...checkCompatibilityContradiction(body, analysis),

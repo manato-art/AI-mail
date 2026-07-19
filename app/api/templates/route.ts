@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     compose_mode: normalizeComposeMode(data.compose_mode),
     fixed_part: typeof data.fixed_part === "string" ? data.fixed_part : "",
     ai_brief: typeof data.ai_brief === "string" ? data.ai_brief : "",
+    allow_attachments: data.allow_attachments ? 1 : 0,
   });
   return NextResponse.json(template, { status: 201 });
 }

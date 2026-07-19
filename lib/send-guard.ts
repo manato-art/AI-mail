@@ -99,6 +99,33 @@ export function checkSignaturePresent(body: string): boolean {
   return body.includes("━━━") || body.includes("---");
 }
 
+/** 住所らしき記載（郵便番号 or 都道府県） */
+const ADDRESS_PATTERN =
+  /〒\s*\d{3}|[都道府県]|北海道|東京都|大阪府|京都府/;
+/** 問い合わせ先らしき記載（メールアドレス / 電話番号 / URL） */
+const CONTACT_PATTERN =
+  /[\w.+-]+@[\w-]+\.[\w.-]+|0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}|https?:\/\//;
+
+/**
+ * 特定電子メール法の必須表示事項が本文に含まれるかを確認する（仕様書F4の品質チェック）。
+ * 法は「送信者の氏名・名称」「住所」「苦情・問い合わせを受け付ける連絡先」の表示を求める。
+ *
+ * 欠けていても送信自体は止めない（既存の署名が全て弾かれて運用が止まるため）。
+ * 何が足りないかを警告として出し、人格の署名ブロックを直させる。
+ */
+export function checkLegalDisclosures(body: string, senderName?: string): string[] {
+  const missing: string[] = [];
+
+  const hasName = senderName
+    ? body.includes(senderName)
+    : /株式会社|有限会社|合同会社|Inc\.|Co\.,/.test(body);
+  if (!hasName) missing.push("送信者の氏名・名称");
+  if (!ADDRESS_PATTERN.test(body)) missing.push("住所");
+  if (!CONTACT_PATTERN.test(body)) missing.push("問い合わせ先（メール・電話・URLのいずれか）");
+
+  return missing;
+}
+
 export function runSendGuard(params: {
   toEmail: string;
   subject: string;

@@ -21,6 +21,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       data.compose_mode === undefined ? undefined : normalizeComposeMode(data.compose_mode),
     fixed_part: typeof data.fixed_part === "string" ? data.fixed_part : undefined,
     ai_brief: typeof data.ai_brief === "string" ? data.ai_brief : undefined,
+    allow_attachments: data.allow_attachments === undefined ? undefined : (data.allow_attachments ? 1 : 0),
   });
   if (!updated) return NextResponse.json({ error: "見つかりません" }, { status: 404 });
   return NextResponse.json(updated);
