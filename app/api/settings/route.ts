@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/db";
+import { MIN_PASSWORD_LENGTH, getAppPassword, isAuthEnabled } from "@/lib/auth";
 
 const KEYS = [
   "sender_email",
@@ -22,6 +23,9 @@ export function GET() {
     }
   }
   result.test_mode = process.env.TEST_MODE_RECIPIENT ? "true" : "false";
+  result.auth_enabled = isAuthEnabled() ? "true" : "false";
+  result.auth_password_weak =
+    isAuthEnabled() && getAppPassword().length < MIN_PASSWORD_LENGTH ? "true" : "false";
   return NextResponse.json(result);
 }
 

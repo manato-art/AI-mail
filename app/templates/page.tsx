@@ -339,6 +339,35 @@ export default function TemplatesPage() {
                   className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
                   placeholder="メール本文"
                 />
+                <div className="mt-2 rounded-lg border border-(--color-border) bg-gray-50 px-3 py-2.5 dark:bg-slate-800">
+                  <p className="text-[11px] font-medium text-(--color-muted)">
+                    一括送信で宛先ごとに差し替わる変数（件名でも使えます）
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {[
+                      ["{{company_name}}", "企業名"],
+                      ["{{person_name}}", "担当者名"],
+                      ["{{sender_name}}", "送信者名"],
+                      ["{{service_name}}", "商材名"],
+                      ["{{lp_url}}", "商材のLP URL"],
+                    ].map(([variable, label]) => (
+                      <button
+                        key={variable}
+                        type="button"
+                        onClick={() => setEditBody((prev) => prev + variable)}
+                        className="cursor-pointer rounded border border-(--color-border) bg-(--color-card) px-2 py-1 text-[11px] transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                        title="クリックで本文末尾に挿入"
+                      >
+                        <code>{variable}</code>
+                        <span className="ml-1 text-(--color-muted)">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-(--color-muted)">
+                    値が入らなかった変数はそのまま残り、送信前にブロックされます。
+                    特定の1社にしか当てはまらない記述（実績・沿革など）は書かないでください。
+                  </p>
+                </div>
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between">

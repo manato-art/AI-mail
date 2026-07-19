@@ -49,6 +49,9 @@ export function NavHeader() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { resolved, setTheme } = useTheme();
 
+  // ログイン画面ではナビを出さない（まだ何も操作できないため）
+  if (pathname === "/login") return null;
+
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);

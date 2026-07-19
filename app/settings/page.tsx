@@ -71,6 +71,9 @@ function SettingsContent() {
   const [limitDrafts, setLimitDrafts] = useState<Record<number, string>>({});
   const [bookingDrafts, setBookingDrafts] = useState<Record<number, string>>({});
 
+  const [authEnabled, setAuthEnabled] = useState(true);
+  const [authPasswordWeak, setAuthPasswordWeak] = useState(false);
+
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,6 +108,8 @@ function SettingsContent() {
           // APIキーはサーバから返らない（漏洩防止）。設定済みかどうかだけ受け取る
           setSerperApiKey("");
           setSerperKeyConfigured(settings.serper_api_key_configured === "true");
+          setAuthEnabled(settings.auth_enabled === "true");
+          setAuthPasswordWeak(settings.auth_password_weak === "true");
           setServices(svcData);
           setPersonas(perData);
           setGmailSenders(sendersData);
@@ -262,6 +267,15 @@ function SettingsContent() {
     } catch { /* ignore */ }
   }
 
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      window.location.href = "/login";
+    } catch {
+      showToast("ログアウトに失敗しました");
+    }
+  }
+
   async function handleClearHistory() {
     if (!confirm("生成履歴をすべて削除しますか？この操作は取り消せません。")) return;
     try {
@@ -284,6 +298,27 @@ function SettingsContent() {
   return (
     <div className="animate-fade-in">
       <h1 className="mb-6 text-xl font-bold tracking-tight">設定</h1>
+
+      {/* アクセス保護の状態。未設定だと本番URLを知っている誰でも操作できてしまう */}
+      {!authEnabled && (
+        <div className="mb-4 flex gap-2.5 rounded-lg border border-(--color-danger)/30 bg-(--color-danger-light) px-4 py-3 text-sm">
+          <Warning className="mt-0.5 shrink-0" size={18} weight="fill" style={{ color: "var(--color-danger)" }} />
+          <div className="text-gray-700 dark:text-gray-300">
+            <strong className="text-(--color-danger)">このアプリは誰でもアクセスできる状態です。</strong>
+            <br />
+            Railway の環境変数に <code className="rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">APP_PASSWORD</code> を設定すると、
+            ログイン画面で保護されます（12文字以上を推奨）。
+          </div>
+        </div>
+      )}
+      {authEnabled && authPasswordWeak && (
+        <div className="mb-4 flex gap-2.5 rounded-lg border border-amber-200 bg-(--color-warning-light) px-4 py-3 text-sm dark:border-amber-800">
+          <Warning className="mt-0.5 shrink-0" size={18} weight="fill" style={{ color: "var(--color-warning)" }} />
+          <div className="text-gray-700 dark:text-gray-300">
+            設定されているパスワードが短すぎます。12文字以上に変更してください。
+          </div>
+        </div>
+      )}
 
       {/* Gmail connection feedback */}
       {gmailSuccess && (
@@ -461,6 +496,24 @@ function SettingsContent() {
               </div>
             </div>
           </section>
+
+          {authEnabled && (
+            <section className="rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
+              <div className="border-b border-(--color-border) px-5 py-4">
+                <h2 className="text-sm font-semibold">アクセス</h2>
+                <p className="mt-0.5 text-xs text-(--color-muted)">パスワードで保護されています</p>
+              </div>
+              <div className="p-5">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-(--color-border) text-sm font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                >
+                  ログアウト
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* Danger zone */}
           <section className="rounded-xl border border-(--color-danger)/30 bg-(--color-card) overflow-hidden">

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getProspect,
   getSender,
   getService,
   getPersona,
+  getAllServices,
+  getAllPersonas,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -15,29 +16,33 @@ import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
 import { resolveEmailVariables } from "@/lib/variables";
-import type { AnalysisResult } from "@/lib/types";
-
-function parseAnalysis(json: string): AnalysisResult | null {
-  try {
-    const parsed = JSON.parse(json) as AnalysisResult;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
 const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** 設定の既定値 → 無ければ先頭 の順に解決する */
+function resolveService(): Service | undefined {
+  const configured = Number(getSetting("default_service_id"));
+  return (Number.isInteger(configured) && configured > 0 ? getService(configured) : undefined)
+    ?? getAllServices()[0];
+}
+
+function resolvePersona(): Persona | undefined {
+  const configured = Number(getSetting("default_persona_id"));
+  return (Number.isInteger(configured) && configured > 0 ? getPersona(configured) : undefined)
+    ?? getAllPersonas()[0];
+}
+
 export async function POST(request: NextRequest) {
   let body: {
     senderId: number;
-    baseProspectId: number;
     company: string;
     person: string;
     email: string;
+    /** テンプレートから展開済みの件名・本文（差し込み変数は未解決のまま渡ってくる） */
     subject: string;
     body: string;
     attachmentIds?: number[];
@@ -51,7 +56,6 @@ export async function POST(request: NextRequest) {
   }
 
   const senderId = Number(body.senderId);
-  const baseProspectId = Number(body.baseProspectId);
   const company = typeof body.company === "string" ? body.company.trim() : "";
   const rawToEmail = typeof body.email === "string" ? body.email.trim() : "";
   const subject = typeof body.subject === "string" ? body.subject : "";
@@ -60,11 +64,8 @@ export async function POST(request: NextRequest) {
     ? body.attachmentIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
     : [];
 
-  if (!senderId || !baseProspectId || !rawToEmail) {
-    return NextResponse.json(
-      { error: "senderId, baseProspectId, email are required" },
-      { status: 400 }
-    );
+  if (!senderId || !rawToEmail) {
+    return NextResponse.json({ error: "senderId, email are required" }, { status: 400 });
   }
 
   if (!EMAIL_PATTERN.test(rawToEmail)) {
@@ -81,21 +82,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const baseProspect = getProspect(baseProspectId);
-  if (!baseProspect) {
-    return NextResponse.json({ error: "テンプレート元のメールが見つかりません" }, { status: 404 });
-  }
-
   const sender = getSender(senderId);
   if (!sender) {
     return NextResponse.json({ error: "送信者アカウントが見つかりません" }, { status: 404 });
   }
 
+  const service = resolveService();
+  const persona = resolvePersona();
+  if (!service || !persona) {
+    return NextResponse.json(
+      { error: "商材または人格が登録されていません。設定ページで登録してください" },
+      { status: 400 }
+    );
+  }
+
   const toEmail = TEST_MODE ? TEST_MODE_RECIPIENT : rawToEmail;
 
-  const baseAnalysis = parseAnalysis(baseProspect.analysis_json);
-  const service = getService(baseProspect.service_id);
-  const persona = getPersona(baseProspect.persona_id);
+  // 一括送信はテンプレート（汎用文面）専用なので、相手企業の分析結果は存在しない。
+  // 社名照合と「相手について書いた数値」の検知のために、宛先の企業名だけを持たせる。
+  const analysisForCheck: AnalysisResult = {
+    company_name: company,
+    business_summary: "",
+    activities: [],
+    recent_topics: [],
+    compatibility: { score: "medium", reason: "" },
+    proposal_points: [],
+    hook: "",
+  };
 
   // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
   const resolved = resolveEmailVariables(subject, mailBody, {
@@ -124,15 +137,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // F18: 事実誤認の検知。宛先ごとに社名を差し替えて送るため、
-  // 照合対象の社名もこの宛先のものへ差し替える（元テンプレの社名で照合すると必ず不一致になる）
-  if (baseAnalysis) {
+  // F18: 事実誤認の検知。テンプレートに相手企業固有の数値が書かれていれば
+  // 「御社の◯◯」の形で拾われる。企業名が空なら社名照合は成立しないので警告に落ちる
+  {
     const danger = runDangerCheck({
       subject: outgoingSubject,
       body: outgoingBody,
-      // 企業名は必ずこの宛先のもので上書きする。未入力(空)なら社名照合は成立しないので
-      // 空のまま渡し、danger-check 側で「機械検知できない」警告に落とす
-      analysis: { ...baseAnalysis, company_name: company },
+      analysis: analysisForCheck,
       service,
       persona,
     });
@@ -171,8 +182,8 @@ export async function POST(request: NextRequest) {
     domain: rawToEmail.split("@")[1] ?? "",
     company_name: company,
     analysis_json: "{}",
-    service_id: baseProspect.service_id,
-    persona_id: baseProspect.persona_id,
+    service_id: service.id,
+    persona_id: persona.id,
     subject: outgoingSubject,
     body: outgoingBody,
     generated_subject: outgoingSubject,

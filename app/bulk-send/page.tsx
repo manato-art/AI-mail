@@ -20,8 +20,9 @@ import {
   CaretRight,
   FileArrowUp,
 } from "@phosphor-icons/react";
-import type { Attachment, Prospect } from "@/lib/types";
+import type { Attachment, Prospect, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import { resolveEmailVariables } from "@/lib/variables";
 
 interface Recipient {
   id: string;
@@ -72,9 +73,10 @@ function parseSpreadsheetText(text: string): Omit<Recipient, "id" | "checked">[]
 }
 
 export default function BulkSendPage() {
+  const [templates, setTemplates] = useState<TemplateWithAttachments[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedProspectId, setSelectedProspectId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const [senders, setSenders] = useState<SenderInfo[]>([]);
   const [selectedSenderId, setSelectedSenderId] = useState<number | null>(null);
@@ -108,17 +110,20 @@ export default function BulkSendPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [pRes, sRes, sendersRes, attachRes] = await Promise.all([
+        const [tplRes, pRes, sRes, sendersRes, attachRes] = await Promise.all([
+          fetch("/api/templates"),
           fetch("/api/prospects"),
           fetch("/api/settings"),
           fetch("/api/senders"),
           fetch("/api/attachments"),
         ]);
+        const tplData: TemplateWithAttachments[] = tplRes.ok ? await tplRes.json() : [];
         const pData: Prospect[] = pRes.ok ? await pRes.json() : [];
         const sData = sRes.ok ? await sRes.json() : {};
         const sendersData: SenderInfo[] = sendersRes.ok ? await sendersRes.json() : [];
         const attachData: Attachment[] = attachRes.ok ? await attachRes.json() : [];
         if (!cancelled) {
+          setTemplates(tplData);
           setProspects(pData);
           setTestMode(sData.test_mode === "true");
           setSenders(sendersData);
@@ -157,16 +162,9 @@ export default function BulkSendPage() {
     [prospects]
   );
 
-  // 一括送信で作られた行（input_url が空）はテンプレ候補から外す。
-  // それを次のテンプレに選ぶと、既に置換済みの社名がさらに置換対象になり多段で汚染される
-  const templateCandidates = useMemo(
-    () => sorted.filter((p) => Boolean(p.input_url)),
-    [sorted]
-  );
-
-  const selectedProspect = useMemo(
-    () => (selectedProspectId ? prospects.find((p) => p.id === Number(selectedProspectId)) : undefined),
-    [prospects, selectedProspectId]
+  const selectedTemplate = useMemo(
+    () => (selectedTemplateId ? templates.find((t) => t.id === Number(selectedTemplateId)) : undefined),
+    [templates, selectedTemplateId]
   );
 
   const checkedRecipients = useMemo(() => recipients.filter((r) => r.checked), [recipients]);
@@ -175,20 +173,20 @@ export default function BulkSendPage() {
   const clampedPreviewIndex = Math.min(previewIndex, Math.max(0, checkedPreviewList.length - 1));
   const previewRecipient = checkedPreviewList[clampedPreviewIndex];
 
+  /**
+   * プレビュー用の差し込み解決。実際の送信時はサーバ側が同じエンジンで解決する。
+   * 社名の文字列置換はしない（他社向けに書かれた本文を流用する事故のもとだった）。
+   */
   const buildEmail = useCallback(
     (r: Recipient) => {
-      if (!selectedProspect) return { subject: "", body: "" };
-      const origCompany = selectedProspect.company_name || "";
-      let subj = selectedProspect.subject;
-      let bod = selectedProspect.body;
-      if (origCompany) {
-        subj = subj.replaceAll(origCompany, r.company);
-        bod = bod.replaceAll(origCompany, r.company);
-      }
-      bod = bod.replace(/ご担当者/, r.person ? `${r.person}` : "ご担当者");
-      return { subject: subj, body: bod };
+      if (!selectedTemplate) return { subject: "", body: "", unresolved: [] as string[] };
+      const resolved = resolveEmailVariables(selectedTemplate.subject, selectedTemplate.body, {
+        company_name: r.company,
+        person_name: r.person,
+      });
+      return { subject: resolved.subject, body: resolved.body, unresolved: resolved.unresolved };
     },
-    [selectedProspect]
+    [selectedTemplate]
   );
 
   function handleAddOne() {
@@ -239,7 +237,7 @@ export default function BulkSendPage() {
   }
 
   async function handleSendAll() {
-    if (!selectedProspect || !selectedSenderId || checkedRecipients.length === 0 || isSending) return;
+    if (!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending) return;
     const toSend = checkedRecipients.filter(
       (r) => r.email && rowStatus[r.id]?.state !== "sent"
     );
@@ -264,7 +262,6 @@ export default function BulkSendPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             senderId: selectedSenderId,
-            baseProspectId: selectedProspect.id,
             company: r.company,
             person: r.person,
             email: r.email,
@@ -375,16 +372,20 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* 構造的なリスクの明示: テンプレ元1社向けに書かれた本文をN社に流用する */}
-      {selectedProspect && (
+      {/* テンプレートが1件も無いと何も送れないので導線を出す */}
+      {templates.length === 0 && (
         <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
           <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
           <div className="text-gray-700 dark:text-gray-300">
-            この本文は
-            <strong className="mx-1">{selectedProspect.company_name || selectedProspect.domain}</strong>
-            向けに生成されたものです。差し替わるのは企業名と宛名だけなので、
-            <strong>その1社にしか当てはまらない記述（実績・沿革・ニュースへの言及など）が残っていないか</strong>
-            を必ずプレビューで確認してください。
+            一括送信にはテンプレートが必要です。
+            <Link href="/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+              テンプレート
+            </Link>
+            で作成してください。企業名は
+            <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{company_name}}"}</code>
+            、担当者名は
+            <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{person_name}}"}</code>
+            と書くと宛先ごとに差し替わります。
           </div>
         </div>
       )}
@@ -404,14 +405,14 @@ export default function BulkSendPage() {
           </label>
           <div className="relative">
             <select
-              value={selectedProspectId}
-              onChange={(e) => setSelectedProspectId(e.target.value)}
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
               className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
             >
               <option value="">テンプレートを選択</option>
-              {templateCandidates.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.company_name || p.domain} — {p.subject.slice(0, 40)}
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} — {t.subject.slice(0, 40)}
                 </option>
               ))}
             </select>
@@ -676,7 +677,7 @@ export default function BulkSendPage() {
             )}
           </div>
 
-          {previewRecipient && selectedProspect ? (
+          {previewRecipient && selectedTemplate ? (
             <>
               <div className="space-y-3.5 p-5">
                 <div>
@@ -721,7 +722,7 @@ export default function BulkSendPage() {
           ) : (
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
               <p className="text-sm text-(--color-muted)">
-                {!selectedProspect ? "テンプレートを選択してください" : "チェックした宛先のプレビューが表示されます"}
+                {!selectedTemplate ? "テンプレートを選択してください" : "チェックした宛先のプレビューが表示されます"}
               </p>
             </div>
           )}
@@ -749,7 +750,7 @@ export default function BulkSendPage() {
           <button
             type="button"
             onClick={handleSendAll}
-            disabled={!selectedProspect || !selectedSenderId || checkedRecipients.length === 0 || isSending}
+            disabled={!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending}
             className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isSending ? (
