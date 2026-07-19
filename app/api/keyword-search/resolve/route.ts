@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting } from "@/lib/db";
 import { extractContactName, webSearch } from "@/lib/keyword-search";
+import { scrapeSearch } from "@/lib/keyword-search-scrape";
 import { crawlWebsite } from "@/lib/crawl";
 import { validateUrl } from "@/lib/ssrf";
 
@@ -47,16 +48,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "企業名を指定してください" }, { status: 400 });
     }
 
-    const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "検索APIが未設定です。設定ページからSerper APIキーを登録してください" },
-        { status: 400 }
-      );
+    const mode = getSetting("search_mode") || "api";
+    let items;
+
+    if (mode === "scrape") {
+      items = await scrapeSearch(`${companyName} 公式サイト`);
+    } else {
+      const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json(
+          { error: "検索APIが未設定です。設定ページからAPIキーを登録するか、スクレイピングモードに切り替えてください" },
+          { status: 400 }
+        );
+      }
+      items = await webSearch(apiKey, `${companyName} 公式サイト`);
     }
 
-    const items = await webSearch(apiKey, `${companyName} 公式サイト`);
-    const candidate = items.find((item: { link: string; displayLink: string }) => item.link && !isExcludedDomain(item.displayLink, sourceSite));
+    const candidate = items.find((item) => item.link && !isExcludedDomain(item.displayLink, sourceSite));
 
     if (!candidate) {
       return NextResponse.json({ found: false });

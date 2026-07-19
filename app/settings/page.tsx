@@ -57,9 +57,10 @@ function SettingsContent() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
+  const [searchMode, setSearchMode] = useState<"api" | "scrape">("api");
   const [serperApiKey, setSerperApiKey] = useState("");
-  const [savingSerper, setSavingSerper] = useState(false);
-  const [serperSaved, setSerperSaved] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [searchSaved, setSearchSaved] = useState(false);
 
   const [gmailSenders, setGmailSenders] = useState<SenderInfo[]>([]);
   const [connectingGmail, setConnectingGmail] = useState(false);
@@ -88,6 +89,7 @@ function SettingsContent() {
           setSenderDraft(settings.sender_email || "");
           setDefaultServiceId(settings.default_service_id || "");
           setDefaultPersonaId(settings.default_persona_id || "");
+          setSearchMode(settings.search_mode === "scrape" ? "scrape" : "api");
           setSerperApiKey(settings.serper_api_key || "");
           setServices(svcData);
           setPersonas(perData);
@@ -138,19 +140,22 @@ function SettingsContent() {
     finally { setSavingDefaults(false); }
   }
 
-  async function handleSaveSerper() {
-    setSavingSerper(true);
-    setSerperSaved(false);
+  async function handleSaveSearch() {
+    setSavingSearch(true);
+    setSearchSaved(false);
     try {
       await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serper_api_key: serperApiKey.trim() }),
+        body: JSON.stringify({
+          search_mode: searchMode,
+          serper_api_key: serperApiKey.trim(),
+        }),
       });
-      setSerperSaved(true);
-      setTimeout(() => setSerperSaved(false), 2000);
+      setSearchSaved(true);
+      setTimeout(() => setSearchSaved(false), 2000);
     } catch { /* ignore */ }
-    finally { setSavingSerper(false); }
+    finally { setSavingSearch(false); }
   }
 
   async function handleConnectGmail() {
@@ -395,38 +400,75 @@ function SettingsContent() {
             </div>
           </section>
 
-          {/* Keyword Search API */}
+          {/* Keyword Search */}
           <section className="rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
             <div className="border-b border-(--color-border) px-5 py-4">
               <h2 className="text-sm font-semibold">キーワード検索</h2>
-              <p className="mt-0.5 text-xs text-(--color-muted)">Serper.dev APIキー（登録で2,500クエリ無料）</p>
+              <p className="mt-0.5 text-xs text-(--color-muted)">企業リスト自動作成の検索方法</p>
             </div>
             <div className="space-y-3 p-5">
               <div>
-                <label className="mb-1 block text-xs font-medium text-(--color-muted)">APIキー</label>
-                <input
-                  type="password"
-                  value={serperApiKey}
-                  onChange={(e) => setSerperApiKey(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                  placeholder="serper APIキーを入力"
-                  autoComplete="off"
-                />
+                <label className="mb-2 block text-xs font-medium text-(--color-muted)">検索モード</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode("api")}
+                    className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 px-3 py-3 text-xs font-medium transition-all ${
+                      searchMode === "api"
+                        ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
+                        : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary)/40"
+                    }`}
+                  >
+                    <span className="text-sm">API</span>
+                    <span className="text-[10px] font-normal">高速・安定</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSearchMode("scrape")}
+                    className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 px-3 py-3 text-xs font-medium transition-all ${
+                      searchMode === "scrape"
+                        ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
+                        : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary)/40"
+                    }`}
+                  >
+                    <span className="text-sm">スクレイピング</span>
+                    <span className="text-[10px] font-normal">無料・APIキー不要</span>
+                  </button>
+                </div>
               </div>
+              {searchMode === "api" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-(--color-muted)">Serper APIキー</label>
+                  <input
+                    type="password"
+                    value={serperApiKey}
+                    onChange={(e) => setSerperApiKey(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                    placeholder="serper.dev のAPIキー"
+                    autoComplete="off"
+                  />
+                  <p className="mt-1 text-[11px] text-(--color-muted)">serper.dev で登録すると2,500クエリ無料</p>
+                </div>
+              )}
+              {searchMode === "scrape" && (
+                <p className="rounded-lg bg-(--color-primary-light) px-3 py-2.5 text-xs text-(--color-muted)">
+                  DuckDuckGoの検索結果をスクレイピングします。APIキーは不要ですが、大量利用時にブロックされる場合があります。
+                </p>
+              )}
               <button
                 type="button"
-                onClick={handleSaveSerper}
-                disabled={savingSerper}
+                onClick={handleSaveSearch}
+                disabled={savingSearch}
                 className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {savingSerper ? (
+                {savingSearch ? (
                   <SpinnerGap size={14} className="animate-spin" />
-                ) : serperSaved ? (
+                ) : searchSaved ? (
                   <Check size={14} weight="bold" />
                 ) : (
                   <FloppyDisk size={14} />
                 )}
-                {serperSaved ? "保存済み" : "保存"}
+                {searchSaved ? "保存済み" : "保存"}
               </button>
             </div>
           </section>

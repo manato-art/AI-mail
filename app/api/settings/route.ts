@@ -6,6 +6,7 @@ const KEYS = [
   "default_service_id",
   "default_persona_id",
   "serper_api_key",
+  "search_mode",
 ] as const;
 
 export function GET() {
