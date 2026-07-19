@@ -94,13 +94,32 @@ export default function BulkSendPage() {
         if (!cancelled) {
           setProspects(pData);
           if (sData.sender_email) setSenderEmail(sData.sender_email);
-          // settings loaded
         }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
     }
     load();
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("bulk-send-import");
+      if (!raw) return;
+      sessionStorage.removeItem("bulk-send-import");
+      const imported: { company: string; person: string; email: string }[] = JSON.parse(raw);
+      if (!Array.isArray(imported) || imported.length === 0) return;
+      setRecipients((prev) => [
+        ...prev,
+        ...imported.map((item) => ({
+          id: uid(),
+          company: item.company || "",
+          person: item.person || "",
+          email: item.email || "",
+          checked: true,
+        })),
+      ]);
+    } catch { /* ignore */ }
   }, []);
 
   const sorted = useMemo(

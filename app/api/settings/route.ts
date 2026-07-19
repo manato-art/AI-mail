@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/db";
 
-const KEYS = ["sender_email", "default_service_id", "default_persona_id"] as const;
+const KEYS = [
+  "sender_email",
+  "default_service_id",
+  "default_persona_id",
+  "google_search_api_key",
+  "google_search_engine_id",
+] as const;
 
 export function GET() {
   const result: Record<string, string> = {};

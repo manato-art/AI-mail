@@ -165,6 +165,11 @@ export interface SendGuardResult {
   reasons: string[];
 }
 
+export interface KeywordCompany {
+  name: string;
+  sourceUrl: string;
+}
+
 export interface CrawlResultWithRefusal extends CrawlResult {
   hasRefusal: boolean;
   refusalText: string | null;

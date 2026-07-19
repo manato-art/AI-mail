@@ -57,6 +57,11 @@ function SettingsContent() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
 
+  const [googleApiKey, setGoogleApiKey] = useState("");
+  const [googleEngineId, setGoogleEngineId] = useState("");
+  const [savingGoogle, setSavingGoogle] = useState(false);
+  const [googleSaved, setGoogleSaved] = useState(false);
+
   const [gmailSenders, setGmailSenders] = useState<SenderInfo[]>([]);
   const [connectingGmail, setConnectingGmail] = useState(false);
 
@@ -84,6 +89,8 @@ function SettingsContent() {
           setSenderDraft(settings.sender_email || "");
           setDefaultServiceId(settings.default_service_id || "");
           setDefaultPersonaId(settings.default_persona_id || "");
+          setGoogleApiKey(settings.google_search_api_key || "");
+          setGoogleEngineId(settings.google_search_engine_id || "");
           setServices(svcData);
           setPersonas(perData);
           setGmailSenders(sendersData);
@@ -131,6 +138,24 @@ function SettingsContent() {
       setTimeout(() => setDefaultsSaved(false), 2000);
     } catch { /* ignore */ }
     finally { setSavingDefaults(false); }
+  }
+
+  async function handleSaveGoogle() {
+    setSavingGoogle(true);
+    setGoogleSaved(false);
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          google_search_api_key: googleApiKey.trim(),
+          google_search_engine_id: googleEngineId.trim(),
+        }),
+      });
+      setGoogleSaved(true);
+      setTimeout(() => setGoogleSaved(false), 2000);
+    } catch { /* ignore */ }
+    finally { setSavingGoogle(false); }
   }
 
   async function handleConnectGmail() {
@@ -372,6 +397,53 @@ function SettingsContent() {
                   {senderSaved ? "保存済み" : "保存"}
                 </button>
               </div>
+            </div>
+          </section>
+
+          {/* Google Search API */}
+          <section className="rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
+            <div className="border-b border-(--color-border) px-5 py-4">
+              <h2 className="text-sm font-semibold">キーワード検索</h2>
+              <p className="mt-0.5 text-xs text-(--color-muted)">Google Custom Search APIの設定</p>
+            </div>
+            <div className="space-y-3 p-5">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--color-muted)">APIキー</label>
+                <input
+                  type="password"
+                  value={googleApiKey}
+                  onChange={(e) => setGoogleApiKey(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  placeholder="AIza..."
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-(--color-muted)">検索エンジンID</label>
+                <input
+                  type="text"
+                  value={googleEngineId}
+                  onChange={(e) => setGoogleEngineId(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  placeholder="xxxxxxxxxxxxxxx:yyyyyyy"
+                  autoComplete="off"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveGoogle}
+                disabled={savingGoogle}
+                className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {savingGoogle ? (
+                  <SpinnerGap size={14} className="animate-spin" />
+                ) : googleSaved ? (
+                  <Check size={14} weight="bold" />
+                ) : (
+                  <FloppyDisk size={14} />
+                )}
+                {googleSaved ? "保存済み" : "保存"}
+              </button>
             </div>
           </section>
 
