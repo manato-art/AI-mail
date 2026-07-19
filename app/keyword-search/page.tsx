@@ -328,36 +328,57 @@ export default function KeywordSearchPage() {
 
   return (
     <div className="animate-fade-in pb-20">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">キーワード検索</h1>
-          <p className="mt-1 text-sm text-(--color-muted)">
-            キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={toggleSearchMode}
-          disabled={isBusy}
-          className="mt-0.5 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 py-1.5 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:opacity-40"
-        >
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${searchMode === "api" ? "bg-emerald-500" : "bg-amber-500"}`} />
-          {searchMode === "api" ? "API" : "スクレイピング"}
-        </button>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold tracking-tight">キーワード検索</h1>
+        <p className="mt-1 text-sm text-(--color-muted)">
+          キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
+        </p>
       </div>
 
-      {!searchReady && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm animate-fade-in dark:border-amber-800">
-          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
-          <p className="text-gray-700 dark:text-gray-300">
-            検索APIキーが未設定です。
-            <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
-              設定ページ
-            </Link>
-            からAPIキーを登録するか、スクレイピングモードに切り替えてください。
+      {/* Search mode toggle */}
+      <div className="mb-5 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => { if (searchMode !== "api") toggleSearchMode(); }}
+          disabled={isBusy}
+          className={`cursor-pointer rounded-xl border-2 p-4 text-left transition-all disabled:opacity-40 ${
+            searchMode === "api"
+              ? "border-(--color-primary) bg-(--color-primary-light)"
+              : "border-(--color-border) hover:border-(--color-primary)/40"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${searchMode === "api" ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"}`} />
+            <span className="text-sm font-semibold">API モード</span>
+          </div>
+          <p className="mt-1.5 text-xs text-(--color-muted)">
+            Serper.dev 経由で高速・安定検索。登録で2,500クエリ無料。
+            {searchMode === "api" && !searchReady && (
+              <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                APIキーを設定
+              </Link>
+            )}
           </p>
-        </div>
-      )}
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (searchMode !== "scrape") toggleSearchMode(); }}
+          disabled={isBusy}
+          className={`cursor-pointer rounded-xl border-2 p-4 text-left transition-all disabled:opacity-40 ${
+            searchMode === "scrape"
+              ? "border-(--color-primary) bg-(--color-primary-light)"
+              : "border-(--color-border) hover:border-(--color-primary)/40"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className={`inline-block h-2 w-2 rounded-full ${searchMode === "scrape" ? "bg-amber-500" : "bg-gray-300 dark:bg-gray-600"}`} />
+            <span className="text-sm font-semibold">スクレイピング</span>
+          </div>
+          <p className="mt-1.5 text-xs text-(--color-muted)">
+            DuckDuckGo をスクレイピング。APIキー不要・完全無料。大量利用時にブロックされる場合あり。
+          </p>
+        </button>
+      </div>
 
       {/* Search form */}
       <div className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
