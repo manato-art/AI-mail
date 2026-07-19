@@ -17,6 +17,7 @@ import {
   Sun,
   BookmarkSimple,
   DotsThreeOutline,
+  Prohibit,
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import logoIcon from "./icon.png";
@@ -35,6 +36,7 @@ const NAV_ITEMS: {
   { href: "/templates", label: "テンプレート", Icon: BookmarkSimple },
   { href: "/services", label: "サービス", Icon: Briefcase },
   { href: "/personas", label: "人格", Icon: UserCircle },
+  { href: "/suppressions", label: "送信しないリスト", Icon: Prohibit },
 ];
 
 const BOTTOM_TAB_ITEMS = NAV_ITEMS.slice(0, 4);
