@@ -5,8 +5,14 @@ import type {
   Persona,
   PersonaInput,
   Prospect,
+  SendLog,
+  Sender,
+  SenderAuthStatus,
   Service,
   ServiceInput,
+  Suppression,
+  SuppressionReason,
+  SuppressionTargetType,
   Template,
 } from "@/lib/types";
 
@@ -65,6 +71,8 @@ function createTables(instance: Database.Database): void {
       form_url TEXT,
       is_form_only INTEGER NOT NULL DEFAULT 0,
       compatibility_score TEXT NOT NULL DEFAULT 'medium',
+      has_refusal INTEGER NOT NULL DEFAULT 0,
+      refusal_text TEXT,
       send_status TEXT NOT NULL DEFAULT 'unsent',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
@@ -76,6 +84,37 @@ function createTables(instance: Database.Database): void {
       body TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS senders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL DEFAULT '',
+      google_refresh_token_encrypted TEXT NOT NULL,
+      auth_status TEXT NOT NULL DEFAULT 'connected',
+      daily_limit INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS send_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prospect_id INTEGER NOT NULL REFERENCES prospects(id),
+      sender_id INTEGER NOT NULL REFERENCES senders(id),
+      to_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      gmail_message_id TEXT,
+      gmail_thread_id TEXT,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS suppressions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target TEXT NOT NULL,
+      target_type TEXT NOT NULL DEFAULT 'email',
+      reason TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(target, target_type)
     );
   `);
 }
@@ -183,6 +222,12 @@ function migrateSchema(instance: Database.Database): void {
   const colNames = new Set(cols.map((c) => c.name));
   if (!colNames.has("send_status")) {
     instance.exec("ALTER TABLE prospects ADD COLUMN send_status TEXT NOT NULL DEFAULT 'unsent'");
+  }
+  if (!colNames.has("has_refusal")) {
+    instance.exec("ALTER TABLE prospects ADD COLUMN has_refusal INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!colNames.has("refusal_text")) {
+    instance.exec("ALTER TABLE prospects ADD COLUMN refusal_text TEXT");
   }
 }
 
@@ -424,11 +469,11 @@ export function createProspect(
     INSERT INTO prospects (
       input_url, domain, company_name, analysis_json, service_id, persona_id,
       subject, body, generated_subject, generated_body, emails_found_json,
-      form_url, is_form_only, compatibility_score
+      form_url, is_form_only, compatibility_score, has_refusal, refusal_text
     ) VALUES (
       @input_url, @domain, @company_name, @analysis_json, @service_id, @persona_id,
       @subject, @body, @generated_subject, @generated_body, @emails_found_json,
-      @form_url, @is_form_only, @compatibility_score
+      @form_url, @is_form_only, @compatibility_score, @has_refusal, @refusal_text
     )
   `
     )
@@ -447,6 +492,8 @@ export function createProspect(
       form_url: data.form_url ?? null,
       is_form_only: data.is_form_only,
       compatibility_score: data.compatibility_score,
+      has_refusal: data.has_refusal,
+      refusal_text: data.refusal_text ?? null,
     });
 
   return getProspect(Number(result.lastInsertRowid)) as Prospect;
@@ -555,5 +602,160 @@ export function updateTemplate(id: number, data: { name?: string; subject?: stri
 
 export function deleteTemplate(id: number): boolean {
   const result = getDb().prepare("DELETE FROM templates WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+// --- Senders ---
+
+export function getAllSenders(): Sender[] {
+  return getDb()
+    .prepare("SELECT * FROM senders ORDER BY id ASC")
+    .all() as Sender[];
+}
+
+export function getSender(id: number): Sender | undefined {
+  return getDb()
+    .prepare("SELECT * FROM senders WHERE id = ?")
+    .get(id) as Sender | undefined;
+}
+
+export function getSenderByEmail(email: string): Sender | undefined {
+  return getDb()
+    .prepare("SELECT * FROM senders WHERE email = ?")
+    .get(email) as Sender | undefined;
+}
+
+export function upsertSender(data: {
+  email: string;
+  display_name: string;
+  google_refresh_token_encrypted: string;
+}): Sender {
+  const instance = getDb();
+  instance
+    .prepare(
+      `INSERT INTO senders (email, display_name, google_refresh_token_encrypted, auth_status)
+       VALUES (@email, @display_name, @google_refresh_token_encrypted, 'connected')
+       ON CONFLICT(email) DO UPDATE SET
+         display_name = excluded.display_name,
+         google_refresh_token_encrypted = excluded.google_refresh_token_encrypted,
+         auth_status = 'connected'`
+    )
+    .run(data);
+  return getSenderByEmail(data.email) as Sender;
+}
+
+export function updateSenderAuthStatus(id: number, status: SenderAuthStatus): void {
+  getDb()
+    .prepare("UPDATE senders SET auth_status = ? WHERE id = ?")
+    .run(status, id);
+}
+
+export function deleteSender(id: number): boolean {
+  const result = getDb().prepare("DELETE FROM senders WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+// --- Send Log (immutable — no update/delete) ---
+
+export function createSendLog(data: {
+  prospect_id: number;
+  sender_id: number;
+  to_email: string;
+  subject: string;
+  gmail_message_id?: string | null;
+  gmail_thread_id?: string | null;
+}): SendLog {
+  const instance = getDb();
+  const result = instance
+    .prepare(
+      `INSERT INTO send_log (prospect_id, sender_id, to_email, subject, gmail_message_id, gmail_thread_id)
+       VALUES (@prospect_id, @sender_id, @to_email, @subject, @gmail_message_id, @gmail_thread_id)`
+    )
+    .run({
+      prospect_id: data.prospect_id,
+      sender_id: data.sender_id,
+      to_email: data.to_email,
+      subject: data.subject,
+      gmail_message_id: data.gmail_message_id ?? null,
+      gmail_thread_id: data.gmail_thread_id ?? null,
+    });
+  return instance
+    .prepare("SELECT * FROM send_log WHERE id = ?")
+    .get(Number(result.lastInsertRowid)) as SendLog;
+}
+
+export function getSendLogByProspect(prospectId: number): SendLog[] {
+  return getDb()
+    .prepare("SELECT * FROM send_log WHERE prospect_id = ? ORDER BY sent_at DESC")
+    .all(prospectId) as SendLog[];
+}
+
+export function getTodaySendCount(senderId: number): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count FROM send_log
+       WHERE sender_id = ? AND date(sent_at) = date('now','localtime')`
+    )
+    .get(senderId) as { count: number };
+  return row.count;
+}
+
+export function hasSentToEmail(toEmail: string): boolean {
+  const row = getDb()
+    .prepare("SELECT id FROM send_log WHERE to_email = ? LIMIT 1")
+    .get(toEmail);
+  return !!row;
+}
+
+// --- Suppressions ---
+
+export function getAllSuppressions(): Suppression[] {
+  return getDb()
+    .prepare("SELECT * FROM suppressions ORDER BY created_at DESC")
+    .all() as Suppression[];
+}
+
+export function addSuppression(data: {
+  target: string;
+  target_type: SuppressionTargetType;
+  reason: SuppressionReason;
+  note?: string;
+}): Suppression {
+  const instance = getDb();
+  instance
+    .prepare(
+      `INSERT OR IGNORE INTO suppressions (target, target_type, reason, note)
+       VALUES (@target, @target_type, @reason, @note)`
+    )
+    .run({
+      target: data.target.toLowerCase(),
+      target_type: data.target_type,
+      reason: data.reason,
+      note: data.note ?? "",
+    });
+  return instance
+    .prepare("SELECT * FROM suppressions WHERE target = ? AND target_type = ?")
+    .get(data.target.toLowerCase(), data.target_type) as Suppression;
+}
+
+export function isEmailSuppressed(email: string): Suppression | null {
+  const emailLower = email.toLowerCase();
+  const domain = emailLower.split("@")[1];
+
+  const emailMatch = getDb()
+    .prepare("SELECT * FROM suppressions WHERE target = ? AND target_type = 'email'")
+    .get(emailLower) as Suppression | undefined;
+  if (emailMatch) return emailMatch;
+
+  const domainMatch = getDb()
+    .prepare("SELECT * FROM suppressions WHERE target = ? AND target_type = 'domain'")
+    .get(domain) as Suppression | undefined;
+  if (domainMatch) return domainMatch;
+
+  return null;
+}
+
+export function deleteSuppression(id: number): boolean {
+  const result = getDb().prepare("DELETE FROM suppressions WHERE id = ?").run(id);
   return result.changes > 0;
 }

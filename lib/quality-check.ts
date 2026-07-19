@@ -1,4 +1,4 @@
-import type { AnalysisResult, QualityCheckResult } from "@/lib/types";
+import type { AnalysisResult, QualityCheckResult, SendGuardResult } from "@/lib/types";
 
 const MIN_BODY_LENGTH = 200;
 const MAX_BODY_LENGTH = 450;
@@ -17,6 +17,7 @@ const COMMERCIAL_CLOSE_KEYWORDS = [
 const GENERIC_PHRASES = ["貴社のような企業様"];
 
 const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
 
 function extractBodyWithoutSignature(body: string): string {
   const signatureIndex = body.indexOf("━━━");
@@ -81,8 +82,36 @@ export function validateEmail(
     );
   }
 
+  const subjectVars = subject.match(UNRESOLVED_VARIABLE_PATTERN) ?? [];
+  const bodyVars = body.match(UNRESOLVED_VARIABLE_PATTERN) ?? [];
+  const unresolvedVars = [...subjectVars, ...bodyVars];
+  if (unresolvedVars.length > 0) {
+    issues.push(
+      `未解決の変数が残っています: ${unresolvedVars.join(", ")}`
+    );
+  }
+
   return {
     passed: issues.length === 0,
     issues,
   };
+}
+
+export function validateSendReady(subject: string, body: string): SendGuardResult {
+  const reasons: string[] = [];
+
+  const unresolvedVars = [
+    ...(subject.match(UNRESOLVED_VARIABLE_PATTERN) ?? []),
+    ...(body.match(UNRESOLVED_VARIABLE_PATTERN) ?? []),
+  ];
+  if (unresolvedVars.length > 0) {
+    reasons.push(`未解決の変数: ${unresolvedVars.join(", ")}`);
+  }
+
+  const hasSignature = body.includes("━━━") || body.includes("---");
+  if (!hasSignature) {
+    reasons.push("署名ブロックが検出されません");
+  }
+
+  return { canSend: reasons.length === 0, reasons };
 }

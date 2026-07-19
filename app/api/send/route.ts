@@ -1,0 +1,118 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getProspect,
+  getSender,
+  createSendLog,
+  updateProspectStatus,
+  updateSenderAuthStatus,
+} from "@/lib/db";
+import { runSendGuard } from "@/lib/send-guard";
+import { sendEmail } from "@/lib/gmail";
+import { getSetting } from "@/lib/db";
+
+const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
+const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
+
+export async function POST(request: NextRequest) {
+  let body: { prospectId: number; senderId: number; toEmail: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const { prospectId, senderId, toEmail: rawToEmail } = body;
+
+  if (!prospectId || !senderId || !rawToEmail) {
+    return NextResponse.json(
+      { error: "prospectId, senderId, toEmail are required" },
+      { status: 400 }
+    );
+  }
+
+  const toEmail = TEST_MODE ? TEST_MODE_RECIPIENT : rawToEmail;
+
+  if (TEST_MODE && !TEST_MODE_RECIPIENT) {
+    return NextResponse.json(
+      { error: "テストモードですが TEST_MODE_RECIPIENT が未設定です" },
+      { status: 500 }
+    );
+  }
+
+  const prospect = getProspect(prospectId);
+  if (!prospect) {
+    return NextResponse.json({ error: "Prospect not found" }, { status: 404 });
+  }
+
+  const sender = getSender(senderId);
+  if (!sender) {
+    return NextResponse.json({ error: "Sender not found" }, { status: 404 });
+  }
+
+  const guardResult = runSendGuard({
+    toEmail: TEST_MODE ? rawToEmail : toEmail,
+    subject: prospect.subject,
+    body: prospect.body,
+    senderId,
+    prospectId,
+  });
+
+  if (!guardResult.canSend) {
+    return NextResponse.json(
+      { error: "送信ガードにより送信できません", reasons: guardResult.reasons },
+      { status: 422 }
+    );
+  }
+
+  // Persist "sending" state BEFORE calling send API (二重送信防止)
+  updateProspectStatus(prospectId, "sending");
+
+  const unsubscribeEmail = getSetting("sender_email") ?? sender.email;
+
+  try {
+    const result = await sendEmail({
+      encryptedRefreshToken: sender.google_refresh_token_encrypted,
+      from: sender.email,
+      fromName: sender.display_name,
+      to: toEmail,
+      subject: prospect.subject,
+      body: prospect.body,
+      unsubscribeEmail,
+    });
+
+    createSendLog({
+      prospect_id: prospectId,
+      sender_id: senderId,
+      to_email: toEmail,
+      subject: prospect.subject,
+      gmail_message_id: result.messageId,
+      gmail_thread_id: result.threadId,
+    });
+
+    updateProspectStatus(prospectId, "sent");
+
+    return NextResponse.json({
+      success: true,
+      messageId: result.messageId,
+      testMode: TEST_MODE,
+      actualRecipient: TEST_MODE ? toEmail : undefined,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+
+    if (message === "REAUTH_REQUIRED") {
+      updateSenderAuthStatus(senderId, "expired");
+      updateProspectStatus(prospectId, "unsent");
+      return NextResponse.json(
+        { error: "Gmail認証が無効です。再認証してください。" },
+        { status: 401 }
+      );
+    }
+
+    updateProspectStatus(prospectId, "unsent");
+    return NextResponse.json(
+      { error: "メール送信に失敗しました" },
+      { status: 500 }
+    );
+  }
+}

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/db";
 
-const KEYS = ["sender_email", "default_service_id", "default_persona_id", "eight_api_key"] as const;
+const KEYS = ["sender_email", "default_service_id", "default_persona_id"] as const;
 
 export function GET() {
   const result: Record<string, string> = {};
   for (const key of KEYS) {
     result[key] = getSetting(key) ?? "";
   }
+  result.test_mode = process.env.TEST_MODE_RECIPIENT ? "true" : "false";
   return NextResponse.json(result);
 }
 

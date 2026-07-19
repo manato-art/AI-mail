@@ -68,6 +68,8 @@ export interface Prospect {
   form_url: string | null;
   is_form_only: number;
   compatibility_score: string;
+  has_refusal: number;
+  refusal_text: string | null;
   send_status: SendStatus;
   created_at: string;
 }
@@ -115,4 +117,55 @@ export interface CrawlPage {
 export interface QualityCheckResult {
   passed: boolean;
   issues: string[];
+}
+
+export type SenderAuthStatus = "connected" | "expired" | "revoked";
+
+export interface Sender {
+  id: number;
+  email: string;
+  display_name: string;
+  google_refresh_token_encrypted: string;
+  auth_status: SenderAuthStatus;
+  daily_limit: number;
+  created_at: string;
+}
+
+export interface SendLog {
+  id: number;
+  prospect_id: number;
+  sender_id: number;
+  to_email: string;
+  subject: string;
+  gmail_message_id: string | null;
+  gmail_thread_id: string | null;
+  sent_at: string;
+}
+
+export type SuppressionReason =
+  | "optout"
+  | "bounce"
+  | "refusal_detected"
+  | "rejected_reply"
+  | "manual";
+
+export type SuppressionTargetType = "email" | "domain";
+
+export interface Suppression {
+  id: number;
+  target: string;
+  target_type: SuppressionTargetType;
+  reason: SuppressionReason;
+  note: string;
+  created_at: string;
+}
+
+export interface SendGuardResult {
+  canSend: boolean;
+  reasons: string[];
+}
+
+export interface CrawlResultWithRefusal extends CrawlResult {
+  hasRefusal: boolean;
+  refusalText: string | null;
 }

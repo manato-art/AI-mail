@@ -13,7 +13,9 @@ import {
   EnvelopeSimple,
   Globe,
   Notebook,
+  PaperPlaneTilt,
   SpinnerGap,
+  Warning,
   WarningCircle,
 } from "@phosphor-icons/react";
 import type { AnalysisResult, Prospect, SendStatus } from "@/lib/types";
@@ -46,8 +48,6 @@ const STATUS_STYLES: Record<SendStatus, string> = {
   rejected: "border-(--color-danger) text-(--color-danger)",
 };
 
-const GMAIL_URL_MAX_LENGTH = 32000;
-
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -61,6 +61,13 @@ function countBodyLength(body: string): number {
   const separatorIndex = body.indexOf("━━━");
   const mainText = separatorIndex === -1 ? body : body.slice(0, separatorIndex);
   return mainText.trim().length;
+}
+
+interface SenderInfo {
+  id: number;
+  email: string;
+  display_name: string;
+  auth_status: string;
 }
 
 export default function ProspectPage() {
@@ -78,11 +85,17 @@ export default function ProspectPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const [followingUp, setFollowingUp] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
-  const [senderEmail, setSenderEmail] = useState("");
+  const [senders, setSenders] = useState<SenderInfo[]>([]);
+  const [selectedSenderId, setSelectedSenderId] = useState<number | null>(null);
+  const [isTestMode, setIsTestMode] = useState(false);
+  const [hasRefusal, setHasRefusal] = useState(false);
+  const [refusalText, setRefusalText] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,18 +120,26 @@ export default function ProspectPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [res, settingsRes] = await Promise.all([
+        const [res, sendersRes, configRes] = await Promise.all([
           fetch(`/api/prospects/${id}`),
+          fetch("/api/senders"),
           fetch("/api/settings"),
         ]);
         if (!res.ok) throw new Error("データの取得に失敗しました。");
         const data: Prospect = await res.json();
-        const settings = settingsRes.ok ? await settingsRes.json() : {};
+        const sendersList: SenderInfo[] = sendersRes.ok ? await sendersRes.json() : [];
+        const config = configRes.ok ? await configRes.json() : {};
         if (!cancelled) {
           setProspect(data);
           setSubject(data.subject);
           setBody(data.body);
-          if (settings.sender_email) setSenderEmail(settings.sender_email);
+          setSenders(sendersList);
+          if (sendersList.length > 0) {
+            setSelectedSenderId(sendersList[0].id);
+          }
+          setIsTestMode(config.test_mode === "true");
+          setHasRefusal(data.has_refusal === 1 || false);
+          setRefusalText(data.refusal_text || null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -243,16 +264,46 @@ export default function ProspectPage() {
     }
   }
 
-  function handleOpenGmail() {
-    let gmailUrl = `https://mail.google.com/mail/?${senderEmail ? `authuser=${encodeURIComponent(senderEmail)}&` : ""}view=cm&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    if (emailsFound.length > 0) {
-      gmailUrl += `&to=${encodeURIComponent(emailsFound[0])}`;
-    }
-    if (gmailUrl.length > GMAIL_URL_MAX_LENGTH) {
-      showToast("URLが長すぎるためコピーをお使いください");
+  async function handleSend() {
+    if (!id || !selectedSenderId || emailsFound.length === 0) return;
+
+    if (hasRefusal && !confirm("この企業は「営業お断り」を表明しています。送信すると特定電子メール法に違反する可能性があります。本当に送信しますか？")) {
       return;
     }
-    window.open(gmailUrl, "_blank", "noopener,noreferrer");
+
+    setSending(true);
+    setSendError(null);
+
+    try {
+      await handleSave();
+
+      const res = await fetch("/api/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prospectId: Number(id),
+          senderId: selectedSenderId,
+          toEmail: emailsFound[0],
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = data.reasons
+          ? data.reasons.join("\n")
+          : data.error || "送信に失敗しました";
+        setSendError(errorMsg);
+        return;
+      }
+
+      setProspect((prev) => prev ? { ...prev, send_status: "sent" } : prev);
+      showToast(data.testMode ? "テスト送信しました（テストアドレス宛）" : "送信しました");
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "送信に失敗しました");
+    } finally {
+      setSending(false);
+    }
   }
 
   function handleOpenForm() {
@@ -288,9 +339,40 @@ export default function ProspectPage() {
 
   const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400";
   const currentStatus = (prospect.send_status || "unsent") as SendStatus;
+  const canSend = senders.length > 0 && emailsFound.length > 0 && currentStatus === "unsent";
 
   return (
     <div className="animate-fade-in pb-20">
+      {/* Test Mode Banner */}
+      {isTestMode && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">
+          <Warning size={16} weight="bold" />
+          テストモード: 送信先はテストアドレスに強制上書きされます
+        </div>
+      )}
+
+      {/* Refusal Warning */}
+      {hasRefusal && (
+        <div className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-600 dark:bg-amber-950/30">
+          <div className="flex items-start gap-2">
+            <WarningCircle size={18} weight="fill" className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                営業お断りの表記が検出されました
+              </p>
+              {refusalText && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  「{refusalText}」
+                </p>
+              )}
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                送信すると特定電子メール法に違反する可能性があります。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <button
@@ -445,6 +527,35 @@ export default function ProspectPage() {
                 ))}
               </div>
             )}
+
+            {/* Sender selector */}
+            {senders.length > 0 && (
+              <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">送信元アカウント</p>
+                <select
+                  value={selectedSenderId ?? ""}
+                  onChange={(e) => setSelectedSenderId(Number(e.target.value))}
+                  className="mt-1 h-9 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                >
+                  {senders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name ? `${s.display_name} (${s.email})` : s.email}
+                      {s.auth_status !== "connected" ? " [要再認証]" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Send Error */}
+            {sendError && (
+              <div className="border-t border-(--color-danger)/30 bg-(--color-danger-light) px-5 py-3.5">
+                <div className="flex items-start gap-2">
+                  <WarningCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-(--color-danger)" />
+                  <p className="whitespace-pre-line text-[13px] font-medium text-(--color-danger)">{sendError}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -460,13 +571,18 @@ export default function ProspectPage() {
             <Copy size={18} />
             <span className="text-[10px]">コピー</span>
           </button>
-          <button type="button" onClick={handleOpenGmail} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary)">
-            <ArrowSquareOut size={18} />
-            <span className="text-[10px]">Gmail</span>
-          </button>
-          <button type="button" onClick={handleSave} disabled={saving} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-primary) font-medium transition-colors disabled:opacity-50">
+          <button type="button" onClick={handleSave} disabled={saving} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors hover:bg-(--color-card-hover) hover:text-(--color-primary) disabled:opacity-50">
             {saving ? <SpinnerGap size={18} className="animate-spin" /> : <Check size={18} weight="bold" />}
-            <span className="text-[10px] font-semibold">{saving ? "保存中" : "保存"}</span>
+            <span className="text-[10px]">{saving ? "保存中" : "保存"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || !canSend}
+            className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-primary) font-medium transition-colors disabled:opacity-50"
+          >
+            {sending ? <SpinnerGap size={18} className="animate-spin" /> : <PaperPlaneTilt size={18} weight="fill" />}
+            <span className="text-[10px] font-semibold">{sending ? "送信中" : "送信"}</span>
           </button>
         </div>
       </div>
@@ -494,11 +610,6 @@ export default function ProspectPage() {
             <BookmarkSimple size={15} />
             テンプレ保存
           </button>
-          <button type="button" onClick={handleOpenGmail}
-            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
-            <ArrowSquareOut size={15} />
-            Gmailで開く
-          </button>
           {prospect.form_url && (
             <button type="button" onClick={handleOpenForm}
               className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) dark:text-gray-300">
@@ -508,9 +619,18 @@ export default function ProspectPage() {
           )}
           <div className="flex-1" />
           <button type="button" onClick={handleSave} disabled={saving}
-            className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60">
-            {saving ? <SpinnerGap size={16} className="animate-spin" /> : <Check size={16} weight="bold" />}
+            className="inline-flex h-[38px] cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-gray-600 transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300">
+            {saving ? <SpinnerGap size={15} className="animate-spin" /> : <Check size={15} weight="bold" />}
             {saving ? "保存中..." : "保存"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || !canSend}
+            className="inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {sending ? <SpinnerGap size={16} className="animate-spin" /> : <PaperPlaneTilt size={16} weight="fill" />}
+            {sending ? "送信中..." : "送信"}
           </button>
         </div>
       </div>

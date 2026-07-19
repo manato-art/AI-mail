@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { CrawlPage, CrawlResult } from "@/lib/types";
+import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types";
 
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_PAGES = 5;
@@ -19,6 +19,18 @@ const LINK_CATEGORIES: LinkCategory[] = [
 ];
 
 const CONTACT_KEYWORDS = ["お問い合わせ", "contact"];
+
+const REFUSAL_KEYWORDS = [
+  "営業お断り",
+  "営業メールお断り",
+  "営業のご連絡はお断り",
+  "セールスお断り",
+  "営業目的のメールはご遠慮",
+  "営業目的のお問い合わせはご遠慮",
+  "営業・勧誘はお断り",
+  "売り込みお断り",
+  "営業についてはお断り",
+];
 
 interface FetchedPage {
   html: string;
@@ -226,6 +238,30 @@ export function detectFormUrl(html: string, baseUrl: string): string | null {
   });
 
   return contactUrl;
+}
+
+export function detectRefusal(texts: string[]): { hasRefusal: boolean; refusalText: string | null } {
+  for (const text of texts) {
+    for (const keyword of REFUSAL_KEYWORDS) {
+      const idx = text.indexOf(keyword);
+      if (idx !== -1) {
+        const start = Math.max(0, idx - 20);
+        const end = Math.min(text.length, idx + keyword.length + 40);
+        return {
+          hasRefusal: true,
+          refusalText: text.slice(start, end).replace(/\s+/g, " ").trim(),
+        };
+      }
+    }
+  }
+  return { hasRefusal: false, refusalText: null };
+}
+
+export async function crawlWebsiteWithRefusal(url: string): Promise<CrawlResultWithRefusal> {
+  const result = await crawlWebsite(url);
+  const texts = result.pages.map((p) => p.text);
+  const refusal = detectRefusal(texts);
+  return { ...result, ...refusal };
 }
 
 export async function crawlWebsite(url: string): Promise<CrawlResult> {

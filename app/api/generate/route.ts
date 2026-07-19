@@ -5,9 +5,10 @@ import {
   getTemplate,
   findProspectByDomain,
   createProspect,
+  addSuppression,
 } from "@/lib/db";
 import { validateUrl } from "@/lib/ssrf";
-import { crawlWebsite } from "@/lib/crawl";
+import { crawlWebsiteWithRefusal } from "@/lib/crawl";
 import { analyzeCompany } from "@/lib/analyze";
 import { generateEmail } from "@/lib/generate";
 import { validateEmail } from "@/lib/quality-check";
@@ -55,7 +56,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
-    const crawlResult = await crawlWebsite(validated.normalized);
+    const crawlResult = await crawlWebsiteWithRefusal(validated.normalized);
+
+    if (crawlResult.hasRefusal && crawlResult.contactEmails.length > 0) {
+      for (const email of crawlResult.contactEmails) {
+        addSuppression({
+          target: email,
+          target_type: "email",
+          reason: "refusal_detected",
+          note: crawlResult.refusalText ?? "営業お断り表記を検出",
+        });
+      }
+    }
+
     const analysis = await analyzeCompany(crawlResult, service);
 
     if (analysis.compatibility.score === "low" && !forceLow) {
@@ -103,6 +116,8 @@ export async function POST(request: NextRequest) {
       form_url: crawlResult.formUrl,
       is_form_only: isFormOnly ? 1 : 0,
       compatibility_score: analysis.compatibility.score,
+      has_refusal: crawlResult.hasRefusal ? 1 : 0,
+      refusal_text: crawlResult.refusalText,
       send_status: "unsent",
     });
 
