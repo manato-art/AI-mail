@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import type {
   Attachment,
   BookingTool,
+  ComposeMode,
   Persona,
   PersonaInput,
   Prospect,
@@ -254,6 +255,10 @@ function migrateSchema(instance: Database.Database): void {
   // F14: 日程調整リンク
   addColumnIfMissing(instance, "senders", "booking_tool", "TEXT NOT NULL DEFAULT 'calendly'");
   addColumnIfMissing(instance, "senders", "booking_url", "TEXT NOT NULL DEFAULT ''");
+  // F4: ハイブリッド文面（固定リード + AI続き）
+  addColumnIfMissing(instance, "templates", "compose_mode", "TEXT NOT NULL DEFAULT 'fixed_only'");
+  addColumnIfMissing(instance, "templates", "fixed_part", "TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(instance, "templates", "ai_brief", "TEXT NOT NULL DEFAULT ''");
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -615,25 +620,56 @@ export function getTemplate(id: number): Template | undefined {
     .get(id) as Template | undefined;
 }
 
-export function createTemplate(data: { name: string; subject: string; body: string }): Template {
+export interface TemplateInput {
+  name: string;
+  subject: string;
+  body: string;
+  compose_mode?: ComposeMode;
+  fixed_part?: string;
+  ai_brief?: string;
+}
+
+export function createTemplate(data: TemplateInput): Template {
   const instance = getDb();
   const result = instance
-    .prepare("INSERT INTO templates (name, subject, body) VALUES (@name, @subject, @body)")
-    .run(data);
+    .prepare(
+      `INSERT INTO templates (name, subject, body, compose_mode, fixed_part, ai_brief)
+       VALUES (@name, @subject, @body, @compose_mode, @fixed_part, @ai_brief)`
+    )
+    .run({
+      name: data.name,
+      subject: data.subject,
+      body: data.body,
+      compose_mode: data.compose_mode ?? "fixed_only",
+      fixed_part: data.fixed_part ?? "",
+      ai_brief: data.ai_brief ?? "",
+    });
   return getTemplate(Number(result.lastInsertRowid)) as Template;
 }
 
-export function updateTemplate(id: number, data: { name?: string; subject?: string; body?: string }): Template | undefined {
+export function updateTemplate(
+  id: number,
+  data: Partial<TemplateInput>
+): Template | undefined {
   const instance = getDb();
   const existing = getTemplate(id);
   if (!existing) return undefined;
   instance
-    .prepare("UPDATE templates SET name = @name, subject = @subject, body = @body, updated_at = datetime('now','localtime') WHERE id = @id")
+    .prepare(
+      `UPDATE templates
+       SET name = @name, subject = @subject, body = @body,
+           compose_mode = @compose_mode, fixed_part = @fixed_part, ai_brief = @ai_brief,
+           updated_at = datetime('now','localtime')
+       WHERE id = @id`
+    )
     .run({
       id,
       name: data.name ?? existing.name,
       subject: data.subject ?? existing.subject,
       body: data.body ?? existing.body,
+      compose_mode: data.compose_mode ?? existing.compose_mode,
+      fixed_part: data.fixed_part ?? existing.fixed_part,
+      ai_brief: data.ai_brief ?? existing.ai_brief,
     });
   return getTemplate(id);
 }

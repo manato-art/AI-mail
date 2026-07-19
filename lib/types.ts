@@ -74,11 +74,24 @@ export interface Prospect {
   created_at: string;
 }
 
+/**
+ * F4 ハイブリッド文面のモード。
+ * - full_ai: 全文をAIが書く（従来の生成メール相当）
+ * - hybrid: fixed_part を一字一句変えずに使い、続きを ai_brief の指示でAIが書く
+ * - fixed_only: 差し込み変数の解決のみ。AIを使わない（一括送信の既定）
+ */
+export type ComposeMode = "full_ai" | "hybrid" | "fixed_only";
+
 export interface Template {
   id: number;
   name: string;
   subject: string;
   body: string;
+  compose_mode: ComposeMode;
+  /** hybrid で一字一句変更してはいけない冒頭部分。差し込み変数は使える */
+  fixed_part: string;
+  /** hybrid で「この後どう続けるか」をAIに伝える指示 */
+  ai_brief: string;
   created_at: string;
   updated_at: string;
 }

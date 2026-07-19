@@ -5,6 +5,7 @@ import {
   getPersona,
   getAllServices,
   getAllPersonas,
+  getTemplate,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -16,6 +17,7 @@ import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
 import { resolveEmailVariables } from "@/lib/variables";
+import { composeBody, verifyFixedPartIntact } from "@/lib/compose";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
@@ -39,6 +41,8 @@ function resolvePersona(): Persona | undefined {
 export async function POST(request: NextRequest) {
   let body: {
     senderId: number;
+    /** F4: hybrid のとき固定文と指示を引くために使う */
+    templateId?: number;
     company: string;
     person: string;
     email: string;
@@ -56,6 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   const senderId = Number(body.senderId);
+  const templateId = Number(body.templateId) || 0;
   const company = typeof body.company === "string" ? body.company.trim() : "";
   const rawToEmail = typeof body.email === "string" ? body.email.trim() : "";
   const subject = typeof body.subject === "string" ? body.subject : "";
@@ -110,17 +115,56 @@ export async function POST(request: NextRequest) {
     hook: "",
   };
 
-  // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
-  const resolved = resolveEmailVariables(subject, mailBody, {
+  const variables = {
     company_name: company,
     person_name: typeof body.person === "string" ? body.person.trim() : undefined,
     sender_name: persona?.name,
     service_name: service?.name,
     lp_url: service?.lp_url ?? undefined,
     booking_url: sender.booking_url,
-  });
+  };
+
+  // F4: hybrid のときは fixed_part を一字一句そのまま置き、続きだけAIに書かせる
+  const template = templateId ? getTemplate(templateId) : undefined;
+  let outgoingBody: string;
+  try {
+    const composed = await composeBody({
+      mode: template?.compose_mode ?? "fixed_only",
+      fixedPart: template?.fixed_part ?? "",
+      aiBrief: template?.ai_brief ?? "",
+      body: mailBody,
+      variables,
+      service,
+      persona,
+      companyName: company,
+    });
+    outgoingBody = composed.body;
+  } catch (err) {
+    console.error("compose failed:", err);
+    return NextResponse.json(
+      { error: "本文の作成に失敗しました" },
+      { status: 502 }
+    );
+  }
+
+  // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
+  const resolved = resolveEmailVariables(subject, outgoingBody, variables);
   const outgoingSubject = resolved.subject;
-  const outgoingBody = resolved.body;
+  outgoingBody = resolved.body;
+
+  // hybrid で固定部分が崩れていないかを送信直前に検証する（仕様書F4）
+  if (
+    template?.compose_mode === "hybrid" &&
+    !verifyFixedPartIntact(outgoingBody, template.fixed_part, variables)
+  ) {
+    return NextResponse.json(
+      {
+        error: "固定文が書き換わっているため送信できません",
+        reasons: ["テンプレートの固定部分と本文の冒頭が一致しません"],
+      },
+      { status: 422 }
+    );
+  }
 
   // Guard runs against the real recipient even in test mode (same as /api/send)
   const guardResult = runSendGuard({

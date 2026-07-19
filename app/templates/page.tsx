@@ -14,7 +14,7 @@ import {
   Check,
   FloppyDisk,
 } from "@phosphor-icons/react";
-import type { Attachment, Template, TemplateWithAttachments } from "@/lib/types";
+import type { Attachment, ComposeMode, Template, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
 
 function formatDate(iso: string): string {
@@ -36,6 +36,9 @@ export default function TemplatesPage() {
   const [editName, setEditName] = useState("");
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [editComposeMode, setEditComposeMode] = useState<ComposeMode>("fixed_only");
+  const [editFixedPart, setEditFixedPart] = useState("");
+  const [editAiBrief, setEditAiBrief] = useState("");
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -78,6 +81,9 @@ export default function TemplatesPage() {
     setEditName(t.name);
     setEditSubject(t.subject);
     setEditBody(t.body);
+    setEditComposeMode(t.compose_mode ?? "fixed_only");
+    setEditFixedPart(t.fixed_part ?? "");
+    setEditAiBrief(t.ai_brief ?? "");
     setEditAttachmentIds(t.attachments.map((a) => a.id));
     setCreating(false);
     setPickerOpen(false);
@@ -88,6 +94,9 @@ export default function TemplatesPage() {
     setEditName("");
     setEditSubject("");
     setEditBody("");
+    setEditComposeMode("fixed_only");
+    setEditFixedPart("");
+    setEditAiBrief("");
     setEditAttachmentIds([]);
     setCreating(true);
     setPickerOpen(false);
@@ -163,7 +172,14 @@ export default function TemplatesPage() {
         const res = await fetch("/api/templates", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: editName, subject: editSubject, body: editBody }),
+          body: JSON.stringify({
+            name: editName,
+            subject: editSubject,
+            body: editBody,
+            compose_mode: editComposeMode,
+            fixed_part: editFixedPart,
+            ai_brief: editAiBrief,
+          }),
         });
         if (!res.ok) throw new Error();
         const created: Template = await res.json();
@@ -174,7 +190,14 @@ export default function TemplatesPage() {
         const res = await fetch(`/api/templates/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: editName, subject: editSubject, body: editBody }),
+          body: JSON.stringify({
+            name: editName,
+            subject: editSubject,
+            body: editBody,
+            compose_mode: editComposeMode,
+            fixed_part: editFixedPart,
+            ai_brief: editAiBrief,
+          }),
         });
         if (!res.ok) throw new Error();
         const updated: Template = await res.json();
@@ -330,8 +353,70 @@ export default function TemplatesPage() {
                   placeholder="メールの件名"
                 />
               </div>
+              {/* F4: 文面の作り方 */}
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">本文</label>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                  文面の作り方
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["fixed_only", "そのまま送る", "書いた文章をそのまま使う。差し込み変数だけ置き換わる"],
+                    ["hybrid", "冒頭は固定＋続きはAI", "決めた冒頭をそのまま使い、続きだけAIが相手に合わせて書く"],
+                  ] as [ComposeMode, string, string][]).map(([mode, label, desc]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setEditComposeMode(mode)}
+                      className={`cursor-pointer rounded-lg border-2 p-3 text-left transition-all ${
+                        editComposeMode === mode
+                          ? "border-(--color-primary) bg-(--color-primary-light)"
+                          : "border-(--color-border) hover:border-(--color-primary)/40"
+                      }`}
+                    >
+                      <span className="block text-[13px] font-semibold">{label}</span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-(--color-muted)">{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {editComposeMode === "hybrid" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                      冒頭（この通りに送られます）
+                    </label>
+                    <textarea
+                      value={editFixedPart}
+                      onChange={(e) => setEditFixedPart(e.target.value)}
+                      rows={5}
+                      className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                      placeholder={"{{company_name}}\n{{person_name}}様\n\n突然のご連絡失礼いたします。\nCypher One株式会社の金谷と申します。"}
+                    />
+                    <p className="mt-1 text-[11px] text-(--color-muted)">
+                      ここに書いた文章は<strong>一字一句そのまま</strong>送られます（差し込み変数のみ置換）。
+                      送信直前に改変されていないか機械的に確認します。
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                      続きの書き方（AIへの指示）
+                    </label>
+                    <textarea
+                      value={editAiBrief}
+                      onChange={(e) => setEditAiBrief(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                      placeholder="この後、インターン採用の課題に触れつつ、15分ほどのオンライン相談を提案して締めてください。"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                  {editComposeMode === "hybrid" ? "本文（この作り方では使いません）" : "本文"}
+                </label>
                 <textarea
                   value={editBody}
                   onChange={(e) => setEditBody(e.target.value)}

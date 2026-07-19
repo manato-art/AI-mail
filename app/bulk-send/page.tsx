@@ -352,6 +352,7 @@ export default function BulkSendPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             senderId: selectedSenderId,
+            templateId: selectedTemplate.id,
             company: r.company,
             person: r.person,
             email: r.email,
