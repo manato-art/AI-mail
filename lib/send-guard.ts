@@ -1,4 +1,10 @@
-import { isEmailSuppressed, hasSentToEmail, getTodaySendCount, getSender } from "@/lib/db";
+import {
+  isEmailSuppressed,
+  hasSentToEmail,
+  getTodaySendCount,
+  getSender,
+  DUPLICATE_SEND_BLOCK_DAYS,
+} from "@/lib/db";
 import type { SendGuardResult } from "@/lib/types";
 
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
@@ -28,7 +34,7 @@ export function runSendGuard(params: {
   subject: string;
   body: string;
   senderId: number;
-  prospectId: number;
+  prospectId?: number;
 }): SendGuardResult {
   const reasons: string[] = [];
 
@@ -55,7 +61,7 @@ export function runSendGuard(params: {
   }
 
   if (hasSentToEmail(params.toEmail)) {
-    reasons.push("このアドレスには既に送信済みです（二重送信防止）");
+    reasons.push(`このアドレスには過去${DUPLICATE_SEND_BLOCK_DAYS}日以内に送信済みです（二重送信防止）`);
   }
 
   const sender = getSender(params.senderId);

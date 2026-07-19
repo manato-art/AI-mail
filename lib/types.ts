@@ -98,6 +98,8 @@ export interface TemplateWithAttachments extends Template {
 
 export interface AnalysisResult {
   company_name: string;
+  /** 分析前の保存データには存在しないため optional。記載が無い場合は null */
+  representative_name?: string | null;
   business_summary: string;
   activities: string[];
   recent_topics: string[];

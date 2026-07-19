@@ -727,6 +727,13 @@ export function updateSenderAuthStatus(id: number, status: SenderAuthStatus): vo
     .run(status, id);
 }
 
+export function updateSenderDailyLimit(id: number, dailyLimit: number): Sender | undefined {
+  getDb()
+    .prepare("UPDATE senders SET daily_limit = ? WHERE id = ?")
+    .run(dailyLimit, id);
+  return getSender(id);
+}
+
 export function deleteSender(id: number): boolean {
   const result = getDb().prepare("DELETE FROM senders WHERE id = ?").run(id);
   return result.changes > 0;
@@ -777,10 +784,18 @@ export function getTodaySendCount(senderId: number): number {
   return row.count;
 }
 
+// 要件書 F6-4: 同一メアドへ過去N日以内（デフォルト90日）の送信があればブロック
+export const DUPLICATE_SEND_BLOCK_DAYS = 90;
+
 export function hasSentToEmail(toEmail: string): boolean {
   const row = getDb()
-    .prepare("SELECT id FROM send_log WHERE to_email = ? LIMIT 1")
-    .get(toEmail);
+    .prepare(
+      `SELECT id FROM send_log
+       WHERE to_email = ?
+         AND sent_at >= datetime('now', 'localtime', ?)
+       LIMIT 1`
+    )
+    .get(toEmail, `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
   return !!row;
 }
 

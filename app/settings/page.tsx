@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { useTheme, ACCENT_COLORS } from "@/lib/theme-context";
 import { useSearchParams } from "next/navigation";
+import { Toast } from "@/components/toast";
 
 type Theme = "light" | "dark" | "system";
 
@@ -64,8 +65,15 @@ function SettingsContent() {
 
   const [gmailSenders, setGmailSenders] = useState<SenderInfo[]>([]);
   const [connectingGmail, setConnectingGmail] = useState(false);
+  const [limitDrafts, setLimitDrafts] = useState<Record<number, string>>({});
 
+  const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  function showToast(msg: string) {
+    setToast(null);
+    requestAnimationFrame(() => setToast(msg));
+  }
 
   const gmailSuccess = searchParams.get("gmail_success") === "true";
   const gmailError = searchParams.get("gmail_error");
@@ -170,6 +178,39 @@ function SettingsContent() {
     }
   }
 
+  async function handleSaveDailyLimit(id: number) {
+    const raw = limitDrafts[id];
+    if (raw === undefined) return;
+    const current = gmailSenders.find((s) => s.id === id);
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0) {
+      showToast("上限は0以上の整数で入力してください");
+      return;
+    }
+    if (current && current.daily_limit === value) return;
+    try {
+      const res = await fetch("/api/senders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, daily_limit: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error || "上限の保存に失敗しました");
+        return;
+      }
+      setGmailSenders((prev) => prev.map((s) => (s.id === id ? { ...s, daily_limit: value } : s)));
+      setLimitDrafts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      showToast(value === 0 ? "日次上限を無制限にしました" : `日次上限を${value}通/日に設定しました`);
+    } catch {
+      showToast("上限の保存に失敗しました");
+    }
+  }
+
   async function handleDisconnectSender(id: number) {
     if (!confirm("このアカウントの接続を解除しますか？")) return;
     try {
@@ -248,17 +289,35 @@ function SettingsContent() {
                           <p className="text-sm font-medium">{sender.email}</p>
                           <p className="text-[11px] text-(--color-muted)">
                             {sender.auth_status === "connected" ? "接続中" : "要再認証"}
-                            {" · "}上限 {sender.daily_limit}通/日
+                            {sender.daily_limit === 0 && " · 上限なし"}
                           </p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDisconnectSender(sender.id)}
-                        className="cursor-pointer rounded-md p-2 text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
-                      >
-                        <Trash size={14} />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={10000}
+                          value={limitDrafts[sender.id] ?? String(sender.daily_limit)}
+                          onChange={(e) =>
+                            setLimitDrafts((prev) => ({ ...prev, [sender.id]: e.target.value }))
+                          }
+                          onBlur={() => handleSaveDailyLimit(sender.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          }}
+                          title="日次送信上限（0 = 無制限）"
+                          className="h-8 w-20 rounded-md border border-(--color-border) bg-(--color-card) px-2 text-right text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                        />
+                        <span className="text-[11px] text-(--color-muted)">通/日</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnectSender(sender.id)}
+                          className="ml-1 cursor-pointer rounded-md p-2 text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                        >
+                          <Trash size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -525,6 +584,8 @@ function SettingsContent() {
           </section>
         </div>
       </div>
+
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
 }

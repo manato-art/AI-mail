@@ -128,6 +128,7 @@ ${service.pdf_extracted_text ? `提案資料の要約: ${service.pdf_extracted_t
 
 【相手企業の分析結果】
 会社名: ${analysis.company_name}
+representative_name（代表者名）: ${analysis.representative_name || "記載なし"}
 事業概要: ${analysis.business_summary}
 主な事業: ${analysis.activities.join("、")}
 直近の動き: ${analysis.recent_topics.join("、") || "なし"}

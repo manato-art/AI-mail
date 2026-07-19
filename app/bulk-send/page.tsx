@@ -1,23 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   CaretDown,
   Check,
   ClockCounterClockwise,
   Eye,
   MagnifyingGlass,
+  Paperclip,
   Plus,
   SpinnerGap,
   Trash,
   UploadSimple,
+  Warning,
   X,
   PaperPlaneTilt,
   CaretLeft,
   CaretRight,
   FileArrowUp,
 } from "@phosphor-icons/react";
-import type { Prospect } from "@/lib/types";
+import type { Attachment, Prospect } from "@/lib/types";
 import { Toast } from "@/components/toast";
 
 interface Recipient {
@@ -26,6 +29,25 @@ interface Recipient {
   person: string;
   email: string;
   checked: boolean;
+}
+
+interface SenderInfo {
+  id: number;
+  email: string;
+  display_name: string;
+  auth_status: string;
+}
+
+type RowSendState = "sending" | "sent" | "failed";
+
+interface RowStatus {
+  state: RowSendState;
+  error?: string;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function uid(): string {
@@ -53,7 +75,12 @@ export default function BulkSendPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProspectId, setSelectedProspectId] = useState("");
-  const [senderEmail, setSenderEmail] = useState("");
+
+  const [senders, setSenders] = useState<SenderInfo[]>([]);
+  const [selectedSenderId, setSelectedSenderId] = useState<number | null>(null);
+  const [attachmentsLib, setAttachmentsLib] = useState<Attachment[]>([]);
+  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<Set<number>>(new Set());
+  const [testMode, setTestMode] = useState(false);
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -63,8 +90,8 @@ export default function BulkSendPage() {
   const [pasteText, setPasteText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
-  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
+  const [isSending, setIsSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -80,15 +107,22 @@ export default function BulkSendPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [pRes, sRes] = await Promise.all([
+        const [pRes, sRes, sendersRes, attachRes] = await Promise.all([
           fetch("/api/prospects"),
           fetch("/api/settings"),
+          fetch("/api/senders"),
+          fetch("/api/attachments"),
         ]);
         const pData: Prospect[] = pRes.ok ? await pRes.json() : [];
         const sData = sRes.ok ? await sRes.json() : {};
+        const sendersData: SenderInfo[] = sendersRes.ok ? await sendersRes.json() : [];
+        const attachData: Attachment[] = attachRes.ok ? await attachRes.json() : [];
         if (!cancelled) {
           setProspects(pData);
-          if (sData.sender_email) setSenderEmail(sData.sender_email);
+          setTestMode(sData.test_mode === "true");
+          setSenders(sendersData);
+          if (sendersData.length > 0) setSelectedSenderId(sendersData[0].id);
+          setAttachmentsLib(attachData);
         }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
@@ -197,28 +231,64 @@ export default function BulkSendPage() {
   }
 
   async function handleSendAll() {
-    if (!selectedProspect || checkedRecipients.length === 0) return;
-    const toSend = checkedRecipients.filter((r) => r.email && !sentIds.has(r.id));
+    if (!selectedProspect || !selectedSenderId || checkedRecipients.length === 0 || isSending) return;
+    const toSend = checkedRecipients.filter(
+      (r) => r.email && rowStatus[r.id]?.state !== "sent"
+    );
     if (toSend.length === 0) { showToast("送信対象がありません"); return; }
 
-    const newSending = new Set(sendingIds);
-    toSend.forEach((r) => newSending.add(r.id));
-    setSendingIds(newSending);
+    const sender = senders.find((s) => s.id === selectedSenderId);
+    const confirmMsg = testMode
+      ? `テストモード: ${toSend.length}件分をテストアドレス宛に送信します。よろしいですか？`
+      : `${toSend.length}件のメールを ${sender?.email ?? ""} から送信します。よろしいですか？`;
+    if (!confirm(confirmMsg)) return;
+
+    setIsSending(true);
+    let okCount = 0;
+    let failCount = 0;
 
     for (const r of toSend) {
+      setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sending" } }));
       const { subject, body } = buildEmail(r);
-      const gmailUrl = `https://mail.google.com/mail/?${senderEmail ? `authuser=${encodeURIComponent(senderEmail)}&` : ""}view=cm&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, "_blank", "noopener,noreferrer");
-      await new Promise((res) => setTimeout(res, 500));
+      try {
+        const res = await fetch("/api/bulk-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderId: selectedSenderId,
+            baseProspectId: selectedProspect.id,
+            company: r.company,
+            person: r.person,
+            email: r.email,
+            subject,
+            body,
+            attachmentIds: [...selectedAttachmentIds],
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = Array.isArray(data.reasons)
+            ? data.reasons.join(" / ")
+            : data.error || "送信に失敗しました";
+          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: msg } }));
+          failCount++;
+        } else {
+          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sent" } }));
+          okCount++;
+        }
+      } catch {
+        setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: "通信エラーが発生しました" } }));
+        failCount++;
+      }
+      await new Promise((res) => setTimeout(res, 300));
     }
 
-    setSendingIds(new Set());
-    setSentIds((prev) => {
-      const next = new Set(prev);
-      toSend.forEach((r) => next.add(r.id));
-      return next;
-    });
-    showToast(`${toSend.length}件のGmail作成画面を開きました`);
+    setIsSending(false);
+    showToast(
+      failCount === 0
+        ? `${okCount}件を送信しました`
+        : `送信完了: 成功${okCount}件 / 失敗${failCount}件`
+    );
   }
 
   const sentProspects = useMemo(() => {
@@ -280,7 +350,28 @@ export default function BulkSendPage() {
         <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、テンプレートメールを一括送信します</p>
       </div>
 
-      {/* Template selector */}
+      {/* No sender warning */}
+      {senders.length === 0 && (
+        <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
+          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+          <p className="text-gray-700 dark:text-gray-300">
+            Gmailアカウントが未接続です。一括送信には
+            <Link href="/settings" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+              設定ページ
+            </Link>
+            からGmail接続が必要です。
+          </p>
+        </div>
+      )}
+
+      {/* Test mode badge */}
+      {testMode && (
+        <div className="mt-5 rounded-xl border border-(--color-border) bg-(--color-primary-light) px-4 py-3 text-[13px] font-medium text-(--color-primary)">
+          テストモード中: すべてのメールはテストアドレス宛に送信されます
+        </div>
+      )}
+
+      {/* Template / sender selector */}
       <div className="mt-5 flex flex-wrap items-end gap-3">
         <div className="min-w-[280px] flex-1">
           <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
@@ -302,7 +393,68 @@ export default function BulkSendPage() {
             <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
           </div>
         </div>
+
+        {senders.length > 0 && (
+          <div className="min-w-[240px]">
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              送信元アカウント
+            </label>
+            <div className="relative">
+              <select
+                value={selectedSenderId ?? ""}
+                onChange={(e) => setSelectedSenderId(Number(e.target.value))}
+                className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              >
+                {senders.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.display_name ? `${s.display_name} (${s.email})` : s.email}
+                    {s.auth_status !== "connected" ? " [要再認証]" : ""}
+                  </option>
+                ))}
+              </select>
+              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Attachment picker */}
+      {attachmentsLib.length > 0 && (
+        <div className="mt-3">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+            添付資料（全宛先に添付されます）
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {attachmentsLib.map((a) => {
+              const selected = selectedAttachmentIds.has(a.id);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  disabled={isSending}
+                  onClick={() => {
+                    setSelectedAttachmentIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(a.id)) next.delete(a.id);
+                      else next.add(a.id);
+                      return next;
+                    });
+                  }}
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                    selected
+                      ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
+                      : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                  }`}
+                >
+                  {selected ? <Check size={12} weight="bold" /> : <Paperclip size={12} />}
+                  {a.filename}
+                  <span className="opacity-60">{formatSize(a.size_bytes)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Main grid */}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_380px]">
@@ -354,15 +506,16 @@ export default function BulkSendPage() {
                     <th className="min-w-[160px] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">企業名</th>
                     <th className="min-w-[120px] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">担当者名</th>
                     <th className="min-w-[200px] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">メールアドレス</th>
+                    <th className="w-[44px] px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">状態</th>
                     <th className="w-[40px] px-2 py-2.5" />
                     <th className="w-[36px] px-2 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {recipients.map((r, i) => (
+                    <Fragment key={r.id}>
                     <tr
-                      key={r.id}
-                      className={`border-b border-(--color-border) last:border-0 transition-colors ${r.checked ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"} ${sentIds.has(r.id) ? "opacity-50" : ""}`}
+                      className={`border-b border-(--color-border) last:border-0 transition-colors ${r.checked ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"} ${rowStatus[r.id]?.state === "sent" ? "opacity-50" : ""}`}
                     >
                       <td className="px-3 text-center">
                         <input
@@ -400,6 +553,17 @@ export default function BulkSendPage() {
                           placeholder="email@example.com"
                         />
                       </td>
+                      <td className="px-2 text-center">
+                        {rowStatus[r.id]?.state === "sending" && (
+                          <SpinnerGap size={15} className="inline-block animate-spin text-(--color-primary)" />
+                        )}
+                        {rowStatus[r.id]?.state === "sent" && (
+                          <Check size={15} weight="bold" className="inline-block" style={{ color: "var(--color-success)" }} />
+                        )}
+                        {rowStatus[r.id]?.state === "failed" && (
+                          <X size={15} weight="bold" className="inline-block" style={{ color: "var(--color-danger)" }} />
+                        )}
+                      </td>
                       <td className="px-1 text-center">
                         <button
                           type="button"
@@ -424,6 +588,14 @@ export default function BulkSendPage() {
                         </button>
                       </td>
                     </tr>
+                    {rowStatus[r.id]?.state === "failed" && rowStatus[r.id]?.error && (
+                      <tr className="border-b border-(--color-border) last:border-0 bg-(--color-danger-light)">
+                        <td colSpan={8} className="px-4 py-2 text-[12px] text-(--color-danger)">
+                          {rowStatus[r.id].error}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -540,15 +712,15 @@ export default function BulkSendPage() {
           <button
             type="button"
             onClick={handleSendAll}
-            disabled={!selectedProspect || checkedRecipients.length === 0 || sendingIds.size > 0}
+            disabled={!selectedProspect || !selectedSenderId || checkedRecipients.length === 0 || isSending}
             className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {sendingIds.size > 0 ? (
+            {isSending ? (
               <SpinnerGap size={16} className="animate-spin" />
             ) : (
               <PaperPlaneTilt size={16} weight="fill" />
             )}
-            {sendingIds.size > 0 ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
+            {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
           </button>
         </div>
       )}
