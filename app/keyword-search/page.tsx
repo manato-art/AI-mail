@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { AI_SITE_POOL, MAX_COUNT_OPTIONS } from "@/lib/keyword-search-constants";
 import type { Prospect } from "@/lib/types";
+import { Toast } from "@/components/toast";
 
 type Phase = "idle" | "site" | "searching" | "resolving" | "done";
 
@@ -65,12 +66,10 @@ export default function KeywordSearchPage() {
   const cancelRef = useRef(false);
 
   const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showToast(msg: string) {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2500);
+    setToast(null);
+    requestAnimationFrame(() => setToast(msg));
   }
 
   async function toggleSearchMode() {
@@ -90,10 +89,6 @@ export default function KeywordSearchPage() {
       showToast(next === "scrape" ? "スクレイピングモードに切替" : "APIモードに切替");
     } catch { /* ignore */ }
   }
-
-  useEffect(() => {
-    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -453,7 +448,7 @@ export default function KeywordSearchPage() {
               type="button"
               onClick={handleRun}
               disabled={!canRun}
-              className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-all hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              className="btn-shine flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-all hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isBusy ? (
                 <>
@@ -736,11 +731,7 @@ export default function KeywordSearchPage() {
         </div>
       )}
 
-      {toast && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg animate-fade-in md:bottom-6">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
 }

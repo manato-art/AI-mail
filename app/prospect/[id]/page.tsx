@@ -19,6 +19,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import type { AnalysisResult, Prospect, SendStatus } from "@/lib/types";
+import { Toast } from "@/components/toast";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -98,19 +99,11 @@ export default function ProspectPage() {
   const [refusalText, setRefusalText] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showToast(message: string) {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+    setToast(null);
+    requestAnimationFrame(() => setToast(message));
   }
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -635,11 +628,7 @@ export default function ProspectPage() {
         </div>
       </div>
 
-      {toast && (
-        <div className="fixed bottom-20 md:bottom-6 left-1/2 z-20 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg animate-fade-in">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
 }

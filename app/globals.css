@@ -135,9 +135,111 @@ input, textarea, select {
   animation: pulse-ring 2s ease-in-out infinite;
 }
 
+/* Toast — slide in from right, progress bar drain */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  padding: 14px 18px 17px;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.15);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.toast-in {
+  animation: toast-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.toast-out {
+  animation: toast-slide-out 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.toast-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.toast-icon-ok {
+  background: var(--success);
+}
+
+.toast-icon-error {
+  background: var(--danger);
+}
+
+.toast-text {
+  position: relative;
+  z-index: 2;
+}
+
+.toast-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--primary);
+  transform-origin: left;
+  animation: toast-drain linear forwards;
+}
+
+@keyframes toast-slide-in {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Button shine sweep */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-200%) skewX(-18deg);
+  animation: btn-shine-sweep 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes btn-shine-sweep {
+  0% { transform: translateX(-200%) skewX(-18deg); }
+  50%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
-  .animate-pulse-ring {
+  .animate-pulse-ring,
+  .toast-container,
+  .btn-shine::after {
     animation: none;
   }
 }

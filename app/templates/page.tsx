@@ -15,6 +15,7 @@ import {
   FloppyDisk,
 } from "@phosphor-icons/react";
 import type { Attachment, Template, TemplateWithAttachments } from "@/lib/types";
+import { Toast } from "@/components/toast";
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -45,17 +46,11 @@ export default function TemplatesPage() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showToast(msg: string) {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2500);
+    setToast(null);
+    requestAnimationFrame(() => setToast(msg));
   }
-
-  useEffect(() => {
-    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -468,11 +463,7 @@ export default function TemplatesPage() {
         )}
       </div>
 
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg animate-fade-in">
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
 }
