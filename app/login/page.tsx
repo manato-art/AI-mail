@@ -1,29 +1,26 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { LockSimple, SpinnerGap } from "@phosphor-icons/react";
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
-  );
-}
-
-/** オープンリダイレクト防止: 同一サイト内の絶対パスだけを許可する */
-function safeNextPath(raw: string | null): string {
-  if (!raw) return "/";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/";
+/**
+ * ログイン後の戻り先を取り出す。
+ *
+ * useSearchParams() を使うとページ全体がサーバ描画を放棄するため、
+ * JSが読めない状況で画面が真っ白になる（実際に本番で起きた）。
+ * 送信時に一度読めば足りるので、その場で location から取る。
+ */
+function readNextPath(): string {
+  if (typeof window === "undefined") return "/";
+  const raw = new URLSearchParams(window.location.search).get("next");
+  // オープンリダイレクト防止: 同一サイト内の絶対パスだけを許可する
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
   return raw;
 }
 
-function LoginForm() {
+export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const nextPath = safeNextPath(searchParams.get("next"));
-
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -41,11 +38,11 @@ function LoginForm() {
         body: JSON.stringify({ password }),
       });
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setError(data.error || "ログインに失敗しました");
         return;
       }
-      router.replace(nextPath);
+      router.replace(readNextPath());
       router.refresh();
     } catch {
       setError("ログインに失敗しました");

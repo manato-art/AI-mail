@@ -12,14 +12,37 @@ const PUBLIC_PATHS = new Set([
   "/api/webhooks/calendly",
 ]);
 
+/**
+ * 認証を掛けてはいけない経路。
+ *
+ * ここを取りこぼすと画面描画に必要な JS/CSS 自体がログイン画面へ
+ * リダイレクトされ、ログイン画面が真っ白になる（実際に起きた）。
+ * matcher の否定先読みは取りこぼしやすいので、コード側で明示的に判定する。
+ */
+function isPublicAsset(pathname: string): boolean {
+  return (
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    /\.(?:js|css|map|png|jpg|jpeg|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot)$/i.test(pathname)
+  );
+}
+
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // 静的アセットは認証の判定より前に通す
+  if (isPublicAsset(pathname)) {
+    return NextResponse.next();
+  }
+
   // APP_PASSWORD 未設定なら素通し（ローカル開発を止めない）。
   // 本番で未設定だと無防備なので、設定画面に警告を出している。
   if (!isAuthEnabled()) {
     return NextResponse.next();
   }
 
-  const { pathname } = request.nextUrl;
   if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();
   }
@@ -42,5 +65,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const proxyConfig = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.svg$).*)"],
+  matcher: ["/:path*"],
 };
