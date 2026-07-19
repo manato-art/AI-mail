@@ -69,6 +69,7 @@ interface SenderInfo {
   email: string;
   display_name: string;
   auth_status: string;
+  booking_url?: string;
 }
 
 export default function ProspectPage() {
@@ -94,6 +95,8 @@ export default function ProspectPage() {
 
   const [senders, setSenders] = useState<SenderInfo[]>([]);
   const [selectedSenderId, setSelectedSenderId] = useState<number | null>(null);
+  // F14: 仕様書どおり既定OFF（1通目にカレンダーリンクを入れると返信率が下がる）
+  const [includeBookingLink, setIncludeBookingLink] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
   const [hasRefusal, setHasRefusal] = useState(false);
   const [refusalText, setRefusalText] = useState<string | null>(null);
@@ -279,6 +282,7 @@ export default function ProspectPage() {
             senderId: selectedSenderId,
             toEmail: emailsFound[0],
             acknowledgedWarnings,
+            includeBookingLink,
           }),
         });
         return { res, data: await res.json() };
@@ -349,6 +353,7 @@ export default function ProspectPage() {
   const compatStyle = COMPATIBILITY_BG[prospect.compatibility_score] ?? "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-400";
   const currentStatus = (prospect.send_status || "unsent") as SendStatus;
   const canSend = senders.length > 0 && emailsFound.length > 0 && currentStatus === "unsent";
+  const selectedSender = senders.find((s) => s.id === selectedSenderId);
 
   return (
     <div className="animate-fade-in pb-20">
@@ -553,6 +558,25 @@ export default function ProspectPage() {
                     </option>
                   ))}
                 </select>
+
+                {/* F14: 日程調整リンク。1通目には入れない前提なので既定OFF */}
+                <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-[13px] text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={includeBookingLink}
+                    onChange={(e) => setIncludeBookingLink(e.target.checked)}
+                    disabled={!selectedSender?.booking_url}
+                    className="mt-0.5 h-4 w-4 cursor-pointer accent-(--color-primary) disabled:cursor-not-allowed"
+                  />
+                  <span>
+                    日程調整リンクを添える
+                    <span className="mt-0.5 block text-[11px] text-(--color-muted)">
+                      {selectedSender?.booking_url
+                        ? "1通目は入れずに2通目以降で使うのが推奨です"
+                        : "設定ページで日程調整URLを登録すると使えます"}
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
 

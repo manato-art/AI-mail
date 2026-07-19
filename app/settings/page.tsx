@@ -32,6 +32,8 @@ interface SenderInfo {
   display_name: string;
   auth_status: string;
   daily_limit: number;
+  booking_tool: string;
+  booking_url: string;
 }
 
 export default function SettingsPage() {
@@ -66,6 +68,7 @@ function SettingsContent() {
   const [gmailSenders, setGmailSenders] = useState<SenderInfo[]>([]);
   const [connectingGmail, setConnectingGmail] = useState(false);
   const [limitDrafts, setLimitDrafts] = useState<Record<number, string>>({});
+  const [bookingDrafts, setBookingDrafts] = useState<Record<number, string>>({});
 
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -211,6 +214,39 @@ function SettingsContent() {
     }
   }
 
+  async function handleSaveBookingUrl(id: number) {
+    const raw = bookingDrafts[id];
+    if (raw === undefined) return;
+    const url = raw.trim();
+    const current = gmailSenders.find((s) => s.id === id);
+    if (current && current.booking_url === url) return;
+    if (url && !/^https:\/\//i.test(url)) {
+      showToast("日程調整URLは https:// で始まる必要があります");
+      return;
+    }
+    try {
+      const res = await fetch("/api/senders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, booking_url: url, booking_tool: current?.booking_tool ?? "calendly" }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error || "日程調整URLの保存に失敗しました");
+        return;
+      }
+      setGmailSenders((prev) => prev.map((s) => (s.id === id ? { ...s, booking_url: url } : s)));
+      setBookingDrafts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      showToast(url ? "日程調整URLを保存しました" : "日程調整URLを削除しました");
+    } catch {
+      showToast("日程調整URLの保存に失敗しました");
+    }
+  }
+
   async function handleDisconnectSender(id: number) {
     if (!confirm("このアカウントの接続を解除しますか？")) return;
     try {
@@ -275,8 +311,9 @@ function SettingsContent() {
                   {gmailSenders.map((sender) => (
                     <div
                       key={sender.id}
-                      className="flex items-center justify-between rounded-lg border border-(--color-border) px-4 py-3"
+                      className="rounded-lg border border-(--color-border) px-4 py-3"
                     >
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
                           sender.auth_status === "connected"
@@ -318,6 +355,26 @@ function SettingsContent() {
                           <Trash size={14} />
                         </button>
                       </div>
+                    </div>
+
+                    <div className="mt-3 border-t border-(--color-border) pt-3">
+                      <label className="mb-1 block text-[11px] font-medium text-(--color-muted)">
+                        日程調整URL（2通目以降で使用・任意）
+                      </label>
+                      <input
+                        type="url"
+                        value={bookingDrafts[sender.id] ?? sender.booking_url}
+                        onChange={(e) =>
+                          setBookingDrafts((prev) => ({ ...prev, [sender.id]: e.target.value }))
+                        }
+                        onBlur={() => handleSaveBookingUrl(sender.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        placeholder="https://calendly.com/..."
+                        className="h-9 w-full rounded-md border border-(--color-border) bg-(--color-card) px-3 text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                      />
+                    </div>
                     </div>
                   ))}
                 </div>

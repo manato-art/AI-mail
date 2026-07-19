@@ -10,6 +10,7 @@ import {
 } from "@/lib/db";
 import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
+import { applyBookingLink } from "@/lib/booking";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { getSetting } from "@/lib/db";
 import { loadEmailAttachments } from "@/lib/attachments";
@@ -35,6 +36,8 @@ export async function POST(request: NextRequest) {
     attachmentIds?: number[];
     /** F18の警告を画面で確認済み。ブロック指摘はこのフラグでは解除されない */
     acknowledgedWarnings?: boolean;
+    /** F14: 日程調整リンクを本文に添える。仕様書どおり既定はOFF（1通目には入れない） */
+    includeBookingLink?: boolean;
   };
   try {
     body = await request.json();
@@ -73,10 +76,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sender not found" }, { status: 404 });
   }
 
+  // F14: 日程調整リンクはDBを汚さず送信時のみ本文に添える
+  const outgoingBody = body.includeBookingLink
+    ? applyBookingLink(prospect.body, sender.booking_url)
+    : prospect.body;
+
+  if (body.includeBookingLink && !sender.booking_url.trim()) {
+    return NextResponse.json(
+      { error: "日程調整URLが未設定です。設定ページで登録してください" },
+      { status: 400 }
+    );
+  }
+
   const guardResult = runSendGuard({
     toEmail: TEST_MODE ? rawToEmail : toEmail,
     subject: prospect.subject,
-    body: prospect.body,
+    body: outgoingBody,
     senderId,
     prospectId,
   });
@@ -93,7 +108,7 @@ export async function POST(request: NextRequest) {
   if (analysis) {
     const danger = runDangerCheck({
       subject: prospect.subject,
-      body: prospect.body,
+      body: outgoingBody,
       analysis,
       service: getService(prospect.service_id),
       persona: getPersona(prospect.persona_id),
@@ -140,7 +155,7 @@ export async function POST(request: NextRequest) {
       fromName: sender.display_name,
       to: toEmail,
       subject: prospect.subject,
-      body: prospect.body,
+      body: outgoingBody,
       unsubscribeEmail,
       attachments,
     });

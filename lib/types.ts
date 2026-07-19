@@ -136,6 +136,9 @@ export interface QualityCheckResult {
 
 export type SenderAuthStatus = "connected" | "expired" | "revoked";
 
+/** F14: 日程調整ツール。Webhook受信部だけツール別に実装できるよう汎用化 */
+export type BookingTool = "calendly" | "timerex" | "spir" | "google" | "other";
+
 export interface Sender {
   id: number;
   email: string;
@@ -143,6 +146,8 @@ export interface Sender {
   google_refresh_token_encrypted: string;
   auth_status: SenderAuthStatus;
   daily_limit: number;
+  booking_tool: BookingTool;
+  booking_url: string;
   created_at: string;
 }
 

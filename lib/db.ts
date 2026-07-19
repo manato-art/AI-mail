@@ -3,6 +3,7 @@ import path from "path";
 import Database from "better-sqlite3";
 import type {
   Attachment,
+  BookingTool,
   Persona,
   PersonaInput,
   Prospect,
@@ -109,6 +110,8 @@ function createTables(instance: Database.Database): void {
       google_refresh_token_encrypted TEXT NOT NULL,
       auth_status TEXT NOT NULL DEFAULT 'connected',
       daily_limit INTEGER NOT NULL DEFAULT 0,
+      booking_tool TEXT NOT NULL DEFAULT 'calendly',
+      booking_url TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
@@ -233,18 +236,24 @@ function seedServices(instance: Database.Database): void {
     });
 }
 
+function addColumnIfMissing(
+  instance: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const cols = instance.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (cols.some((c) => c.name === column)) return;
+  instance.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
 function migrateSchema(instance: Database.Database): void {
-  const cols = instance.prepare("PRAGMA table_info(prospects)").all() as { name: string }[];
-  const colNames = new Set(cols.map((c) => c.name));
-  if (!colNames.has("send_status")) {
-    instance.exec("ALTER TABLE prospects ADD COLUMN send_status TEXT NOT NULL DEFAULT 'unsent'");
-  }
-  if (!colNames.has("has_refusal")) {
-    instance.exec("ALTER TABLE prospects ADD COLUMN has_refusal INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!colNames.has("refusal_text")) {
-    instance.exec("ALTER TABLE prospects ADD COLUMN refusal_text TEXT");
-  }
+  addColumnIfMissing(instance, "prospects", "send_status", "TEXT NOT NULL DEFAULT 'unsent'");
+  addColumnIfMissing(instance, "prospects", "has_refusal", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(instance, "prospects", "refusal_text", "TEXT");
+  // F14: 日程調整リンク
+  addColumnIfMissing(instance, "senders", "booking_tool", "TEXT NOT NULL DEFAULT 'calendly'");
+  addColumnIfMissing(instance, "senders", "booking_url", "TEXT NOT NULL DEFAULT ''");
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -731,6 +740,16 @@ export function updateSenderDailyLimit(id: number, dailyLimit: number): Sender |
   getDb()
     .prepare("UPDATE senders SET daily_limit = ? WHERE id = ?")
     .run(dailyLimit, id);
+  return getSender(id);
+}
+
+export function updateSenderBooking(
+  id: number,
+  data: { booking_tool: BookingTool; booking_url: string }
+): Sender | undefined {
+  getDb()
+    .prepare("UPDATE senders SET booking_tool = ?, booking_url = ? WHERE id = ?")
+    .run(data.booking_tool, data.booking_url, id);
   return getSender(id);
 }
 
