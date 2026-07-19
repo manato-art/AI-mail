@@ -21,6 +21,53 @@ const LINK_CATEGORIES: LinkCategory[] = [
 
 const CONTACT_KEYWORDS = ["お問い合わせ", "contact"];
 
+/**
+ * F1 採用シグナル検出。相手企業自身のHPを見る行為なので媒体規約と無関係。
+ * 採用ページの有無は「いま採用に動いているか」の判断材料になる。
+ */
+const RECRUIT_KEYWORDS = [
+  "採用",
+  "求人",
+  "インターン",
+  "新卒",
+  "中途",
+  "recruit",
+  "career",
+  "join-us",
+  "hiring",
+  "intern",
+];
+
+/** クロール済みHTMLから採用ページのURLを1つ返す。無ければ null */
+export function detectRecruitPageUrl(html: string, baseUrl: string): string | null {
+  const $ = cheerio.load(html);
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return null;
+  }
+
+  for (const el of $("a[href]").toArray()) {
+    const href = $(el).attr("href");
+    if (!href) continue;
+
+    const label = `${$(el).text()} ${href}`.toLowerCase();
+    if (!RECRUIT_KEYWORDS.some((kw) => label.includes(kw))) continue;
+
+    try {
+      const resolved = new URL(href, base);
+      // 外部の求人媒体（wantedly等）ではなく自社サイト内のページだけを対象にする
+      if (resolved.hostname !== base.hostname) continue;
+      if (resolved.protocol !== "http:" && resolved.protocol !== "https:") continue;
+      return resolved.toString();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 const REFUSAL_KEYWORDS = [
   "営業お断り",
   "営業メールお断り",
@@ -293,7 +340,7 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
   const rootFetch = await fetchPage(url);
 
   if (!rootFetch) {
-    return { url, pages: [], contactEmails: [], formUrl: null };
+    return { url, pages: [], contactEmails: [], formUrl: null, recruitPageUrl: null };
   }
 
   const rootPage: CrawlPage = {
@@ -310,6 +357,9 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
   if (rootFormUrl) {
     formUrl = rootFormUrl;
   }
+
+  // F1: 採用シグナル。トップページのリンクから採用ページを探す
+  const recruitPageUrl = detectRecruitPageUrl(rootFetch.html, rootFetch.finalUrl);
 
   const priorityLinks = findPriorityLinks(rootFetch.html, rootFetch.finalUrl).filter(
     (link) => link !== rootFetch.finalUrl
@@ -344,5 +394,6 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
     pages,
     contactEmails: Array.from(emailSet),
     formUrl,
+    recruitPageUrl,
   };
 }

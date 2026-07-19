@@ -140,6 +140,8 @@ export interface CrawlResult {
   pages: CrawlPage[];
   contactEmails: string[];
   formUrl: string | null;
+  /** F1: 採用・インターン・recruit ページのURL（自社サイト内で見つかった場合） */
+  recruitPageUrl: string | null;
 }
 
 export interface CrawlPage {

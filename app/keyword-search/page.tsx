@@ -34,6 +34,8 @@ interface ResultRow {
   email: string | null;
   formUrl: string | null;
   personName: string | null;
+  /** F1: 採用ページのURL（検出できた場合） */
+  recruitPageUrl: string | null;
   checked: boolean;
 }
 
@@ -180,6 +182,7 @@ export default function KeywordSearchPage() {
                 email: data.email ?? null,
                 formUrl: data.formUrl ?? null,
                 personName: data.personName ?? null,
+                recruitPageUrl: data.recruitPageUrl ?? null,
                 checked: autoUncheck ? false : r.checked,
               }
             : r
@@ -245,6 +248,7 @@ export default function KeywordSearchPage() {
         email: null,
         formUrl: null,
         personName: null,
+        recruitPageUrl: null,
         checked: !sentNames.has(c.name),
       }));
       setRows(initialRows);
@@ -332,6 +336,7 @@ export default function KeywordSearchPage() {
             email: r.email,
             personName: r.personName,
             emailSourceUrl: r.homepage,
+            recruitPageUrl: r.recruitPageUrl,
           })),
         }),
       });
@@ -706,6 +711,18 @@ export default function KeywordSearchPage() {
                               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--color-muted) transition-colors hover:bg-(--color-primary-light) hover:text-(--color-primary)"
                             >
                               <Globe size={14} />
+                            </a>
+                          )}
+                          {/* F1 採用シグナル: 採用ページがある＝いま採用に動いている可能性が高い */}
+                          {r.recruitPageUrl && (
+                            <a
+                              href={r.recruitPageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="採用ページあり（採用活動中の可能性）"
+                              className="inline-flex h-7 items-center rounded-md bg-(--color-success-light) px-1.5 text-[10px] font-semibold text-(--color-success) transition-opacity hover:opacity-80"
+                            >
+                              採用中
                             </a>
                           )}
                           {r.formUrl && (

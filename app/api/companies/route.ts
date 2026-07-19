@@ -17,6 +17,8 @@ interface IncomingRow {
   email?: string | null;
   personName?: string | null;
   emailSourceUrl?: string | null;
+  recruitPageUrl?: string | null;
+  lpUrl?: string | null;
 }
 
 export function GET() {
@@ -63,6 +65,8 @@ export async function POST(request: NextRequest) {
       source,
       source_detail: sourceDetail,
       hp_url: typeof row.hpUrl === "string" ? row.hpUrl : null,
+      recruit_page_url: typeof row.recruitPageUrl === "string" ? row.recruitPageUrl : null,
+      lp_url: typeof row.lpUrl === "string" ? row.lpUrl : null,
     });
     if (!beforeCompanies.has(company.id)) {
       beforeCompanies.add(company.id);
@@ -79,6 +83,7 @@ export async function POST(request: NextRequest) {
       email,
       email_source_url: typeof row.emailSourceUrl === "string" ? row.emailSourceUrl : row.hpUrl ?? null,
       source,
+      lp_url: typeof row.lpUrl === "string" ? row.lpUrl : null,
     });
     if (!beforeContacts.has(contact.id)) {
       beforeContacts.add(contact.id);

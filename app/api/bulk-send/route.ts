@@ -6,6 +6,7 @@ import {
   getAllServices,
   getAllPersonas,
   getTemplate,
+  getContactByEmail,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -115,12 +116,16 @@ export async function POST(request: NextRequest) {
     hook: "",
   };
 
+  // F9: 個社LPは宛先ごとに違う。登録済み連絡先のLPを優先し、無ければ商材共通のLPを使う
+  const registeredContact = getContactByEmail(rawToEmail);
+  const recipientLpUrl = registeredContact?.lp_url || service?.lp_url || undefined;
+
   const variables = {
     company_name: company,
     person_name: typeof body.person === "string" ? body.person.trim() : undefined,
     sender_name: persona?.name,
     service_name: service?.name,
-    lp_url: service?.lp_url ?? undefined,
+    lp_url: recipientLpUrl,
     booking_url: sender.booking_url,
   };
 

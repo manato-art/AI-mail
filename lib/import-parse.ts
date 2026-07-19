@@ -17,10 +17,11 @@ export const MAX_IMPORT_ROWS = 5000;
 
 /** ヘッダー行らしさの判定に使う語。列マッピングの初期値決めにも使う */
 const HEADER_HINTS = [
-  "会社", "企業", "法人", "社名", "company",
-  "氏名", "名前", "担当", "person", "name",
-  "メール", "mail", "email", "アドレス",
-  "部署", "役職", "department", "title",
+  "会社", "企業", "法人", "社名", "company", "組織",
+  "氏名", "名前", "担当", "person", "name", "姓", "名",
+  "メール", "mail", "email", "アドレス", "e-mail",
+  "部署", "役職", "department", "title", "肩書",
+  "電話", "tel", "phone", "住所", "address", "url",
 ];
 
 function decodeCsvBuffer(buffer: Buffer): string {
@@ -133,7 +134,7 @@ export async function parseImportFile(
   return { headers: [], rows: table.slice(0, MAX_IMPORT_ROWS) };
 }
 
-export type ColumnKind = "company" | "person" | "email" | "ignore";
+export type ColumnKind = "company" | "person" | "email" | "lp_url" | "ignore";
 
 /** 列名から用途を推測する。ヘッダーが無い場合は中身から推測する */
 export function guessColumnKinds(headers: string[], rows: string[][]): ColumnKind[] {
@@ -144,27 +145,38 @@ export function guessColumnKinds(headers: string[], rows: string[][]): ColumnKin
     const header = (headers[i] ?? "").toLowerCase();
     const samples = rows.slice(0, 20).map((r) => r[i] ?? "");
 
-    if (header.includes("メール") || header.includes("mail") || header.includes("アドレス")) {
+    // 「メールアドレス」「Email」「e-mail」等。名刺アプリのエクスポートは表記が揺れる
+    if (/メール|mail|アドレス/.test(header)) {
       kinds.push("email");
     } else if (samples.some((s) => s.includes("@"))) {
       kinds.push("email");
-    } else if (/会社|企業|法人|社名|company|組織/.test(header)) {
+    } else if (/lp|ランディング/.test(header)) {
+      kinds.push("lp_url");
+    } else if (/会社|企業|法人|社名|company|組織|団体/.test(header)) {
       kinds.push("company");
-    } else if (/氏名|名前|担当|person|name/.test(header)) {
+    } else if (/部署|部門|課|役職|肩書|department|division|title|position/.test(header)) {
+      // 「部署名」「役職名」を担当者名と取り違えないよう、人名判定より先に落とす
+      kinds.push("ignore");
+    } else if (/氏名|名前|担当|person|フルネーム|姓|first.?name|last.?name|\bname\b/.test(header)) {
       kinds.push("person");
     } else {
+      // 部署・役職・電話・住所などは取り込まない（宛先の構成に使わない）
       kinds.push("ignore");
     }
   }
 
-  // ヘッダーが無く推測もできない場合、メール列以外を左から会社名・担当者名に割り当てる
-  if (!kinds.includes("company")) {
-    const idx = kinds.findIndex((k) => k === "ignore");
-    if (idx >= 0) kinds[idx] = "company";
-  }
-  if (!kinds.includes("person")) {
-    const idx = kinds.findIndex((k) => k === "ignore");
-    if (idx >= 0) kinds[idx] = "person";
+  // ヘッダーが無いときだけ、メール列以外を左から会社名・担当者名に割り当てる。
+  // ヘッダーがある場合に埋めてしまうと、「部署名」等を意図的に ignore にした判断を
+  // 上書きして担当者名として取り込んでしまう
+  if (headers.length === 0) {
+    if (!kinds.includes("company")) {
+      const idx = kinds.findIndex((k) => k === "ignore");
+      if (idx >= 0) kinds[idx] = "company";
+    }
+    if (!kinds.includes("person")) {
+      const idx = kinds.findIndex((k) => k === "ignore");
+      if (idx >= 0) kinds[idx] = "person";
+    }
   }
 
   return kinds;

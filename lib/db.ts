@@ -626,6 +626,24 @@ export function deleteAllProspects(): void {
   getDb().prepare("DELETE FROM prospects").run();
 }
 
+/**
+ * F14: 予約完了Webhookから宛先メールで prospect を引く。
+ * emails_found_json はJSON配列なので、送信ログ側の宛先も併せて照合する。
+ */
+export function getProspectsByEmail(email: string): Prospect[] {
+  const key = normalizeEmailKey(email);
+  return getDb()
+    .prepare(
+      `SELECT p.* FROM prospects p
+       WHERE EXISTS (
+         SELECT 1 FROM send_log s
+         WHERE s.prospect_id = p.id AND lower(trim(s.to_email)) = ?
+       )
+       OR lower(p.emails_found_json) LIKE ?`
+    )
+    .all(key, `%"${key}"%`) as Prospect[];
+}
+
 export function updateProspectStatus(id: number, status: string): Prospect | undefined {
   const instance = getDb();
   instance.prepare("UPDATE prospects SET send_status = ? WHERE id = ?").run(status, id);

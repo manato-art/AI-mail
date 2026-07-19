@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
         email: null,
         formUrl: null,
         personName: null,
+        recruitPageUrl: null,
         crawlFailed: true,
       });
     }
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
       email: crawlResult.contactEmails[0] ?? null,
       formUrl: crawlResult.formUrl,
       personName,
+      recruitPageUrl: crawlResult.recruitPageUrl,
       crawlFailed: false,
     });
   } catch (error) {

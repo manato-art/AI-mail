@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, isAuthEnabled, verifySessionToken } from "@/lib/auth";
 
-/** ログイン自体に必要な経路。ここを保護すると入れなくなる */
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/login"]);
+/**
+ * ログイン自体に必要な経路と、外部サービスが叩く経路。
+ * Webhook はパスワードを持てないので除外するが、署名検証で守っている。
+ */
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/api/auth/login",
+  "/api/webhooks/calendly",
+]);
 
 export async function proxy(request: NextRequest) {
   // APP_PASSWORD 未設定なら素通し（ローカル開発を止めない）。

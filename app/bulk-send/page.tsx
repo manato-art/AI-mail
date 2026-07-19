@@ -286,6 +286,7 @@ export default function BulkSendPage() {
     }
     const companyIdx = columnKinds.indexOf("company");
     const personIdx = columnKinds.indexOf("person");
+    const lpIdx = columnKinds.indexOf("lp_url");
 
     const seen = new Set(recipients.map((r) => r.email.trim().toLowerCase()));
     const added: Recipient[] = [];
@@ -309,6 +310,27 @@ export default function BulkSendPage() {
     if (added.length === 0) {
       setImportError("追加できる宛先がありませんでした（重複またはメールアドレス不正）");
       return;
+    }
+
+    // F9: 個社LPが指定されていれば企業リストに保存し、送信時に宛先ごとのLPとして使う
+    if (lpIdx >= 0) {
+      const withLp = sheet.rows
+        .filter((row) => (row[lpIdx] ?? "").trim() && (row[emailIdx] ?? "").includes("@"))
+        .map((row) => ({
+          name: companyIdx >= 0 ? (row[companyIdx] ?? "").trim() : "",
+          email: (row[emailIdx] ?? "").trim(),
+          personName: personIdx >= 0 ? (row[personIdx] ?? "").trim() : "",
+          lpUrl: (row[lpIdx] ?? "").trim(),
+        }))
+        .filter((r) => r.name);
+
+      if (withLp.length > 0) {
+        fetch("/api/companies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "csv_import", sourceDetail: "列マッピング取込", rows: withLp }),
+        }).catch(() => showToast("個社LPの保存に失敗しました"));
+      }
     }
 
     setRecipients((prev) => [...prev, ...added]);
@@ -1069,6 +1091,7 @@ export default function BulkSendPage() {
                                 <option value="company">企業名</option>
                                 <option value="person">担当者名</option>
                                 <option value="email">メールアドレス</option>
+                                <option value="lp_url">個社LPのURL</option>
                                 <option value="ignore">使わない</option>
                               </select>
                               {sheet.headers[i] && (
