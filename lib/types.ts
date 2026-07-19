@@ -195,7 +195,69 @@ export interface Company {
   lp_url: string | null;
   /** F1: 採用・インターン・recruit ページのURL（検出できた場合） */
   recruit_page_url: string | null;
+  /** 裏処理（クロール→連絡先→相性スコア）の進捗 */
+  enrichment_status: EnrichmentStatus;
+  enriched_at: string | null;
+  enrichment_error: string;
+  /** F3: 相性スコア。fit_service_id とセットでないと古い商材の判定が混ざる */
+  fit_score: FitScore;
+  fit_reason: string;
+  fit_service_id: number | null;
+  business_summary: string;
   created_at: string;
+}
+
+/**
+ * excluded = 裏処理でHPを解決した結果、送信済み・抑止対象・既登録と判明した企業。
+ * 収集時点では企業名しか分からずドメイン照合ができないため、この段階で落とす。
+ * failed（処理エラー）と区別しないと、再試行すべきものと区別できなくなる。
+ */
+export type EnrichmentStatus = "pending" | "done" | "failed" | "excluded";
+
+/** 空文字は「未判定」。判定済みなら high / medium / low */
+export type FitScore = "" | "high" | "medium" | "low";
+
+/**
+ * 自動停止の種類。
+ * blocked  = 検索結果そのものが返らない（ブロック / HTML構造変更の疑い）→ 要調査
+ * exhausted = 検索結果は返るが新規企業が出ない（キーワードの掘り尽くし）→ キーワード追加
+ * この2つを混ぜると、単なる枯渇を障害として報告し続けることになる。
+ */
+export type CollectionPauseKind = "" | "blocked" | "exhausted" | "manual";
+
+/** F1: 常時収集のソース（キーワード1本 = 1ソース） */
+export interface CollectionSource {
+  id: number;
+  keyword: string;
+  /** 検索対象サイト。空なら実行時にAIが判断する */
+  site: string;
+  is_active: number;
+  /** 差分取得のカーソル。次回はこのページから取る */
+  next_page: number;
+  last_run_at: string | null;
+  consecutive_no_result_runs: number;
+  consecutive_no_new_runs: number;
+  paused_reason: string;
+  paused_kind: CollectionPauseKind;
+  created_at: string;
+}
+
+export type CollectionRunStatus = "success" | "no_new" | "no_result" | "error";
+
+/** 実行1回分の記録。失敗検知の判断根拠であり、消さない */
+export interface CollectionRun {
+  id: number;
+  source_id: number;
+  status: CollectionRunStatus;
+  page_from: number;
+  found_count: number;
+  new_count: number;
+  skipped_count: number;
+  /** 重複排除の内訳をJSONで持つ（どの照合で落ちたかを後から説明できるように） */
+  skip_breakdown: string;
+  error: string;
+  started_at: string;
+  finished_at: string | null;
 }
 
 /** F1/F2: 送信可能な連絡先 */

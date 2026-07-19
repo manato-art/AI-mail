@@ -17,6 +17,24 @@ export interface SearchResultItem {
   displayLink: string;
 }
 
+/**
+ * 上流から「叩き過ぎ・一時的に拒否」を示された状態。
+ * 常時収集（lib/collection.ts）はこれを受けたら即座にそのソースを止める。
+ * 普通のエラーと同じ Error にしてしまうと、文言マッチでしか判別できず取りこぼす。
+ */
+export class SearchBlockedError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SearchBlockedError";
+    this.status = status;
+  }
+}
+
+/** 叩き過ぎ・拒否とみなすHTTPステータス */
+export const BLOCKED_STATUSES = new Set([403, 429, 503]);
+
 export async function webSearch(
   apiKey: string,
   query: string,
@@ -44,7 +62,10 @@ export async function webSearch(
     console.error("Serper API error:", res.status, body.slice(0, 500));
 
     if (res.status === 429) {
-      throw new Error("検索APIの利用上限に達しました");
+      throw new SearchBlockedError("検索APIの利用上限に達しました", res.status);
+    }
+    if (res.status === 503) {
+      throw new SearchBlockedError("検索APIが一時的に利用できません", res.status);
     }
     if (res.status === 401 || res.status === 403) {
       throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");

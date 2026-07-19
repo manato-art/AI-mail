@@ -1,40 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSetting } from "@/lib/db";
-import { extractContactName, webSearch } from "@/lib/keyword-search";
-import { scrapeSearch } from "@/lib/keyword-search-scrape";
-import { crawlWebsite } from "@/lib/crawl";
-import { validateUrl } from "@/lib/ssrf";
-
-const EXCLUDED_DOMAINS = [
-  "wantedly.com",
-  "green-japan.com",
-  "en-gage.net",
-  "prtimes.jp",
-  "facebook.com",
-  "instagram.com",
-  "x.com",
-  "twitter.com",
-  "linkedin.com",
-  "youtube.com",
-  "wikipedia.org",
-  "indeed.com",
-  "note.com",
-  "tiktok.com",
-  "ameblo.jp",
-  "hatena.ne.jp",
-  "openwork.jp",
-  "vorkers.com",
-  "rikunabi.com",
-  "mynavi.jp",
-];
-
-function isExcludedDomain(displayLink: string, sourceSite: string): boolean {
-  const domain = displayLink.toLowerCase().replace(/^www\./, "");
-  if (sourceSite && (domain === sourceSite || domain.endsWith(`.${sourceSite}`))) {
-    return true;
-  }
-  return EXCLUDED_DOMAINS.some((ex) => domain === ex || domain.endsWith(`.${ex}`));
-}
+import { extractContactName } from "@/lib/keyword-search";
+import { resolveCompanyHomepage } from "@/lib/company-resolve";
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,48 +14,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "企業名を指定してください" }, { status: 400 });
     }
 
-    const mode = getSetting("search_mode") || "api";
-    let items;
-
-    if (mode === "scrape") {
-      items = await scrapeSearch(`${companyName} 公式サイト`);
-    } else {
-      const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
-      if (!apiKey) {
-        return NextResponse.json(
-          { error: "検索APIが未設定です。設定ページからAPIキーを登録するか、スクレイピングモードに切り替えてください" },
-          { status: 400 }
-        );
-      }
-      items = await webSearch(apiKey, `${companyName} 公式サイト`);
-    }
-
-    const candidate = items.find((item) => item.link && !isExcludedDomain(item.displayLink, sourceSite));
-
-    if (!candidate) {
+    const resolved = await resolveCompanyHomepage(companyName, sourceSite);
+    if (!resolved) {
       return NextResponse.json({ found: false });
     }
 
-    let origin: string;
-    try {
-      origin = new URL(candidate.link).origin;
-    } catch {
-      return NextResponse.json({ found: false });
-    }
-
-    const validated = validateUrl(origin);
-    if (!validated.valid) {
-      return NextResponse.json({ found: false });
-    }
-
-    const crawlResult = await crawlWebsite(validated.normalized);
-    const domain = new URL(validated.normalized).hostname;
-
-    if (crawlResult.pages.length === 0) {
+    if (resolved.crawl.pages.length === 0) {
       return NextResponse.json({
         found: true,
-        homepage: validated.normalized,
-        domain,
+        homepage: resolved.homepage,
+        domain: resolved.domain,
         email: null,
         formUrl: null,
         personName: null,
@@ -98,16 +32,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const personName = await extractContactName(companyName, crawlResult.pages);
+    const personName = await extractContactName(companyName, resolved.crawl.pages);
 
     return NextResponse.json({
       found: true,
-      homepage: validated.normalized,
-      domain,
-      email: crawlResult.contactEmails[0] ?? null,
-      formUrl: crawlResult.formUrl,
+      homepage: resolved.homepage,
+      domain: resolved.domain,
+      email: resolved.crawl.contactEmails[0] ?? null,
+      formUrl: resolved.crawl.formUrl,
       personName,
-      recruitPageUrl: crawlResult.recruitPageUrl,
+      recruitPageUrl: resolved.crawl.recruitPageUrl,
       crawlFailed: false,
     });
   } catch (error) {

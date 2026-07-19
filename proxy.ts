@@ -10,6 +10,8 @@ const PUBLIC_PATHS = new Set([
   "/login",
   "/api/auth/login",
   "/api/webhooks/calendly",
+  // 外部cronはログインCookieを持てない。CRON_SECRET で route 側が検証する
+  "/api/collection/cron",
 ]);
 
 /**

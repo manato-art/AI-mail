@@ -18,6 +18,7 @@ import {
   BookmarkSimple,
   DotsThreeOutline,
   Prohibit,
+  Stack,
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import logoIcon from "./icon.png";
@@ -32,6 +33,7 @@ const NAV_ITEMS: {
   { href: "/generate", label: "生成", Icon: PaperPlaneTilt },
   { href: "/bulk-send", label: "一括送信", Icon: PaperPlaneRight },
   { href: "/history", label: "履歴", Icon: Clock },
+  { href: "/collection", label: "企業リスト在庫", Icon: Stack },
   { href: "/keyword-search", label: "キーワード検索", Icon: MagnifyingGlass },
   { href: "/templates", label: "テンプレート", Icon: BookmarkSimple },
   { href: "/services", label: "サービス", Icon: Briefcase },

@@ -4,9 +4,14 @@ import Database from "better-sqlite3";
 import type {
   Attachment,
   BookingTool,
+  CollectionPauseKind,
+  CollectionRun,
+  CollectionRunStatus,
+  CollectionSource,
   Company,
   ComposeMode,
   Contact,
+  FitScore,
   Persona,
   PersonaInput,
   Prospect,
@@ -162,6 +167,38 @@ function createTables(instance: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       UNIQUE(target, target_type)
     );
+
+    CREATE TABLE IF NOT EXISTS collection_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      keyword TEXT NOT NULL,
+      site TEXT NOT NULL DEFAULT '',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      next_page INTEGER NOT NULL DEFAULT 0,
+      last_run_at TEXT,
+      consecutive_no_result_runs INTEGER NOT NULL DEFAULT 0,
+      consecutive_no_new_runs INTEGER NOT NULL DEFAULT 0,
+      paused_reason TEXT NOT NULL DEFAULT '',
+      paused_kind TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(keyword, site)
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id INTEGER NOT NULL REFERENCES collection_sources(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      page_from INTEGER NOT NULL DEFAULT 0,
+      found_count INTEGER NOT NULL DEFAULT 0,
+      new_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      skip_breakdown TEXT NOT NULL DEFAULT '',
+      error TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      finished_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collection_runs_source
+      ON collection_runs(source_id, started_at DESC);
   `);
 }
 
@@ -289,6 +326,17 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "templates", "allow_attachments", "INTEGER NOT NULL DEFAULT 0");
   // F1: 採用シグナル検出
   addColumnIfMissing(instance, "companies", "recruit_page_url", "TEXT");
+
+  // 収集した企業を「送れる状態」にするまでの裏処理（F1: クロール→連絡先→相性スコア）の進捗。
+  // pending のまま溜まっている件数が、そのまま在庫の目詰まりを表す。
+  addColumnIfMissing(instance, "companies", "enrichment_status", "TEXT NOT NULL DEFAULT 'pending'");
+  addColumnIfMissing(instance, "companies", "enriched_at", "TEXT");
+  addColumnIfMissing(instance, "companies", "enrichment_error", "TEXT NOT NULL DEFAULT ''");
+  // F3 相性スコア。どの商材に対するスコアかを持たないと、商材を変えた後に古い判定が残る
+  addColumnIfMissing(instance, "companies", "fit_score", "TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(instance, "companies", "fit_reason", "TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(instance, "companies", "fit_service_id", "INTEGER");
+  addColumnIfMissing(instance, "companies", "business_summary", "TEXT NOT NULL DEFAULT ''");
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -1101,4 +1149,392 @@ export function isEmailSuppressed(email: string): Suppression | null {
 export function deleteSuppression(id: number): boolean {
   const result = getDb().prepare("DELETE FROM suppressions WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+// --- Collection（F1: 常時収集して在庫として持つ） ---
+
+/**
+ * 収集ジョブの多重起動を防ぐロック。
+ * アプリ内スケジューラと外部cronの両方から起動されうるため、
+ * 「読んでから書く」ではなく1文のUPSERTで原子的に取る。
+ * TTLを持たせてあるので、途中でプロセスが落ちてもロックは自然に外れる。
+ */
+export function tryAcquireJobLock(key: string, ttlMinutes: number): boolean {
+  // datetime() は不正な修飾子に NULL を返す。そのまま INSERT すると
+  // NOT NULL 制約で落ち、原因の分かりにくいエラーになる
+  if (!Number.isFinite(ttlMinutes) || ttlMinutes < 1) {
+    throw new Error(`ロックのTTLが不正です: ${ttlMinutes}`);
+  }
+
+  const result = getDb()
+    .prepare(
+      `INSERT INTO settings (key, value)
+       VALUES (@key, datetime('now','localtime', @ttl))
+       ON CONFLICT(key) DO UPDATE SET value = datetime('now','localtime', @ttl)
+       WHERE settings.value <= datetime('now','localtime')`
+    )
+    .run({ key, ttl: `+${ttlMinutes} minutes` });
+  return result.changes > 0;
+}
+
+export function releaseJobLock(key: string): void {
+  getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
+}
+
+/** 実行中かどうかの読み取り専用チェック。実際の排他は tryAcquireJobLock が行う */
+export function isJobLocked(key: string): boolean {
+  const row = getDb()
+    .prepare(
+      "SELECT value FROM settings WHERE key = ? AND value > datetime('now','localtime')"
+    )
+    .get(key) as { value: string } | undefined;
+  return !!row;
+}
+
+/** 前回実行から指定時間が経過したか。再起動でタイマーが巻き戻っても二重実行しない */
+export function hasIntervalElapsed(key: string, hours: number): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT value FROM settings
+       WHERE key = @key AND value > datetime('now','localtime', @ago)`
+    )
+    .get({ key, ago: `-${hours} hours` }) as { value: string } | undefined;
+  return !row;
+}
+
+/** メールアドレスからドメイン部を取り出すSQL片。LIKE を使うとドメイン中の % で誤爆する */
+const EMAIL_DOMAIN_SQL = "lower(trim(substr(to_email, instr(to_email, '@') + 1)))";
+
+export function getAllCollectionSources(): CollectionSource[] {
+  return getDb()
+    .prepare("SELECT * FROM collection_sources ORDER BY created_at DESC, id DESC")
+    .all() as CollectionSource[];
+}
+
+/** 実行対象。停止中（paused_kind が空でない）は自動実行から外す */
+export function getRunnableCollectionSources(): CollectionSource[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM collection_sources
+       WHERE is_active = 1 AND paused_kind = ''
+       ORDER BY COALESCE(last_run_at, '') ASC, id ASC`
+    )
+    .all() as CollectionSource[];
+}
+
+export function getCollectionSource(id: number): CollectionSource | undefined {
+  return getDb()
+    .prepare("SELECT * FROM collection_sources WHERE id = ?")
+    .get(id) as CollectionSource | undefined;
+}
+
+export function createCollectionSource(keyword: string, site: string): CollectionSource {
+  const instance = getDb();
+  instance
+    .prepare(
+      "INSERT OR IGNORE INTO collection_sources (keyword, site) VALUES (@keyword, @site)"
+    )
+    .run({ keyword, site });
+  return instance
+    .prepare("SELECT * FROM collection_sources WHERE keyword = ? AND site = ?")
+    .get(keyword, site) as CollectionSource;
+}
+
+export function deleteCollectionSource(id: number): boolean {
+  return getDb().prepare("DELETE FROM collection_sources WHERE id = ?").run(id).changes > 0;
+}
+
+export function setCollectionSourceActive(id: number, isActive: boolean): void {
+  getDb()
+    .prepare("UPDATE collection_sources SET is_active = ? WHERE id = ?")
+    .run(isActive ? 1 : 0, id);
+}
+
+/** 実行時にAIが検索元サイトを決めた場合、次回以降そのサイトを使い回す */
+export function setCollectionSourceSite(id: number, site: string): void {
+  getDb().prepare("UPDATE collection_sources SET site = ? WHERE id = ?").run(site, id);
+}
+
+export interface CollectionCursorUpdate {
+  nextPage: number;
+  consecutiveNoResultRuns: number;
+  consecutiveNoNewRuns: number;
+}
+
+export function updateCollectionCursor(id: number, update: CollectionCursorUpdate): void {
+  getDb()
+    .prepare(
+      `UPDATE collection_sources
+       SET next_page = @nextPage,
+           consecutive_no_result_runs = @noResult,
+           consecutive_no_new_runs = @noNew,
+           last_run_at = datetime('now','localtime')
+       WHERE id = @id`
+    )
+    .run({
+      id,
+      nextPage: update.nextPage,
+      noResult: update.consecutiveNoResultRuns,
+      noNew: update.consecutiveNoNewRuns,
+    });
+}
+
+export function pauseCollectionSource(
+  id: number,
+  kind: Exclude<CollectionPauseKind, "">,
+  reason: string
+): void {
+  getDb()
+    .prepare("UPDATE collection_sources SET paused_kind = ?, paused_reason = ? WHERE id = ?")
+    .run(kind, reason, id);
+}
+
+/** 停止解除。連続カウンタも戻さないと、次の1回でまた止まる */
+export function resumeCollectionSource(id: number): void {
+  getDb()
+    .prepare(
+      `UPDATE collection_sources
+       SET paused_kind = '', paused_reason = '',
+           consecutive_no_result_runs = 0, consecutive_no_new_runs = 0
+       WHERE id = ?`
+    )
+    .run(id);
+}
+
+export function startCollectionRun(sourceId: number, pageFrom: number): number {
+  const result = getDb()
+    .prepare(
+      `INSERT INTO collection_runs (source_id, status, page_from)
+       VALUES (?, 'error', ?)`
+    )
+    .run(sourceId, pageFrom);
+  return Number(result.lastInsertRowid);
+}
+
+export interface CollectionRunResult {
+  status: CollectionRunStatus;
+  foundCount: number;
+  newCount: number;
+  skippedCount: number;
+  skipBreakdown: Record<string, number>;
+  error?: string;
+}
+
+export function finishCollectionRun(runId: number, result: CollectionRunResult): void {
+  getDb()
+    .prepare(
+      `UPDATE collection_runs
+       SET status = @status, found_count = @found, new_count = @new,
+           skipped_count = @skipped, skip_breakdown = @breakdown, error = @error,
+           finished_at = datetime('now','localtime')
+       WHERE id = @id`
+    )
+    .run({
+      id: runId,
+      status: result.status,
+      found: result.foundCount,
+      new: result.newCount,
+      skipped: result.skippedCount,
+      breakdown: JSON.stringify(result.skipBreakdown),
+      error: result.error ?? "",
+    });
+}
+
+export function getRecentCollectionRuns(limit: number = 30): CollectionRun[] {
+  return getDb()
+    .prepare("SELECT * FROM collection_runs ORDER BY started_at DESC, id DESC LIMIT ?")
+    .all(limit) as CollectionRun[];
+}
+
+/** 重複排除: このドメイン宛に一度でも送信していれば、収集し直さない */
+export function hasSentToDomain(domain: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT id FROM send_log WHERE ${EMAIL_DOMAIN_SQL} = ? LIMIT 1`)
+    .get(domain.trim().toLowerCase().replace(/^www\./, ""));
+  return !!row;
+}
+
+/** 重複排除: 抑止リスト（配信停止・既存顧客のドメイン登録を含む）に載っているか */
+export function isDomainSuppressed(domain: string): boolean {
+  const row = getDb()
+    .prepare("SELECT id FROM suppressions WHERE target = ? AND target_type = 'domain' LIMIT 1")
+    .get(domain.trim().toLowerCase().replace(/^www\./, ""));
+  return !!row;
+}
+
+/**
+ * 収集時点では企業名しか分からないため、名前で既知かどうかを見る。
+ * ドメインでの照合は裏処理でHPを解決した後（lib/enrichment.ts）に行う。
+ */
+export function findCompanyByName(name: string): Company | undefined {
+  return getDb()
+    .prepare("SELECT * FROM companies WHERE name = ? LIMIT 1")
+    .get(name.trim()) as Company | undefined;
+}
+
+export function getCompanyById(id: number): Company | undefined {
+  return getDb()
+    .prepare("SELECT * FROM companies WHERE id = ?")
+    .get(id) as Company | undefined;
+}
+
+export function findCompanyByDomain(domain: string): Company | undefined {
+  return getDb()
+    .prepare("SELECT * FROM companies WHERE domain = ? LIMIT 1")
+    .get(domain.trim().toLowerCase().replace(/^www\./, "")) as Company | undefined;
+}
+
+export function setCompanyDomain(id: number, domain: string): void {
+  getDb()
+    .prepare("UPDATE companies SET domain = ? WHERE id = ?")
+    .run(domain.trim().toLowerCase().replace(/^www\./, ""), id);
+}
+
+/** 送信済み・抑止対象・既登録と判明した企業を在庫から外す。理由は必ず残す */
+export function markCompanyExcluded(id: number, reason: string): void {
+  getDb()
+    .prepare(
+      `UPDATE companies
+       SET enrichment_status = 'excluded', enrichment_error = ?,
+           enriched_at = datetime('now','localtime')
+       WHERE id = ?`
+    )
+    .run(reason.slice(0, 500), id);
+}
+
+export function getCompaniesPendingEnrichment(limit: number): Company[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM companies
+       WHERE enrichment_status = 'pending'
+       ORDER BY created_at ASC, id ASC
+       LIMIT ?`
+    )
+    .all(limit) as Company[];
+}
+
+export interface CompanyEnrichmentUpdate {
+  hp_url?: string | null;
+  recruit_page_url?: string | null;
+  business_summary?: string;
+  fit_score?: FitScore;
+  fit_reason?: string;
+  fit_service_id?: number | null;
+}
+
+export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate): void {
+  const current = getCompanyById(id);
+  if (!current) return;
+
+  getDb()
+    .prepare(
+      `UPDATE companies
+       SET hp_url = @hp_url, recruit_page_url = @recruit_page_url,
+           business_summary = @business_summary, fit_score = @fit_score,
+           fit_reason = @fit_reason, fit_service_id = @fit_service_id,
+           enrichment_status = 'done', enrichment_error = '',
+           enriched_at = datetime('now','localtime')
+       WHERE id = @id`
+    )
+    .run({
+      id,
+      hp_url: update.hp_url ?? current.hp_url,
+      recruit_page_url: update.recruit_page_url ?? current.recruit_page_url,
+      business_summary: update.business_summary ?? current.business_summary,
+      fit_score: update.fit_score ?? current.fit_score,
+      fit_reason: update.fit_reason ?? current.fit_reason,
+      fit_service_id: update.fit_service_id ?? current.fit_service_id,
+    });
+}
+
+/** 失敗は握り潰さず理由を残す。画面に出して人が気づけるようにするため */
+export function markCompanyEnrichmentFailed(id: number, error: string): void {
+  getDb()
+    .prepare(
+      `UPDATE companies
+       SET enrichment_status = 'failed', enrichment_error = ?,
+           enriched_at = datetime('now','localtime')
+       WHERE id = ?`
+    )
+    .run(error.slice(0, 500), id);
+}
+
+/**
+ * 調査に失敗した企業を裏処理の待ち行列に戻す。検索APIの一時的な不調で
+ * まとめて失敗することがあるため、1社ずつではなく一括で戻せるようにする。
+ * excluded（送信済み・抑止対象）は意図的に対象外。戻すと在庫に混ざる。
+ */
+export function resetFailedEnrichments(): number {
+  return getDb()
+    .prepare(
+      `UPDATE companies
+       SET enrichment_status = 'pending', enrichment_error = ''
+       WHERE enrichment_status = 'failed'`
+    )
+    .run().changes;
+}
+
+export interface InventoryStats {
+  /** すぐ送れる連絡先の数（抑止・送信済みを除いた実数） */
+  readyCount: number;
+  /** 裏処理の待ち行列。ここが詰まると readyCount が増えない */
+  pendingEnrichment: number;
+  failedEnrichment: number;
+  totalCompanies: number;
+  /** 直近7日の1日あたり送信数 */
+  dailyPace: number;
+}
+
+/**
+ * 在庫の実数（F25）。
+ * contacts の総数ではなく「抑止に載っておらず、まだ送っていない」数を数える。
+ * 総数を出すと、実際には送れない宛先まで在庫に見えて枯渇に気づけない。
+ */
+export function getInventoryStats(): InventoryStats {
+  const instance = getDb();
+
+  const ready = instance
+    .prepare(
+      `SELECT COUNT(*) as count FROM contacts c
+       WHERE trim(c.email) <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM suppressions s
+           WHERE s.target_type = 'email' AND s.target = lower(trim(c.email))
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM suppressions s
+           WHERE s.target_type = 'domain'
+             AND s.target = lower(trim(substr(c.email, instr(c.email, '@') + 1)))
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM send_log l
+           WHERE lower(trim(l.to_email)) = lower(trim(c.email))
+         )`
+    )
+    .get() as { count: number };
+
+  const enrichment = instance
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN enrichment_status = 'pending' THEN 1 ELSE 0 END) as pending,
+         SUM(CASE WHEN enrichment_status = 'failed' THEN 1 ELSE 0 END) as failed,
+         COUNT(*) as total
+       FROM companies`
+    )
+    .get() as { pending: number | null; failed: number | null; total: number };
+
+  const sent = instance
+    .prepare(
+      `SELECT COUNT(*) as count FROM send_log
+       WHERE sent_at >= datetime('now','localtime','-7 days')`
+    )
+    .get() as { count: number };
+
+  return {
+    readyCount: ready.count,
+    pendingEnrichment: enrichment.pending ?? 0,
+    failedEnrichment: enrichment.failed ?? 0,
+    totalCompanies: enrichment.total,
+    dailyPace: sent.count / 7,
+  };
 }

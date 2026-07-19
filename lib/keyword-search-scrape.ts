@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { BLOCKED_STATUSES, SearchBlockedError } from "@/lib/keyword-search";
 import type { SearchResultItem } from "@/lib/keyword-search";
 
 const DDG_HTML_URL = "https://html.duckduckgo.com/html/";
@@ -39,6 +40,13 @@ export async function scrapeSearch(
   });
 
   if (!res.ok) {
+    // 403/429/503 は「叩き過ぎ・拒否」。常時収集側が即停止できるよう型で区別する
+    if (BLOCKED_STATUSES.has(res.status)) {
+      throw new SearchBlockedError(
+        `検索元からアクセスを拒否されました（${res.status}）`,
+        res.status
+      );
+    }
     throw new Error(`検索スクレイピングに失敗しました（${res.status}）`);
   }
 
