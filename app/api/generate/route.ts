@@ -34,7 +34,9 @@ function classifyError(error: unknown): { message: string; status: number; retry
   }
   if (error instanceof Error) {
     if (error.message.includes("JSONパース")) {
-      return { message: "AIの応答を解析できませんでした。再試行してください", status: 502, retryable: true };
+      const stage = error.message.includes("分析") ? "分析" : error.message.includes("生成") ? "生成" : "";
+      const detail = error.message.includes("応答切れ") ? "（応答が途中で切れました）" : "";
+      return { message: `AIの応答を解析できませんでした${stage ? `（${stage}段階）` : ""}${detail}。再試行してください`, status: 502, retryable: true };
     }
     if (error.message.includes("テキストを取得できません")) {
       return { message: "AIから有効な応答がありませんでした。再試行してください", status: 502, retryable: true };

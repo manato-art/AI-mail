@@ -84,7 +84,8 @@ function parseAnalysisResponse(rawText: string): AnalysisResult {
     try {
       return JSON.parse(extracted) as AnalysisResult;
     } catch {
-      throw new Error("AI応答のJSONパースに失敗しました");
+      console.error("[analyze] JSON parse failed. Raw text (first 500 chars):", rawText.slice(0, 500));
+      throw new Error("AI応答のJSONパースに失敗しました（分析）");
     }
   }
 }
@@ -104,6 +105,11 @@ export async function analyzeCompany(
       },
     ],
   });
+
+  if (message.stop_reason === "max_tokens") {
+    console.error("[analyze] Response truncated (max_tokens reached)");
+    throw new Error("AI応答のJSONパースに失敗しました（分析: 応答切れ）");
+  }
 
   const textBlock = message.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") {

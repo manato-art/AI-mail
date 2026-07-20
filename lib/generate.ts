@@ -200,7 +200,8 @@ function parseGenerationResponse(rawText: string): GenerationResult {
     try {
       return JSON.parse(extracted) as GenerationResult;
     } catch {
-      throw new Error("AI応答のJSONパースに失敗しました");
+      console.error("[generate] JSON parse failed. Raw text (first 500 chars):", rawText.slice(0, 500));
+      throw new Error("AI応答のJSONパースに失敗しました（生成）");
     }
   }
 }
@@ -223,6 +224,11 @@ export async function generateEmail(
       },
     ],
   });
+
+  if (message.stop_reason === "max_tokens") {
+    console.error("[generate] Response truncated (max_tokens reached)");
+    throw new Error("AI応答のJSONパースに失敗しました（生成: 応答切れ）");
+  }
 
   const textBlock = message.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") {
