@@ -3,7 +3,7 @@ import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types
 import { validateUrl } from "@/lib/ssrf";
 
 const FETCH_TIMEOUT_MS = 10000;
-const MAX_PAGES = 7;
+const MAX_PAGES = 8;
 const MAX_TEXT_LENGTH = 10000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -13,15 +13,16 @@ interface LinkCategory {
 }
 
 const LINK_CATEGORIES: LinkCategory[] = [
-  { keywords: ["お問い合わせ", "contact"] },
-  { keywords: ["会社概要", "about", "company"] },
+  { keywords: ["お問い合わせ", "お問合せ", "問い合わせ", "問合せ", "contact", "inquiry", "toiawase"] },
+  { keywords: ["会社概要", "about", "company", "corporate"] },
   { keywords: ["特定商取引", "tokushoho", "law", "legal", "特商法"] },
   { keywords: ["プライバシー", "個人情報", "privacy"] },
+  { keywords: ["アクセス", "access", "所在地", "拠点"] },
   { keywords: ["サービス", "事業内容", "service", "business"] },
   { keywords: ["ニュース", "お知らせ", "news", "topics"] },
 ];
 
-const CONTACT_KEYWORDS = ["お問い合わせ", "contact"];
+const CONTACT_KEYWORDS = ["お問い合わせ", "お問合せ", "問い合わせ", "contact", "inquiry"];
 
 /**
  * F1 採用シグナル検出。相手企業自身のHPを見る行為なので媒体規約と無関係。
@@ -234,7 +235,19 @@ export function extractEmails(text: string): string[] {
   const normalized = text
     .replace(/＠/g, "@")
     .replace(/\s*[（(]\s*at\s*[)）]\s*/gi, "@")
-    .replace(/\s*\[\s*at\s*\]\s*/gi, "@");
+    .replace(/\s*\[\s*at\s*\]\s*/gi, "@")
+    .replace(/\s*★\s*/g, "@")
+    .replace(/\s*☆\s*/g, "@")
+    .replace(/\s*●\s*/g, "@")
+    .replace(/\s*◆\s*/g, "@")
+    .replace(/\s*■\s*/g, "@")
+    .replace(/\s*\{at\}\s*/gi, "@")
+    .replace(/\s*<at>\s*/gi, "@")
+    .replace(/\s*_at_\s*/gi, "@")
+    .replace(/\s*\(a\)\s*/gi, "@")
+    .replace(/（ドット）/g, ".")
+    .replace(/\[dot\]/gi, ".")
+    .replace(/\(dot\)/gi, ".");
 
   const pattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)+/g;
   const matches = normalized.match(pattern) || [];
@@ -245,6 +258,61 @@ export function extractEmails(text: string): string[] {
   }
 
   return Array.from(emails);
+}
+
+/** JSON-LD構造化データからメールアドレスを抽出する */
+function extractEmailsFromJsonLd(html: string): string[] {
+  const $ = cheerio.load(html);
+  const emails: string[] = [];
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const raw = $(el).html();
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      collectEmailsFromObject(data, emails);
+    } catch { /* malformed JSON-LD */ }
+  });
+
+  return emails;
+}
+
+function collectEmailsFromObject(obj: unknown, out: string[]): void {
+  if (!obj || typeof obj !== "object") return;
+  if (Array.isArray(obj)) {
+    for (const item of obj) collectEmailsFromObject(item, out);
+    return;
+  }
+  const record = obj as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if ((key === "email" || key === "contactPoint") && typeof value === "string" && value.includes("@")) {
+      out.push(value.replace(/^mailto:/i, "").toLowerCase());
+    } else if (typeof value === "object") {
+      collectEmailsFromObject(value, out);
+    }
+  }
+}
+
+/** metaタグやHTML属性に埋まったメールアドレスを抽出する */
+function extractEmailsFromAttributes(html: string): string[] {
+  const $ = cheerio.load(html);
+  const emails: string[] = [];
+  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+  $("meta[content]").each((_, el) => {
+    const content = $(el).attr("content") || "";
+    const matches = content.match(emailPattern);
+    if (matches) emails.push(...matches);
+  });
+
+  $("[data-email], [data-mail], [data-mailto]").each((_, el) => {
+    for (const attr of ["data-email", "data-mail", "data-mailto"]) {
+      const val = $(el).attr(attr) || "";
+      if (val.includes("@")) emails.push(val);
+    }
+  });
+
+  return emails.map((e) => e.toLowerCase());
 }
 
 function extractMailtoEmails(html: string): string[] {
@@ -361,6 +429,8 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
 
   extractMailtoEmails(rootFetch.html).forEach((email) => emailSet.add(email));
   extractEmails(extractFullBodyText(rootFetch.html)).forEach((email) => emailSet.add(email));
+  extractEmailsFromJsonLd(rootFetch.html).forEach((email) => emailSet.add(email));
+  extractEmailsFromAttributes(rootFetch.html).forEach((email) => emailSet.add(email));
 
   const rootFormUrl = detectFormUrl(rootFetch.html, rootFetch.finalUrl);
   if (rootFormUrl) {
@@ -389,6 +459,8 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
 
     extractMailtoEmails(fetched.html).forEach((email) => emailSet.add(email));
     extractEmails(extractFullBodyText(fetched.html)).forEach((email) => emailSet.add(email));
+    extractEmailsFromJsonLd(fetched.html).forEach((email) => emailSet.add(email));
+    extractEmailsFromAttributes(fetched.html).forEach((email) => emailSet.add(email));
 
     if (!formUrl) {
       const linkFormUrl = detectFormUrl(fetched.html, fetched.finalUrl);
