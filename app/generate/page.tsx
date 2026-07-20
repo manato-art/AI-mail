@@ -10,11 +10,12 @@ import {
   Check,
   SpinnerGap,
   Warning,
-  ListBullets,
   Lock,
+  MagnifyingGlass,
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
+  Company,
   Persona,
   Prospect,
   QualityCheckResult,
@@ -108,8 +109,10 @@ function GeneratePageInner() {
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [fixedText, setFixedText] = useState("");
 
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [mode, setMode] = useState<"single" | "batch">("single");
-  const [batchUrls, setBatchUrls] = useState("");
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
+  const [companySearch, setCompanySearch] = useState("");
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   const abortRef = useRef(false);
@@ -136,10 +139,11 @@ function GeneratePageInner() {
 
     async function loadOptions() {
       try {
-        const [servicesRes, personasRes, templatesRes] = await Promise.all([
+        const [servicesRes, personasRes, templatesRes, companiesRes] = await Promise.all([
           fetch("/api/services"),
           fetch("/api/personas"),
           fetch("/api/templates"),
+          fetch("/api/companies"),
         ]);
         const servicesData: Service[] = servicesRes.ok
           ? await servicesRes.json()
@@ -150,16 +154,23 @@ function GeneratePageInner() {
         const templatesData: Template[] = templatesRes.ok
           ? await templatesRes.json()
           : [];
+        const companiesData = companiesRes.ok
+          ? await companiesRes.json()
+          : { companies: [] };
         if (!cancelled) {
           setServices(servicesData);
           setPersonas(personasData);
           setTemplates(templatesData);
+          setCompanies(
+            (companiesData.companies as Company[]).filter((c) => c.hp_url && c.enrichment_status === "done")
+          );
         }
       } catch {
         if (!cancelled) {
           setServices([]);
           setPersonas([]);
           setTemplates([]);
+          setCompanies([]);
         }
       } finally {
         if (!cancelled) {
@@ -189,15 +200,15 @@ function GeneratePageInner() {
     }
     if (paramMode === "batch") {
       setMode("batch");
-      const stored = sessionStorage.getItem("batch-generate-urls");
+      const stored = sessionStorage.getItem("batch-generate-company-ids");
       if (stored) {
         try {
-          const urls: string[] = JSON.parse(stored);
-          if (Array.isArray(urls) && urls.length > 0) {
-            setBatchUrls(urls.join("\n"));
+          const ids: number[] = JSON.parse(stored);
+          if (Array.isArray(ids) && ids.length > 0) {
+            setSelectedCompanyIds(new Set(ids));
           }
         } catch { /* ignore malformed data */ }
-        sessionStorage.removeItem("batch-generate-urls");
+        sessionStorage.removeItem("batch-generate-company-ids");
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,14 +217,16 @@ function GeneratePageInner() {
   const isBusy =
     batchRunning || status === "crawling" || status === "analyzing" || status === "generating";
 
-  const parsedBatchUrls = batchUrls.split("\n").map((u) => u.trim()).filter(Boolean);
+  const batchTargetUrls = companies
+    .filter((c) => selectedCompanyIds.has(c.id))
+    .map((c) => c.hp_url as string);
 
   const canSubmit =
     !isBusy &&
     !loadingOptions &&
     Boolean(selectedServiceId) &&
     Boolean(selectedPersonaId) &&
-    (mode === "single" ? Boolean(url.trim()) : parsedBatchUrls.length > 0);
+    (mode === "single" ? Boolean(url.trim()) : batchTargetUrls.length > 0);
 
   function resetToIdle() {
     setStatus("idle");
@@ -301,9 +314,9 @@ function GeneratePageInner() {
   }
 
   async function handleBatchGenerate() {
-    if (!selectedServiceId || !selectedPersonaId || parsedBatchUrls.length === 0) return;
+    if (!selectedServiceId || !selectedPersonaId || batchTargetUrls.length === 0) return;
 
-    const items: BatchItem[] = parsedBatchUrls.map((u) => ({ url: u, status: "waiting" as const }));
+    const items: BatchItem[] = batchTargetUrls.map((u) => ({ url: u, status: "waiting" as const }));
     setBatchItems(items);
     setBatchRunning(true);
     abortRef.current = false;
@@ -393,7 +406,7 @@ function GeneratePageInner() {
             <button
               key={opt.value}
               type="button"
-              onClick={() => { setMode(opt.value); setBatchItems([]); }}
+              onClick={() => { setMode(opt.value); setBatchItems([]); setSelectedCompanyIds(new Set()); }}
               disabled={isBusy}
               className={`h-8 px-4 text-[13px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
                 mode === opt.value
@@ -498,29 +511,22 @@ function GeneratePageInner() {
               </div>
             </div>
           ) : (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                企業URL（1行に1つ）
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-3 text-gray-400 pointer-events-none">
-                  <ListBullets size={20} />
-                </div>
-                <textarea
-                  rows={5}
-                  value={batchUrls}
-                  onChange={(e) => setBatchUrls(e.target.value)}
-                  disabled={isBusy}
-                  placeholder={"https://example1.co.jp\nhttps://example2.co.jp\nhttps://example3.co.jp"}
-                  className="w-full pl-10 pr-3 py-2.5 border border-(--color-border) rounded-lg text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-                />
-              </div>
-              {parsedBatchUrls.length > 0 && (
-                <p className="mt-1 text-[11px] text-(--color-muted)">
-                  {parsedBatchUrls.length}社を生成します
-                </p>
-              )}
-            </div>
+            <CompanyPicker
+              companies={companies}
+              selectedIds={selectedCompanyIds}
+              onToggle={(id) => {
+                setSelectedCompanyIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                });
+              }}
+              onToggleAll={(ids) => setSelectedCompanyIds(ids)}
+              search={companySearch}
+              onSearchChange={setCompanySearch}
+              disabled={isBusy}
+            />
           )}
 
           <button
@@ -537,7 +543,7 @@ function GeneratePageInner() {
             ) : (
               <>
                 <PaperPlaneTilt size={18} weight="fill" />
-                {mode === "single" ? "メールを生成" : `${parsedBatchUrls.length || ""}社 まとめて生成`}
+                {mode === "single" ? "メールを生成" : `${batchTargetUrls.length || ""}社 まとめて生成`}
               </>
             )}
           </button>
@@ -725,6 +731,116 @@ function GeneratePageInner() {
       {mode === "single" && status === "error" && error && (
         <ErrorCard message={error} onRetry={() => handleGenerate()} />
       )}
+    </div>
+  );
+}
+
+function CompanyPicker({
+  companies,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+  search,
+  onSearchChange,
+  disabled,
+}: {
+  companies: Company[];
+  selectedIds: Set<number>;
+  onToggle: (id: number) => void;
+  onToggleAll: (ids: Set<number>) => void;
+  search: string;
+  onSearchChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  const filtered = search.trim()
+    ? companies.filter(
+        (c) =>
+          c.name.toLowerCase().includes(search.toLowerCase()) ||
+          (c.domain ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : companies;
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+
+  function handleToggleAll() {
+    if (allFilteredSelected) {
+      const removeIds = new Set(filtered.map((c) => c.id));
+      onToggleAll(new Set([...selectedIds].filter((id) => !removeIds.has(id))));
+    } else {
+      onToggleAll(new Set([...selectedIds, ...filtered.map((c) => c.id)]));
+    }
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+        送信先の企業を選択
+      </label>
+      <div className="border border-(--color-border) rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50">
+          <MagnifyingGlass size={16} className="shrink-0 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            disabled={disabled}
+            placeholder="企業名で検索..."
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 disabled:opacity-50"
+          />
+          {selectedIds.size > 0 && (
+            <span className="shrink-0 rounded-full bg-(--color-primary) px-2 py-0.5 text-[11px] font-medium text-white tabular-nums">
+              {selectedIds.size}
+            </span>
+          )}
+        </div>
+        <div className="max-h-[240px] overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-(--color-muted)">
+              {companies.length === 0
+                ? "調査済みの企業がありません"
+                : "該当する企業がありません"}
+            </p>
+          ) : (
+            <>
+              <label className="flex items-center gap-2.5 px-3 py-2 border-b border-(--color-border) bg-gray-50/50 dark:bg-slate-700/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700/60 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  onChange={handleToggleAll}
+                  disabled={disabled}
+                  className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
+                />
+                <span className="text-[12px] font-medium text-(--color-muted)">
+                  すべて選択（{filtered.length}社）
+                </span>
+              </label>
+              {filtered.map((company) => (
+                <label
+                  key={company.id}
+                  className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(company.id)}
+                    onChange={() => onToggle(company.id)}
+                    disabled={disabled}
+                    className="h-4 w-4 shrink-0 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
+                  />
+                  <span className="min-w-0 truncate text-[13px]">
+                    <span className="font-medium">{company.name}</span>
+                    {company.domain && (
+                      <span className="ml-1.5 text-(--color-muted) text-[11px]">
+                        {company.domain}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

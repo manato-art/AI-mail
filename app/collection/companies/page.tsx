@@ -159,11 +159,11 @@ export default function CompaniesPage() {
   }
 
   function handleGenerateSelected() {
-    const urls = companies
+    const ids = companies
       .filter((c) => selectedIds.has(c.id) && c.hp_url)
-      .map((c) => c.hp_url as string);
-    if (urls.length === 0) return;
-    sessionStorage.setItem("batch-generate-urls", JSON.stringify(urls));
+      .map((c) => c.id);
+    if (ids.length === 0) return;
+    sessionStorage.setItem("batch-generate-company-ids", JSON.stringify(ids));
     router.push("/generate?mode=batch");
   }
 
