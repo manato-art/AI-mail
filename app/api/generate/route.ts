@@ -16,7 +16,7 @@ import { validateEmail } from "@/lib/quality-check";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions, templateId } = body ?? {};
+    const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions, fixedText, templateId } = body ?? {};
 
     if (!serviceId || !personaId || !url) {
       return NextResponse.json(
@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
       length,
       cta,
       additionalInstructions,
+      fixedText: typeof fixedText === "string" ? fixedText : undefined,
       templateSubject: template?.subject,
       templateBody: template?.body,
     };

@@ -10,6 +10,8 @@ import {
   Check,
   SpinnerGap,
   Warning,
+  ListBullets,
+  Lock,
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
@@ -19,6 +21,7 @@ import type {
   Service,
   Template,
 } from "@/lib/types";
+import { BatchProgress, type BatchItem } from "./batch-progress";
 
 type Status =
   | "idle"
@@ -103,6 +106,13 @@ function GeneratePageInner() {
   const [length, setLength] = useState("standard");
   const [cta, setCta] = useState("online_meeting");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
+  const [fixedText, setFixedText] = useState("");
+
+  const [mode, setMode] = useState<"single" | "batch">("single");
+  const [batchUrls, setBatchUrls] = useState("");
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const abortRef = useRef(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -180,14 +190,16 @@ function GeneratePageInner() {
   }, [loadingOptions]);
 
   const isBusy =
-    status === "crawling" || status === "analyzing" || status === "generating";
+    batchRunning || status === "crawling" || status === "analyzing" || status === "generating";
+
+  const parsedBatchUrls = batchUrls.split("\n").map((u) => u.trim()).filter(Boolean);
 
   const canSubmit =
     !isBusy &&
     !loadingOptions &&
     Boolean(selectedServiceId) &&
     Boolean(selectedPersonaId) &&
-    Boolean(url.trim());
+    (mode === "single" ? Boolean(url.trim()) : parsedBatchUrls.length > 0);
 
   function resetToIdle() {
     setStatus("idle");
@@ -222,6 +234,7 @@ function GeneratePageInner() {
           length,
           cta,
           additionalInstructions: additionalInstructions.trim() || undefined,
+          fixedText: fixedText.trim() || undefined,
           templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
         }),
       });
@@ -273,16 +286,111 @@ function GeneratePageInner() {
     }
   }
 
+  async function handleBatchGenerate() {
+    if (!selectedServiceId || !selectedPersonaId || parsedBatchUrls.length === 0) return;
+
+    const items: BatchItem[] = parsedBatchUrls.map((u) => ({ url: u, status: "waiting" as const }));
+    setBatchItems(items);
+    setBatchRunning(true);
+    abortRef.current = false;
+
+    for (let i = 0; i < items.length; i++) {
+      if (abortRef.current) break;
+
+      setBatchItems((prev) =>
+        prev.map((item, idx) => (idx === i ? { ...item, status: "processing" } : item))
+      );
+
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serviceId: Number(selectedServiceId),
+            personaId: Number(selectedPersonaId),
+            url: items[i].url,
+            force: false,
+            forceLow: true,
+            tone,
+            length,
+            cta,
+            additionalInstructions: additionalInstructions.trim() || undefined,
+            fixedText: fixedText.trim() || undefined,
+            templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
+          }),
+        });
+
+        const data: GenerateResponse = await res.json();
+
+        if (isSuccessResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
+            )
+          );
+        } else if (isDuplicateResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
+            )
+          );
+        } else if (isLowCompatibilityResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "skipped", skipReason: "相性低" } : item
+            )
+          );
+        } else if (isErrorResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "error", error: data.error } : item
+            )
+          );
+        }
+      } catch (err) {
+        setBatchItems((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: "error", error: err instanceof Error ? err.message : "通信エラー" } : item
+          )
+        );
+      }
+    }
+
+    setBatchRunning(false);
+  }
+
   const missingServices = !loadingOptions && services.length === 0;
   const missingPersonas = !loadingOptions && personas.length === 0;
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">営業メールを作成</h1>
-        <p className="mt-1 text-sm text-(--color-muted)">
-          企業URLを入力すると、HPを自動分析してパーソナライズされた営業メールを生成します
-        </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">営業メールを作成</h1>
+          <p className="mt-1 text-sm text-(--color-muted)">
+            企業URLを入力すると、HPを自動分析してパーソナライズされた営業メールを生成します
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-(--color-border) overflow-hidden">
+          {([
+            { value: "single" as const, label: "1社" },
+            { value: "batch" as const, label: "まとめて" },
+          ]).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { setMode(opt.value); setBatchItems([]); }}
+              disabled={isBusy}
+              className={`h-8 px-4 text-[13px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                mode === opt.value
+                  ? "bg-(--color-primary) text-white"
+                  : "bg-white dark:bg-slate-800 text-(--color-muted) hover:bg-gray-50 dark:hover:bg-slate-700"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {(missingServices || missingPersonas) && (
@@ -356,28 +464,54 @@ function GeneratePageInner() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              企業URL
-            </label>
-            <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                <Globe size={20} />
+          {mode === "single" ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                企業URL
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                  <Globe size={20} />
+                </div>
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={isBusy}
+                  placeholder="https://example.co.jp"
+                  className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                />
               </div>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={isBusy}
-                placeholder="https://example.co.jp"
-                className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-              />
             </div>
-          </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                企業URL（1行に1つ）
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-3 text-gray-400 pointer-events-none">
+                  <ListBullets size={20} />
+                </div>
+                <textarea
+                  rows={5}
+                  value={batchUrls}
+                  onChange={(e) => setBatchUrls(e.target.value)}
+                  disabled={isBusy}
+                  placeholder={"https://example1.co.jp\nhttps://example2.co.jp\nhttps://example3.co.jp"}
+                  className="w-full pl-10 pr-3 py-2.5 border border-(--color-border) rounded-lg text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                />
+              </div>
+              {parsedBatchUrls.length > 0 && (
+                <p className="mt-1 text-[11px] text-(--color-muted)">
+                  {parsedBatchUrls.length}社を生成します
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             type="button"
-            onClick={() => handleGenerate()}
+            onClick={() => mode === "single" ? handleGenerate() : handleBatchGenerate()}
             disabled={!canSubmit}
             className="w-full h-11 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
           >
@@ -389,7 +523,7 @@ function GeneratePageInner() {
             ) : (
               <>
                 <PaperPlaneTilt size={18} weight="fill" />
-                メールを生成
+                {mode === "single" ? "メールを生成" : `${parsedBatchUrls.length || ""}社 まとめて生成`}
               </>
             )}
           </button>
@@ -512,6 +646,26 @@ function GeneratePageInner() {
           </div>
 
           <div>
+            <label className="flex items-center gap-1.5 text-xs font-medium text-(--color-muted) mb-1.5">
+              <Lock size={12} />
+              固定テキスト（任意）
+            </label>
+            <textarea
+              rows={3}
+              value={fixedText}
+              onChange={(e) => setFixedText(e.target.value)}
+              disabled={isBusy}
+              placeholder={"全メールにそのまま入る文章を書きます\n例: 弊社は〇〇分野で10年の実績があり…"}
+              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+            />
+            {fixedText.trim() && (
+              <p className="mt-1 text-[11px] text-(--color-muted)">
+                この文章はAIが改変せず、全メールにそのまま挿入されます
+              </p>
+            )}
+          </div>
+
+          <div>
             <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
               追加の指示（任意）
             </label>
@@ -527,9 +681,17 @@ function GeneratePageInner() {
         </div>
       </div>
 
-      {isBusy && <ProgressCard status={status} />}
+      {mode === "batch" && batchItems.length > 0 && (
+        <BatchProgress
+          items={batchItems}
+          running={batchRunning}
+          onStop={() => { abortRef.current = true; }}
+        />
+      )}
 
-      {status === "duplicate" && duplicateProspect && (
+      {mode === "single" && isBusy && <ProgressCard status={status} />}
+
+      {mode === "single" && status === "duplicate" && duplicateProspect && (
         <DuplicateDialog
           prospect={duplicateProspect}
           onView={() => router.push(`/prospect/${duplicateProspect.id}`)}
@@ -538,7 +700,7 @@ function GeneratePageInner() {
         />
       )}
 
-      {status === "low-compat" && lowCompatAnalysis && (
+      {mode === "single" && status === "low-compat" && lowCompatAnalysis && (
         <LowCompatDialog
           analysis={lowCompatAnalysis}
           onForce={() => handleGenerate({ forceLow: true })}
@@ -546,7 +708,7 @@ function GeneratePageInner() {
         />
       )}
 
-      {status === "error" && error && (
+      {mode === "single" && status === "error" && error && (
         <ErrorCard message={error} onRetry={() => handleGenerate()} />
       )}
     </div>
