@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
+    "@google/generative-ai": "^0.24.1",
     "@phosphor-icons/react": "^2.1.10",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
