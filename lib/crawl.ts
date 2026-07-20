@@ -2,11 +2,11 @@ import * as cheerio from "cheerio";
 import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types";
 import { validateUrl } from "@/lib/ssrf";
 
-const FETCH_TIMEOUT_MS = 10000;
-const MAX_PAGES = 8;
-const MAX_TEXT_LENGTH = 10000;
-const CRAWL_DELAY_BASE_MS = 1500;
-const CRAWL_DELAY_JITTER_MS = 2000;
+const FETCH_TIMEOUT_MS = 8000;
+const MAX_PAGES = 5;
+const MAX_TEXT_LENGTH = 5000;
+const CRAWL_DELAY_BASE_MS = 800;
+const CRAWL_DELAY_JITTER_MS = 700;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

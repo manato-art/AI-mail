@@ -244,11 +244,13 @@ function parseGenerationResponse(rawText: string): GenerationResult {
   }
 }
 
-export async function generateEmail(
+const MAX_RETRIES = 1;
+
+async function callGenerationApi(
   analysis: AnalysisResult,
   service: Service,
   persona: Persona,
-  isFormOnly: boolean = false,
+  isFormOnly: boolean,
   options?: GenerateOptions
 ): Promise<GenerationResult> {
   const message = await client.messages.create({
@@ -274,4 +276,23 @@ export async function generateEmail(
   }
 
   return parseGenerationResponse(textBlock.text);
+}
+
+export async function generateEmail(
+  analysis: AnalysisResult,
+  service: Service,
+  persona: Persona,
+  isFormOnly: boolean = false,
+  options?: GenerateOptions
+): Promise<GenerationResult> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await callGenerationApi(analysis, service, persona, isFormOnly, options);
+    } catch (err) {
+      if (attempt >= MAX_RETRIES) throw err;
+      console.error(`[generate] attempt ${attempt + 1} failed, retrying...`, err instanceof Error ? err.message : err);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  throw new Error("AI応答のJSONパースに失敗しました（生成）");
 }

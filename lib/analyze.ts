@@ -4,7 +4,7 @@ import { fenceUntrusted } from "@/lib/prompt-fence";
 
 const client = new Anthropic();
 
-const MODEL = process.env.ANALYSIS_MODEL || "claude-sonnet-4-6";
+const MODEL = process.env.ANALYSIS_MODEL || "claude-haiku-4-5";
 
 /**
  * プロンプトに載せる「出力してほしいJSONのお手本」。
@@ -127,13 +127,15 @@ function parseAnalysisResponse(rawText: string): AnalysisResult {
   }
 }
 
-export async function analyzeCompany(
+const MAX_RETRIES = 1;
+
+async function callAnalysisApi(
   crawlResult: CrawlResult,
   service: Service
 ): Promise<AnalysisResult> {
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    max_tokens: 2048,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -154,4 +156,20 @@ export async function analyzeCompany(
   }
 
   return parseAnalysisResponse(textBlock.text);
+}
+
+export async function analyzeCompany(
+  crawlResult: CrawlResult,
+  service: Service
+): Promise<AnalysisResult> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await callAnalysisApi(crawlResult, service);
+    } catch (err) {
+      if (attempt >= MAX_RETRIES) throw err;
+      console.error(`[analyze] attempt ${attempt + 1} failed, retrying...`, err instanceof Error ? err.message : err);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  throw new Error("AI応答のJSONパースに失敗しました（分析）");
 }
