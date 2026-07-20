@@ -142,12 +142,15 @@ export function runSendGuard(params: {
    * 二重送信ガードの対象外にする。抑止リスト照合など他のガードは常に適用される。
    */
   isFollowup?: boolean;
-  /** 安全チェック類の警告を確認済み（自社ドメイン・二重送信を解除） */
-  acknowledgedWarnings?: boolean;
+  /** チェックが入っていたら全ガードをスキップして送信する */
+  force?: boolean;
 }): SendGuardResult {
+  if (params.force) {
+    return { canSend: true, reasons: [] };
+  }
+
   const reasons: string[] = [];
 
-  // 抑止リスト照合は特定電子メール法上の義務。isFollowup でも決してスキップしない
   const suppression = isEmailSuppressed(params.toEmail);
   if (suppression) {
     reasons.push(
@@ -162,18 +165,16 @@ export function runSendGuard(params: {
     );
   }
 
-  if (!params.acknowledgedWarnings) {
-    const matchedDomain = checkOwnDomainBlock(params.toEmail);
-    if (matchedDomain) {
-      reasons.push(`自社ドメイン（${matchedDomain}）宛ての送信です`);
-    }
+  const matchedDomain = checkOwnDomainBlock(params.toEmail);
+  if (matchedDomain) {
+    reasons.push(`自社ドメイン（${matchedDomain}）宛ての送信です`);
   }
 
   if (!checkSignaturePresent(params.body)) {
     reasons.push("署名ブロックが検出されません（特定電子メール法の表示義務）");
   }
 
-  if (!params.isFollowup && !params.acknowledgedWarnings && hasSentToEmail(params.toEmail)) {
+  if (!params.isFollowup && hasSentToEmail(params.toEmail)) {
     reasons.push(`このアドレスには過去${DUPLICATE_SEND_BLOCK_DAYS}日以内に送信済みです（二重送信防止）`);
   }
 

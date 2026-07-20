@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     body: outgoingBody,
     senderId,
     prospectId,
-    acknowledgedWarnings: !!body.acknowledgedWarnings,
+    force: !!body.acknowledgedWarnings,
   });
 
   if (!guardResult.canSend) {
@@ -121,15 +121,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // F18: 危険ワード・事実誤認の検知。ブロックは押し切れない、警告は確認の上で押し切れる
-  if (analysis) {
+  // F18: 危険ワード・事実誤認の検知。force（チェック入り）なら全スキップ
+  if (analysis && !body.acknowledgedWarnings) {
     const danger = runDangerCheck({
       subject: outgoingSubject,
       body: outgoingBody,
       analysis,
       service,
       persona,
-      // テストモードでも実際の宛先で照合する（誤差し込みはそこで起きるため）
       toEmail: rawToEmail,
     });
 
@@ -140,7 +139,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (danger.warnings.length > 0 && !body.acknowledgedWarnings) {
+    if (danger.warnings.length > 0) {
       return NextResponse.json(
         {
           error: "送信前に確認が必要な指摘があります",

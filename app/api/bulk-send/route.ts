@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     subject: outgoingSubject,
     body: outgoingBody,
     senderId,
-    acknowledgedWarnings: !!body.acknowledgedWarnings,
+    force: !!body.acknowledgedWarnings,
   });
 
   if (!guardResult.canSend) {
@@ -214,9 +214,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // F18: 事実誤認の検知。テンプレートに相手企業固有の数値が書かれていれば
-  // 「御社の◯◯」の形で拾われる。企業名が空なら社名照合は成立しないので警告に落ちる
-  {
+  // F18: 事実誤認の検知。force（チェック入り）なら全スキップ
+  if (!body.acknowledgedWarnings) {
     const danger = runDangerCheck({
       subject: outgoingSubject,
       body: outgoingBody,
@@ -233,7 +232,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (danger.warnings.length > 0 && !body.acknowledgedWarnings) {
+    if (danger.warnings.length > 0) {
       return NextResponse.json(
         {
           error: "送信前に確認が必要な指摘があります",
