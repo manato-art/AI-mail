@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -26,7 +27,31 @@ interface Props {
   onStop: () => void;
 }
 
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}秒`;
+}
+
 export function BatchProgress({ items, running, onStop }: Props) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!running) {
+      startRef.current = null;
+      return;
+    }
+    startRef.current = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => {
+      if (startRef.current) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
   const done = items.filter((i) => i.status === "done").length;
   const skipped = items.filter((i) => i.status === "skipped").length;
   const errored = items.filter((i) => i.status === "error").length;
@@ -39,7 +64,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
         <div className="flex items-center gap-2">
           {running && <CircleNotch size={16} className="animate-spin text-(--color-primary)" />}
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-            {running ? `生成中... (${finished}/${items.length})` : `完了 — ${done}件生成`}
+            {running ? `生成中... (${finished}/${items.length}) ${formatElapsed(elapsed)}` : `完了 — ${done}件生成 (${formatElapsed(elapsed)})`}
           </p>
         </div>
         <div className="flex items-center gap-3">
