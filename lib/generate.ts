@@ -192,17 +192,27 @@ function extractJsonFromText(text: string): string {
   return trimmed;
 }
 
+function repairAndParseJson(raw: string): unknown {
+  const extracted = extractJsonFromText(raw);
+  try {
+    return JSON.parse(extracted);
+  } catch {
+    const braceStart = raw.indexOf("{");
+    const braceEnd = raw.lastIndexOf("}");
+    if (braceStart !== -1 && braceEnd > braceStart) {
+      const slice = raw.slice(braceStart, braceEnd + 1);
+      return JSON.parse(slice);
+    }
+    throw new Error("JSON repair failed");
+  }
+}
+
 function parseGenerationResponse(rawText: string): GenerationResult {
   try {
-    return JSON.parse(rawText) as GenerationResult;
+    return repairAndParseJson(rawText) as GenerationResult;
   } catch {
-    const extracted = extractJsonFromText(rawText);
-    try {
-      return JSON.parse(extracted) as GenerationResult;
-    } catch {
-      console.error("[generate] JSON parse failed. Raw text (first 500 chars):", rawText.slice(0, 500));
-      throw new Error("AI応答のJSONパースに失敗しました（生成）");
-    }
+    console.error("[generate] JSON parse failed. Length:", rawText.length, "Last 300 chars:", rawText.slice(-300));
+    throw new Error("AI応答のJSONパースに失敗しました（生成）");
   }
 }
 
