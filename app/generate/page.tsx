@@ -116,6 +116,7 @@ function GeneratePageInner() {
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const batchProgressRef = useRef<HTMLDivElement>(null);
 
   const [status, setStatus] = useState<Status>("idle");
@@ -356,9 +357,12 @@ function GeneratePageInner() {
       }
 
       try {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
         const res = await fetch("/api/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             serviceId: Number(selectedServiceId),
             personaId: Number(selectedPersonaId),
@@ -410,6 +414,14 @@ function GeneratePageInner() {
           }
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "error", error: "中止しました" } : item
+            )
+          );
+          return;
+        }
         lastError = err instanceof Error ? err.message : "通信エラー";
         if (attempt >= MAX_RETRIES) {
           setBatchItems((prev) =>
@@ -779,7 +791,7 @@ function GeneratePageInner() {
           <BatchProgress
             items={batchItems}
             running={batchRunning}
-            onStop={() => { abortRef.current = true; }}
+            onStop={() => { abortRef.current = true; abortControllerRef.current?.abort(); }}
           />
         </div>
       )}
