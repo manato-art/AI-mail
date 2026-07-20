@@ -57,6 +57,7 @@ export default function CollectionPage() {
 
   const [toast, setToast] = useState<string | null>(null);
   const [jobRunning, setJobRunning] = useState(false);
+  const [noSourceError, setNoSourceError] = useState(false);
 
   function showToast(msg: string) {
     setToast(null);
@@ -114,6 +115,7 @@ export default function CollectionPage() {
       }
       setKeyword("");
       setSite("");
+      setNoSourceError(false);
       showToast("キーワードを追加しました。次回の収集から対象になります");
       load();
     } catch {
@@ -123,8 +125,17 @@ export default function CollectionPage() {
     }
   }
 
+  const hasActiveSources = sources.some(
+    (s) => s.is_active === 1 && !s.paused_kind,
+  );
+
   async function handleRunNow() {
     if (running) return;
+    if (!hasActiveSources) {
+      setNoSourceError(true);
+      return;
+    }
+    setNoSourceError(false);
     setRunning(true);
     try {
       const res = await fetch("/api/collection/run", { method: "POST" });
@@ -204,58 +215,45 @@ export default function CollectionPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[13px] text-(--color-muted)">
-            登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
-            最終実行: {formatDateTime(status?.lastRunAt ?? null)}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={load}
-            className="flex h-10 items-center gap-2 rounded-lg border border-(--color-border) px-3 text-sm font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
-          >
-            <ArrowClockwise size={16} />
-            更新
-          </button>
-          <button
-            type="button"
-            onClick={handleRunNow}
-            disabled={running}
-            className="flex h-10 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            {running ? <SpinnerGap size={16} className="animate-spin" /> : <Play size={16} />}
-            今すぐ収集
-          </button>
-        </div>
-      </header>
-
-      {jobRunning && (
-        <div className="rounded-xl border border-(--color-primary)/30 bg-(--color-primary-light) p-4 animate-fade-in">
-          <div className="flex items-center gap-3">
-            <SpinnerGap size={20} className="animate-spin text-(--color-primary) shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">収集を実行中...</p>
-              <p className="mt-0.5 text-[12px] text-(--color-muted)">
-                企業の検索とHP調査を行っています。完了まで数分かかります。このまま待つか、別のページに移動しても大丈夫です。
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-(--color-primary)/15">
-            <div className="h-full w-1/3 rounded-full bg-(--color-primary) animate-[progress-slide_1.5s_ease-in-out_infinite]" />
-          </div>
-        </div>
-      )}
-
-      {status && <InventoryPanel status={status} onRetryFailed={handleRetryFailed} />}
+      <p className="text-[13px] text-(--color-muted)">
+        登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
+        最終実行: {formatDateTime(status?.lastRunAt ?? null)}
+      </p>
 
       <section className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
-        <h2 className="text-sm font-bold">収集キーワード</h2>
-        <p className="mt-1 text-[12px] text-(--color-muted)">
-          検索エンジン経由で企業を探します。検索元サイトは空欄で構いません（自動で判断します）。
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold">収集キーワード</h2>
+            <p className="mt-1 text-[12px] text-(--color-muted)">
+              検索エンジン経由で企業を探します。検索元サイトは空欄で構いません（自動で判断します）。
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={load}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
+            >
+              <ArrowClockwise size={14} />
+              更新
+            </button>
+            <button
+              type="button"
+              onClick={handleRunNow}
+              disabled={running}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+            >
+              {running ? <SpinnerGap size={14} className="animate-spin" /> : <Play size={14} />}
+              今すぐ収集
+            </button>
+          </div>
+        </div>
+
+        {noSourceError && (
+          <p className="mt-3 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[13px] text-(--color-danger) animate-fade-in">
+            収集するにはキーワードを追加してください。下のフォームからキーワードを登録すると収集できます。
+          </p>
+        )}
 
         <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
@@ -349,6 +347,25 @@ export default function CollectionPage() {
           ))}
         </div>
       </section>
+
+      {jobRunning && (
+        <div className="rounded-xl border border-(--color-primary)/30 bg-(--color-primary-light) p-4 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <SpinnerGap size={20} className="animate-spin text-(--color-primary) shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">収集を実行中...</p>
+              <p className="mt-0.5 text-[12px] text-(--color-muted)">
+                企業の検索とHP調査を行っています。完了まで数分かかります。このまま待つか、別のページに移動しても大丈夫です。
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-(--color-primary)/15">
+            <div className="h-full w-1/3 rounded-full bg-(--color-primary) animate-[progress-slide_1.5s_ease-in-out_infinite]" />
+          </div>
+        </div>
+      )}
+
+      {status && <InventoryPanel status={status} onRetryFailed={handleRetryFailed} />}
 
       <section className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
         <h2 className="text-sm font-bold">実行の記録</h2>
