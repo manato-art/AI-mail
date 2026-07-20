@@ -110,7 +110,7 @@ function GeneratePageInner() {
   const [fixedText, setFixedText] = useState("");
 
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [mode, setMode] = useState<"single" | "batch">("single");
+  const [mode, setMode] = useState<"single" | "batch">("batch");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
   const [companySearch, setCompanySearch] = useState("");
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
