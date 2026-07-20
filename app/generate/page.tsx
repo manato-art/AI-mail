@@ -337,6 +337,99 @@ function GeneratePageInner() {
     }
   }
 
+  async function processOneCompany(items: BatchItem[], i: number) {
+    if (abortRef.current) return;
+
+    setBatchItems((prev) =>
+      prev.map((item, idx) => (idx === i ? { ...item, status: "processing" } : item))
+    );
+
+    const MAX_RETRIES = 1;
+    let lastError = "";
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const waitMs = attempt * 3000;
+        await new Promise((r) => setTimeout(r, waitMs));
+        if (abortRef.current) return;
+      }
+
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serviceId: Number(selectedServiceId),
+            personaId: Number(selectedPersonaId),
+            url: items[i].url,
+            force: true,
+            forceLow: true,
+            tone,
+            length,
+            cta,
+            additionalInstructions: additionalInstructions.trim() || undefined,
+            fixedText: fixedText.trim() || undefined,
+            templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
+          }),
+        });
+
+        const data: GenerateResponse = await res.json();
+
+        if (isSuccessResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
+            )
+          );
+          return;
+        } else if (isDuplicateResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
+            )
+          );
+          return;
+        } else if (isLowCompatibilityResponse(data)) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "skipped", skipReason: "相性低" } : item
+            )
+          );
+          return;
+        } else if (isErrorResponse(data)) {
+          lastError = data.error;
+          const retryable = "retryable" in data && (data as { retryable?: boolean }).retryable;
+          if (!retryable || attempt >= MAX_RETRIES) {
+            setBatchItems((prev) =>
+              prev.map((item, idx) =>
+                idx === i ? { ...item, status: "error", error: data.error } : item
+              )
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : "通信エラー";
+        if (attempt >= MAX_RETRIES) {
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "error", error: lastError } : item
+            )
+          );
+          return;
+        }
+      }
+    }
+
+    if (lastError) {
+      setBatchItems((prev) =>
+        prev.map((item, idx) =>
+          idx === i ? { ...item, status: "error", error: lastError } : item
+        )
+      );
+    }
+  }
+
   async function handleBatchGenerate() {
     if (!selectedServiceId || !selectedPersonaId || batchTargetUrls.length === 0) return;
 
@@ -345,102 +438,18 @@ function GeneratePageInner() {
     setBatchRunning(true);
     abortRef.current = false;
 
-    for (let i = 0; i < items.length; i++) {
-      if (abortRef.current) break;
+    const CONCURRENCY = 3;
+    let cursor = 0;
 
-      setBatchItems((prev) =>
-        prev.map((item, idx) => (idx === i ? { ...item, status: "processing" } : item))
-      );
-
-      const MAX_RETRIES = 1;
-      let lastError = "";
-
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (attempt > 0) {
-          const waitMs = attempt * 3000;
-          await new Promise((r) => setTimeout(r, waitMs));
-          if (abortRef.current) break;
-        }
-
-        try {
-          const res = await fetch("/api/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              serviceId: Number(selectedServiceId),
-              personaId: Number(selectedPersonaId),
-              url: items[i].url,
-              force: true,
-              forceLow: true,
-              tone,
-              length,
-              cta,
-              additionalInstructions: additionalInstructions.trim() || undefined,
-              fixedText: fixedText.trim() || undefined,
-              templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
-            }),
-          });
-
-          const data: GenerateResponse = await res.json();
-
-          if (isSuccessResponse(data)) {
-            setBatchItems((prev) =>
-              prev.map((item, idx) =>
-                idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
-              )
-            );
-            lastError = "";
-            break;
-          } else if (isDuplicateResponse(data)) {
-            setBatchItems((prev) =>
-              prev.map((item, idx) =>
-                idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
-              )
-            );
-            lastError = "";
-            break;
-          } else if (isLowCompatibilityResponse(data)) {
-            setBatchItems((prev) =>
-              prev.map((item, idx) =>
-                idx === i ? { ...item, status: "skipped", skipReason: "相性低" } : item
-              )
-            );
-            lastError = "";
-            break;
-          } else if (isErrorResponse(data)) {
-            lastError = data.error;
-            const retryable = "retryable" in data && (data as { retryable?: boolean }).retryable;
-            if (!retryable || attempt >= MAX_RETRIES) {
-              setBatchItems((prev) =>
-                prev.map((item, idx) =>
-                  idx === i ? { ...item, status: "error", error: data.error } : item
-                )
-              );
-              lastError = "";
-              break;
-            }
-          }
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : "通信エラー";
-          if (attempt >= MAX_RETRIES) {
-            setBatchItems((prev) =>
-              prev.map((item, idx) =>
-                idx === i ? { ...item, status: "error", error: lastError } : item
-              )
-            );
-            lastError = "";
-          }
-        }
-      }
-
-      if (lastError) {
-        setBatchItems((prev) =>
-          prev.map((item, idx) =>
-            idx === i ? { ...item, status: "error", error: lastError } : item
-          )
-        );
+    async function runNext(): Promise<void> {
+      while (cursor < items.length && !abortRef.current) {
+        const idx = cursor++;
+        await processOneCompany(items, idx);
       }
     }
+
+    const workers = Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => runNext());
+    await Promise.all(workers);
 
     setBatchRunning(false);
   }
