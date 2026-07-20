@@ -133,9 +133,9 @@ export async function POST(request: NextRequest) {
   // F4: hybrid のときは fixed_part を一字一句そのまま置き、続きだけAIに書かせる
   const template = templateId ? getTemplate(templateId) : undefined;
 
-  // F22: 初回メールへの添付を構造的に防ぐ。UI側でも無効化しているが、
-  // API直叩きで抜けられるとガードにならないのでサーバ側でも弾く
-  if (attachmentIds.length > 0 && !template?.allow_attachments) {
+  // F22: テンプレート指定時は添付許可フラグを尊重する。
+  // 直接入力（テンプレート無し）の場合はユーザーの明示的な判断として許可
+  if (attachmentIds.length > 0 && template && !template.allow_attachments) {
     return NextResponse.json(
       {
         error: "このテンプレートでは資料を添付できません",

@@ -7,7 +7,9 @@ import {
   CaretDown,
   Check,
   ClockCounterClockwise,
+  EnvelopeOpen,
   Eye,
+  MagicWand,
   MagnifyingGlass,
   Paperclip,
   Plus,
@@ -86,6 +88,14 @@ export default function BulkSendPage() {
   const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<Set<number>>(new Set());
   const [testMode, setTestMode] = useState(false);
 
+  const [inputMode, setInputMode] = useState<"template" | "direct">("template");
+  const [directSubject, setDirectSubject] = useState("");
+  const [directBody, setDirectBody] = useState("");
+  const directBodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const [generatedOpen, setGeneratedOpen] = useState(false);
+  const [generatedSearch, setGeneratedSearch] = useState("");
+
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
 
@@ -119,6 +129,31 @@ export default function BulkSendPage() {
   function showToast(msg: string) {
     setToast(null);
     setTimeout(() => setToast(msg), 0);
+  }
+
+  function insertAtCursorDirect(text: string) {
+    const el = directBodyRef.current;
+    if (!el) { setDirectBody((prev) => prev + text); return; }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const before = directBody.slice(0, start);
+    const after = directBody.slice(end);
+    setDirectBody(before + text + after);
+    requestAnimationFrame(() => {
+      const pos = start + text.length;
+      el.selectionStart = pos;
+      el.selectionEnd = pos;
+      el.focus();
+    });
+  }
+
+  function handlePickGenerated(p: Prospect) {
+    setDirectSubject(p.generated_subject);
+    setDirectBody(p.generated_body);
+    setGeneratedOpen(false);
+    setGeneratedSearch("");
+    if (inputMode !== "direct") setInputMode("direct");
+    showToast("生成済みメールを読み込みました");
   }
 
   useEffect(() => {
@@ -216,15 +251,19 @@ export default function BulkSendPage() {
    */
   const buildEmail = useCallback(
     (r: Recipient) => {
-      if (!selectedTemplate) return { subject: "", body: "", unresolved: [] as string[] };
-      const resolved = resolveEmailVariables(selectedTemplate.subject, selectedTemplate.body, {
+      const srcSubject = inputMode === "direct" ? directSubject : selectedTemplate?.subject ?? "";
+      const srcBody = inputMode === "direct" ? directBody : selectedTemplate?.body ?? "";
+      if (!srcSubject.trim() && !srcBody.trim()) return { subject: "", body: "", unresolved: [] as string[] };
+      const resolved = resolveEmailVariables(srcSubject, srcBody, {
         company_name: r.company,
         person_name: r.person,
       });
       return { subject: resolved.subject, body: resolved.body, unresolved: resolved.unresolved };
     },
-    [selectedTemplate]
+    [selectedTemplate, inputMode, directSubject, directBody]
   );
+
+  const hasContent = inputMode === "template" ? !!selectedTemplate : !!(directSubject.trim() || directBody.trim());
 
   function handleAddOne() {
     setRecipients((prev) => [...prev, { id: uid(), company: "", person: "", email: "", checked: true }]);
@@ -360,7 +399,10 @@ export default function BulkSendPage() {
 
 
   async function handleSendAll() {
-    if (!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending) return;
+    const canSend = inputMode === "template"
+      ? !!selectedTemplate && !!selectedSenderId
+      : !!(directSubject.trim() && directBody.trim() && selectedSenderId);
+    if (!canSend || checkedRecipients.length === 0 || isSending) return;
     const toSend = checkedRecipients.filter(
       (r) => r.email && rowStatus[r.id]?.state !== "sent"
     );
@@ -384,19 +426,19 @@ export default function BulkSendPage() {
         break;
       }
       setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sending" } }));
-      const { subject, body } = buildEmail(r);
+      const { subject, body: emailBody } = buildEmail(r);
       try {
         const res = await fetch("/api/bulk-send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             senderId: selectedSenderId,
-            templateId: selectedTemplate.id,
+            templateId: inputMode === "template" ? selectedTemplate?.id : undefined,
             company: r.company,
             person: r.person,
             email: r.email,
             subject,
-            body,
+            body: emailBody,
             attachmentIds: [...selectedAttachmentIds],
             acknowledgedWarnings: allowWarnings,
           }),
@@ -452,6 +494,17 @@ export default function BulkSendPage() {
         (p.emails_found_json || "").toLowerCase().includes(q)
       );
   }, [sorted, historySearch]);
+
+  const generatedProspects = useMemo(() => {
+    const q = generatedSearch.toLowerCase();
+    return sorted
+      .filter((p) => p.generated_subject && p.generated_body && p.input_url)
+      .filter((p) =>
+        !q ||
+        (p.company_name || "").toLowerCase().includes(q) ||
+        (p.generated_subject || "").toLowerCase().includes(q)
+      );
+  }, [sorted, generatedSearch]);
 
   function handleHistoryImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
@@ -565,7 +618,7 @@ export default function BulkSendPage() {
     <div className="animate-fade-in pb-20">
       <div className="mb-1">
         <h1 className="text-xl font-bold tracking-tight">メール一括送信</h1>
-        <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、テンプレートメールを一括送信します</p>
+        <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、メールを一括送信します</p>
       </div>
 
       {/* No sender warning */}
@@ -582,8 +635,8 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* テンプレートが1件も無いと何も送れないので導線を出す */}
-      {templates.length === 0 && (
+      {/* テンプレートが1件も無い場合の導線（テンプレートモード時のみ） */}
+      {inputMode === "template" && templates.length === 0 && (
         <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
           <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
           <div className="text-gray-700 dark:text-gray-300">
@@ -607,31 +660,55 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* Template / sender selector */}
+      {/* Input mode selector */}
+      <div className="mt-5 flex overflow-hidden rounded-lg border border-(--color-border)">
+        <button
+          type="button"
+          onClick={() => setInputMode("template")}
+          className={`flex-1 cursor-pointer py-2.5 text-center text-[13px] font-medium transition-colors ${
+            inputMode === "template" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+          }`}
+        >
+          テンプレートから送信
+        </button>
+        <button
+          type="button"
+          onClick={() => setInputMode("direct")}
+          className={`flex-1 cursor-pointer border-l border-(--color-border) py-2.5 text-center text-[13px] font-medium transition-colors ${
+            inputMode === "direct" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+          }`}
+        >
+          直接入力して送信
+        </button>
+      </div>
+
+      {/* Template / sender / direct input */}
       <div className="mt-5 flex flex-wrap items-end gap-3">
-        <div className="min-w-[280px] flex-1">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-            テンプレートメール
-          </label>
-          <div className="relative">
-            <select
-              value={selectedTemplateId}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-            >
-              <option value="">テンプレートを選択</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} — {t.subject.slice(0, 40)}
-                </option>
-              ))}
-            </select>
-            <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+        {inputMode === "template" && (
+          <div className="min-w-[280px] flex-1">
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              テンプレートメール
+            </label>
+            <div className="relative">
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              >
+                <option value="">テンプレートを選択</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} — {t.subject.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+            </div>
           </div>
-        </div>
+        )}
 
         {senders.length > 0 && (
-          <div className="min-w-[240px]">
+          <div className={inputMode === "direct" ? "min-w-[280px] flex-1" : "min-w-[240px]"}>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
               送信元アカウント
             </label>
@@ -654,8 +731,74 @@ export default function BulkSendPage() {
         )}
       </div>
 
+      {/* Direct input: subject + body + buttons */}
+      {inputMode === "direct" && (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              件名
+            </label>
+            <input
+              type="text"
+              value={directSubject}
+              onChange={(e) => setDirectSubject(e.target.value)}
+              className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              placeholder="件名を入力（例: {{company_name}}様へのご提案）"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              本文
+            </label>
+            <textarea
+              ref={directBodyRef}
+              value={directBody}
+              onChange={(e) => setDirectBody(e.target.value)}
+              rows={12}
+              className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              placeholder={"メール本文を入力\n\n{{company_name}} で企業名、{{person_name}} で担当者名が差し込まれます\n{{AI:ここに指示}} でAIが宛先ごとに文章を生成します"}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-(--color-muted)">差し込み:</span>
+            {["company_name", "person_name", "sender_name", "service_name", "lp_url", "booking_url"].map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => insertAtCursorDirect(`{{${v}}}`)}
+                className="inline-flex h-7 cursor-pointer items-center rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+              >
+                {`{{${v}}}`}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => insertAtCursorDirect("{{AI:ここに指示を書く}}")}
+              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+            >
+              <MagicWand size={12} weight="fill" />
+              AI生成ゾーンを挿入
+            </button>
+            {prospects.some((p) => p.generated_subject && p.generated_body && p.input_url) && (
+              <button
+                type="button"
+                onClick={() => { setGeneratedOpen(true); setGeneratedSearch(""); }}
+                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2.5 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+              >
+                <EnvelopeOpen size={12} />
+                生成済みメールから引用
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] leading-relaxed text-(--color-muted)">
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[10px] dark:bg-slate-700">{"{{AI:指示}}"}</code> を入れると、
+            その部分を宛先企業の分析データに基づいてAIが自動生成します。企業分析が無い場合は企業名のみで生成します。
+          </p>
+        </div>
+      )}
+
       {/* F22: 添付が許可されていないテンプレでは、添付欄そのものを出さない */}
-      {selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
+      {inputMode === "template" && selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
         <p className="mt-3 text-[12px] text-(--color-muted)">
           このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
           添付したい場合は
@@ -667,7 +810,7 @@ export default function BulkSendPage() {
       )}
 
       {/* Attachment picker */}
-      {selectedTemplate?.allow_attachments && attachmentsLib.length > 0 && (
+      {((inputMode === "template" && selectedTemplate?.allow_attachments) || inputMode === "direct") && attachmentsLib.length > 0 && (
         <div className="mt-3">
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
             添付資料（全宛先に添付されます）
@@ -907,7 +1050,7 @@ export default function BulkSendPage() {
             )}
           </div>
 
-          {previewRecipient && selectedTemplate ? (
+          {previewRecipient && hasContent ? (
             <>
               <div className="space-y-3.5 p-5">
                 <div>
@@ -952,7 +1095,9 @@ export default function BulkSendPage() {
           ) : (
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
               <p className="text-sm text-(--color-muted)">
-                {!selectedTemplate ? "テンプレートを選択してください" : "チェックした宛先のプレビューが表示されます"}
+                {!hasContent
+                  ? (inputMode === "template" ? "テンプレートを選択してください" : "件名と本文を入力してください")
+                  : "チェックした宛先のプレビューが表示されます"}
               </p>
             </div>
           )}
@@ -991,7 +1136,7 @@ export default function BulkSendPage() {
             <button
               type="button"
               onClick={handleSendAll}
-              disabled={!selectedTemplate || !selectedSenderId || checkedRecipients.length === 0 || isSending}
+              disabled={!hasContent || !selectedSenderId || checkedRecipients.length === 0 || isSending}
               className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSending ? (
@@ -1395,6 +1540,76 @@ export default function BulkSendPage() {
         </div>
       )}
 
+
+      {/* Generated Email Picker Modal */}
+      {generatedOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setGeneratedOpen(false); }}
+        >
+          <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
+            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
+              <h3 className="text-[15px] font-semibold">生成済みメールから引用</h3>
+              <button
+                type="button"
+                onClick={() => setGeneratedOpen(false)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 pt-4 pb-3">
+              <div className="relative">
+                <MagnifyingGlass size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
+                <input
+                  type="text"
+                  value={generatedSearch}
+                  onChange={(e) => setGeneratedSearch(e.target.value)}
+                  placeholder="企業名・件名で検索"
+                  className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 pb-3">
+              {generatedProspects.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <p className="text-sm text-(--color-muted)">
+                    {generatedSearch ? "該当する生成済みメールがありません" : "生成済みメールがありません"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <p className="mb-2 text-[11px] leading-relaxed text-(--color-muted)">
+                    選択したメールの件名・本文が直接入力欄に読み込まれます。
+                    他社向けの内容が含まれている場合は、該当箇所を
+                    <code className="mx-0.5 rounded bg-gray-100 px-1 py-0.5 text-[10px] dark:bg-slate-700">{"{{AI:指示}}"}</code>
+                    や変数に置き換えてから送信してください。
+                  </p>
+                  {generatedProspects.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handlePickGenerated(p)}
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-(--color-border) px-4 py-3 text-left transition-colors hover:border-(--color-primary)/50 hover:bg-(--color-card-hover)"
+                    >
+                      <EnvelopeOpen size={18} className="shrink-0 text-(--color-muted)" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
+                        <p className="truncate text-[12px] text-(--color-muted)">{p.generated_subject}</p>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-(--color-muted)">
+                        {new Date(p.created_at).toLocaleDateString("ja-JP")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast message={toast} onDone={() => setToast(null)} />
     </div>
