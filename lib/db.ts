@@ -1393,6 +1393,19 @@ export function getCompanyById(id: number): Company | undefined {
     .get(id) as Company | undefined;
 }
 
+export function updateCompanyHpUrl(id: number, hpUrl: string): Company | undefined {
+  const domain = (() => {
+    try { return new URL(hpUrl).hostname.replace(/^www\./, ""); } catch { return null; }
+  })();
+  getDb()
+    .prepare(
+      `UPDATE companies SET hp_url = @hp_url, domain = COALESCE(domain, @domain)
+       WHERE id = @id`
+    )
+    .run({ id, hp_url: hpUrl, domain });
+  return getCompanyById(id);
+}
+
 export function findCompanyByDomain(domain: string): Company | undefined {
   return getDb()
     .prepare("SELECT * FROM companies WHERE domain = ? LIMIT 1")

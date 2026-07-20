@@ -5,7 +5,9 @@ import {
   upsertCompany,
   upsertContact,
   deleteCompany,
+  updateCompanyHpUrl,
 } from "@/lib/db";
+import { validateUrl } from "@/lib/ssrf";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BATCH = 500;
@@ -92,6 +94,34 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ companiesAdded, contactsAdded, skipped });
+}
+
+export async function PATCH(request: NextRequest) {
+  let body: { id?: unknown; hp_url?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const id = Number(body?.id);
+  const hpUrl = typeof body?.hp_url === "string" ? body.hp_url.trim() : "";
+
+  if (!Number.isInteger(id) || !hpUrl) {
+    return NextResponse.json({ error: "id と hp_url が必要です" }, { status: 400 });
+  }
+
+  const validated = validateUrl(hpUrl);
+  if (!validated.valid) {
+    return NextResponse.json({ error: validated.error ?? "URLの形式が不正です" }, { status: 400 });
+  }
+
+  const company = updateCompanyHpUrl(id, validated.normalized);
+  if (!company) {
+    return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 });
+  }
+
+  return NextResponse.json({ company });
 }
 
 export async function DELETE(request: NextRequest) {

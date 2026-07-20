@@ -6,6 +6,7 @@ import {
   ArrowClockwise,
   CheckCircle,
   EnvelopeSimple,
+  GlobeSimple,
   Hourglass,
   PaperPlaneTilt,
   SpinnerGap,
@@ -74,6 +75,34 @@ export default function CompaniesPage() {
   );
   const [reEnriching, setReEnriching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [editingHpId, setEditingHpId] = useState<number | null>(null);
+  const [hpUrlInput, setHpUrlInput] = useState("");
+  const [savingHpUrl, setSavingHpUrl] = useState(false);
+
+  const saveHpUrl = useCallback(async (companyId: number, url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setSavingHpUrl(true);
+    try {
+      const res = await fetch("/api/companies", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: companyId, hp_url: trimmed }),
+      });
+      if (res.ok) {
+        const { company } = await res.json();
+        setCompanies((prev) =>
+          prev.map((c) => (c.id === companyId ? { ...c, ...company } : c))
+        );
+        setEditingHpId(null);
+        setHpUrlInput("");
+      }
+    } catch {
+      /* retry on next attempt */
+    } finally {
+      setSavingHpUrl(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -287,10 +316,50 @@ export default function CompaniesPage() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium">{company.name}</p>
-                        {company.hp_url && (
+                        {company.hp_url ? (
                           <p className="mt-0.5 truncate text-[11px] text-(--color-muted) max-w-[250px]">
                             {company.domain || company.hp_url}
                           </p>
+                        ) : editingHpId === company.id ? (
+                          <form
+                            className="mt-1 flex items-center gap-1"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              saveHpUrl(company.id, hpUrlInput);
+                            }}
+                          >
+                            <input
+                              type="url"
+                              autoFocus
+                              value={hpUrlInput}
+                              onChange={(e) => setHpUrlInput(e.target.value)}
+                              placeholder="https://example.com"
+                              className="h-7 w-48 rounded border border-(--color-border) bg-transparent px-2 text-[11px] outline-none focus:border-(--color-primary)"
+                            />
+                            <button
+                              type="submit"
+                              disabled={savingHpUrl || !hpUrlInput.trim()}
+                              className="h-7 rounded bg-(--color-primary) px-2 text-[11px] font-medium text-white disabled:opacity-50 cursor-pointer"
+                            >
+                              {savingHpUrl ? "..." : "保存"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingHpId(null); setHpUrlInput(""); }}
+                              className="h-7 px-1.5 text-[11px] text-(--color-muted) hover:text-(--color-text) cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setEditingHpId(company.id); setHpUrlInput(""); }}
+                            className="mt-0.5 flex items-center gap-1 text-[11px] text-(--color-primary) hover:underline cursor-pointer"
+                          >
+                            <GlobeSimple size={12} />
+                            HP追加
+                          </button>
                         )}
                       </div>
                     </td>

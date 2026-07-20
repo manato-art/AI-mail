@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  RateLimitError,
+  InternalServerError,
+} from "@anthropic-ai/sdk";
+import {
   getService,
   getPersona,
   getTemplate,
@@ -12,6 +18,30 @@ import { crawlWebsiteWithRefusal } from "@/lib/crawl";
 import { analyzeCompany } from "@/lib/analyze";
 import { generateEmail } from "@/lib/generate";
 import { validateEmail } from "@/lib/quality-check";
+
+function classifyError(error: unknown): { message: string; status: number; retryable: boolean } {
+  if (error instanceof RateLimitError) {
+    return { message: "AI APIの利用制限に達しました。しばらく待ってから再試行してください", status: 429, retryable: true };
+  }
+  if (error instanceof InternalServerError) {
+    return { message: "AI APIが一時的に不安定です。しばらく待ってから再試行してください", status: 502, retryable: true };
+  }
+  if (error instanceof APIConnectionTimeoutError) {
+    return { message: "AI APIへの接続がタイムアウトしました。再試行してください", status: 504, retryable: true };
+  }
+  if (error instanceof APIConnectionError) {
+    return { message: "AI APIへの接続に失敗しました。再試行してください", status: 502, retryable: true };
+  }
+  if (error instanceof Error) {
+    if (error.message.includes("JSONパース")) {
+      return { message: "AIの応答を解析できませんでした。再試行してください", status: 502, retryable: true };
+    }
+    if (error.message.includes("テキストを取得できません")) {
+      return { message: "AIから有効な応答がありませんでした。再試行してください", status: 502, retryable: true };
+    }
+  }
+  return { message: "サーバーエラーが発生しました", status: 500, retryable: false };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,6 +87,13 @@ export async function POST(request: NextRequest) {
     }
 
     const crawlResult = await crawlWebsiteWithRefusal(validated.normalized);
+
+    if (crawlResult.pages.length === 0) {
+      return NextResponse.json(
+        { error: "サイトの情報を取得できませんでした。URLを確認するか、しばらく待ってから再試行してください" },
+        { status: 422 }
+      );
+    }
 
     if (crawlResult.hasRefusal && crawlResult.contactEmails.length > 0) {
       for (const email of crawlResult.contactEmails) {
@@ -124,7 +161,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ prospect, qualityCheck });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
+    console.error("[generate]", error);
+    const classified = classifyError(error);
+    return NextResponse.json(
+      { error: classified.message, retryable: classified.retryable },
+      { status: classified.status }
+    );
   }
 }

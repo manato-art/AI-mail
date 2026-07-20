@@ -328,56 +328,91 @@ function GeneratePageInner() {
         prev.map((item, idx) => (idx === i ? { ...item, status: "processing" } : item))
       );
 
-      try {
-        const res = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            serviceId: Number(selectedServiceId),
-            personaId: Number(selectedPersonaId),
-            url: items[i].url,
-            force: false,
-            forceLow: true,
-            tone,
-            length,
-            cta,
-            additionalInstructions: additionalInstructions.trim() || undefined,
-            fixedText: fixedText.trim() || undefined,
-            templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
-          }),
-        });
+      const MAX_RETRIES = 1;
+      let lastError = "";
 
-        const data: GenerateResponse = await res.json();
-
-        if (isSuccessResponse(data)) {
-          setBatchItems((prev) =>
-            prev.map((item, idx) =>
-              idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
-            )
-          );
-        } else if (isDuplicateResponse(data)) {
-          setBatchItems((prev) =>
-            prev.map((item, idx) =>
-              idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
-            )
-          );
-        } else if (isLowCompatibilityResponse(data)) {
-          setBatchItems((prev) =>
-            prev.map((item, idx) =>
-              idx === i ? { ...item, status: "skipped", skipReason: "相性低" } : item
-            )
-          );
-        } else if (isErrorResponse(data)) {
-          setBatchItems((prev) =>
-            prev.map((item, idx) =>
-              idx === i ? { ...item, status: "error", error: data.error } : item
-            )
-          );
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const waitMs = attempt * 3000;
+          await new Promise((r) => setTimeout(r, waitMs));
+          if (abortRef.current) break;
         }
-      } catch (err) {
+
+        try {
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              serviceId: Number(selectedServiceId),
+              personaId: Number(selectedPersonaId),
+              url: items[i].url,
+              force: false,
+              forceLow: true,
+              tone,
+              length,
+              cta,
+              additionalInstructions: additionalInstructions.trim() || undefined,
+              fixedText: fixedText.trim() || undefined,
+              templateId: selectedTemplateId ? Number(selectedTemplateId) : undefined,
+            }),
+          });
+
+          const data: GenerateResponse = await res.json();
+
+          if (isSuccessResponse(data)) {
+            setBatchItems((prev) =>
+              prev.map((item, idx) =>
+                idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
+              )
+            );
+            lastError = "";
+            break;
+          } else if (isDuplicateResponse(data)) {
+            setBatchItems((prev) =>
+              prev.map((item, idx) =>
+                idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
+              )
+            );
+            lastError = "";
+            break;
+          } else if (isLowCompatibilityResponse(data)) {
+            setBatchItems((prev) =>
+              prev.map((item, idx) =>
+                idx === i ? { ...item, status: "skipped", skipReason: "相性低" } : item
+              )
+            );
+            lastError = "";
+            break;
+          } else if (isErrorResponse(data)) {
+            lastError = data.error;
+            const retryable = "retryable" in data && (data as { retryable?: boolean }).retryable;
+            if (!retryable || attempt >= MAX_RETRIES) {
+              setBatchItems((prev) =>
+                prev.map((item, idx) =>
+                  idx === i ? { ...item, status: "error", error: data.error } : item
+                )
+              );
+              lastError = "";
+              break;
+            }
+          }
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : "通信エラー";
+          if (attempt >= MAX_RETRIES) {
+            setBatchItems((prev) =>
+              prev.map((item, idx) =>
+                idx === i ? { ...item, status: "error", error: lastError } : item
+              )
+            );
+            lastError = "";
+          }
+        }
+      }
+
+      if (lastError) {
         setBatchItems((prev) =>
           prev.map((item, idx) =>
-            idx === i ? { ...item, status: "error", error: err instanceof Error ? err.message : "通信エラー" } : item
+            idx === i ? { ...item, status: "error", error: lastError } : item
           )
         );
       }
