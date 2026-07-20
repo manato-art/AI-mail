@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import type { Company, Contact } from "@/lib/types";
+import { ActivityLogPanel } from "../activity-log-panel";
 
 const SOURCE_LABELS: Record<string, string> = {
   keyword_search: "キーワード検索",
@@ -258,6 +259,8 @@ export default function CompaniesPage() {
           </table>
         </div>
       )}
+
+      <ActivityLogPanel />
     </div>
   );
 }
