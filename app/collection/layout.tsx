@@ -1,6 +1,6 @@
 "use client";
 
-import { MagnifyingGlass, Stack } from "@phosphor-icons/react";
+import { Buildings, MagnifyingGlass, Stack } from "@phosphor-icons/react";
 import { TabNav, type TabItem } from "@/components/tab-nav";
 
 /**
@@ -11,11 +11,12 @@ import { TabNav, type TabItem } from "@/components/tab-nav";
 const TABS: TabItem[] = [
   { href: "/collection", label: "在庫と自動収集", Icon: Stack },
   { href: "/collection/search", label: "キーワードで探す", Icon: MagnifyingGlass },
+  { href: "/collection/companies", label: "企業一覧", Icon: Buildings },
 ];
 
 export default function CollectionLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div>
+    <div className="relative">
       <TabNav items={TABS} title="企業リスト" />
       {children}
     </div>

@@ -32,6 +32,27 @@ const RUN_STATUS_STYLES: Record<string, string> = {
   error: "bg-(--color-danger-light) text-(--color-danger)",
 };
 
+function CompactStat({
+  label,
+  value,
+  tone = "normal",
+}: {
+  label: string;
+  value: string;
+  tone?: "normal" | "warning";
+}) {
+  return (
+    <div className="rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-2">
+      <p className="text-[11px] text-(--color-muted) whitespace-nowrap">{label}</p>
+      <p
+        className={`mt-0.5 text-base font-bold tabular-nums ${tone === "warning" ? "text-(--color-warning)" : ""}`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
   let iso = value.replace(" ", "T");
@@ -220,6 +241,30 @@ export default function CollectionPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {status && (
+        <div className="absolute right-0 top-1 hidden items-start gap-2 lg:flex">
+          <CompactStat
+            label="すぐ送れる宛先"
+            value={`${status.readyCount}件`}
+            tone={status.isLowStock ? "warning" : "normal"}
+          />
+          <CompactStat
+            label="残り日数"
+            value={`約${status.daysRemaining}日`}
+            tone={status.isLowStock ? "warning" : "normal"}
+          />
+          <CompactStat
+            label="準備中"
+            value={`${status.pendingEnrichment}社`}
+          />
+          <CompactStat
+            label="調査できず"
+            value={`${status.failedEnrichment}社`}
+            tone={status.failedEnrichment > 0 ? "warning" : "normal"}
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] text-(--color-muted)">
           登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
@@ -287,14 +332,32 @@ export default function CollectionPage() {
               キーワードがまだありません。追加すると収集が始まります。
             </p>
           )}
-          {sources.map((source) => (
+          {sources.map((source) => {
+            const isActive = source.is_active === 1 && !source.paused_kind;
+            return (
             <div
               key={source.id}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-(--color-border) p-3"
+              className={`flex flex-wrap items-center gap-3 rounded-lg border p-3 transition-opacity ${
+                isActive
+                  ? "border-(--color-border)"
+                  : "border-(--color-border) opacity-60"
+              }`}
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{source.keyword}</p>
-                <p className="mt-0.5 text-[11px] text-(--color-muted)">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                      isActive ? "bg-(--color-success)" : "bg-(--color-muted)"
+                    }`}
+                  />
+                  <p className="truncate text-sm font-medium">{source.keyword}</p>
+                  {isActive && (
+                    <span className="shrink-0 rounded-full bg-(--color-success-light) px-2 py-0.5 text-[10px] font-medium text-(--color-success)">
+                      収集対象
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 pl-4 text-[11px] text-(--color-muted)">
                   {source.site || "検索元サイト未定"} ・ 最終実行{" "}
                   {formatDateTime(source.last_run_at)}
                 </p>
@@ -347,7 +410,8 @@ export default function CollectionPage() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
