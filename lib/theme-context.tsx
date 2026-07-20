@@ -53,6 +53,7 @@ function applyTheme(resolved: "light" | "dark") {
   const root = document.documentElement;
   root.setAttribute("data-theme", resolved);
   root.classList.toggle("dark", resolved === "dark");
+  root.style.colorScheme = resolved;
 }
 
 function applyAccent(key: string, resolved: "light" | "dark") {

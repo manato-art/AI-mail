@@ -15,6 +15,8 @@ import type { CollectionStatus, SourcesResponse } from "./types";
 
 /** 画面を開いている間の自動更新間隔。裏で進む処理の結果を反映する */
 const REFRESH_INTERVAL_MS = 30 * 1000;
+/** 収集中はこの間隔で状態を更新する */
+const RUNNING_POLL_MS = 5 * 1000;
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   success: "新規あり",
@@ -54,6 +56,7 @@ export default function CollectionPage() {
   const [saving, setSaving] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
+  const [jobRunning, setJobRunning] = useState(false);
 
   function showToast(msg: string) {
     setToast(null);
@@ -66,7 +69,11 @@ export default function CollectionPage() {
         fetch("/api/collection/status"),
         fetch("/api/collection/sources"),
       ]);
-      if (statusRes.ok) setStatus(await statusRes.json());
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setStatus(data);
+        setJobRunning(data.isRunning);
+      }
       if (sourcesRes.ok) {
         const data: SourcesResponse = await sourcesRes.json();
         setSources(data.sources);
@@ -80,15 +87,14 @@ export default function CollectionPage() {
   }, []);
 
   useEffect(() => {
-    // 初回も定期更新と同じ経路に乗せる。effect の本体から直接呼ぶと
-    // 描画中に state を書き換えることになり、連鎖再描画になる
     const initial = setTimeout(load, 0);
-    const timer = setInterval(load, REFRESH_INTERVAL_MS);
+    const interval = jobRunning ? RUNNING_POLL_MS : REFRESH_INTERVAL_MS;
+    const timer = setInterval(load, interval);
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
     };
-  }, [load]);
+  }, [load, jobRunning]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -123,9 +129,12 @@ export default function CollectionPage() {
     try {
       const res = await fetch("/api/collection/run", { method: "POST" });
       const data = await res.json();
+      if (data.started) {
+        setJobRunning(true);
+      }
       showToast(
         data.started
-          ? "収集を開始しました。完了まで数分かかります"
+          ? "収集を開始しました"
           : data.reason || "収集を開始できませんでした"
       );
     } catch {
@@ -222,6 +231,23 @@ export default function CollectionPage() {
           </button>
         </div>
       </header>
+
+      {jobRunning && (
+        <div className="rounded-xl border border-(--color-primary)/30 bg-(--color-primary-light) p-4 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <SpinnerGap size={20} className="animate-spin text-(--color-primary) shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">収集を実行中...</p>
+              <p className="mt-0.5 text-[12px] text-(--color-muted)">
+                企業の検索とHP調査を行っています。完了まで数分かかります。このまま待つか、別のページに移動しても大丈夫です。
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-(--color-primary)/15">
+            <div className="h-full w-1/3 rounded-full bg-(--color-primary) animate-[progress-slide_1.5s_ease-in-out_infinite]" />
+          </div>
+        </div>
+      )}
 
       {status && <InventoryPanel status={status} onRetryFailed={handleRetryFailed} />}
 

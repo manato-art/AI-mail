@@ -22,6 +22,7 @@ export interface CollectionStatus {
   pausedSources: PausedSourceSummary[];
   hasBlockedSource: boolean;
   lastRunAt: string | null;
+  isRunning: boolean;
 }
 
 export interface SourcesResponse {

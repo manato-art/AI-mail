@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -27,6 +29,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: #f8fafc;
   --foreground: #0f172a;
   --primary: #2563eb;
@@ -51,6 +54,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --background: #0f172a;
   --foreground: #f1f5f9;
   --primary-light: #1e3a5f;
@@ -70,6 +74,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --background: #0f172a;
     --foreground: #f1f5f9;
     --primary-light: #1e3a5f;
@@ -123,6 +128,11 @@ input, textarea, select {
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 
 @keyframes pulse-ring {
@@ -239,7 +249,8 @@ input, textarea, select {
   .animate-fade-in,
   .animate-pulse-ring,
   .toast-container,
-  .btn-shine::after {
+  .btn-shine::after,
+  .animate-\[progress-slide_1\.5s_ease-in-out_infinite\] {
     animation: none;
   }
 }

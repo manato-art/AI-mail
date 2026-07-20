@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { getAllCollectionSources, getInventoryStats } from "@/lib/db";
+import { getAllCollectionSources, getInventoryStats, isJobLocked } from "@/lib/db";
 import { getLastCollectionRunAt } from "@/lib/collection-job";
+
+const LOCK_KEY = "collection_job_lock_until";
 
 /** 仕様書 F25: 残りがこの日数を切ったら警告する */
 const LOW_STOCK_DAYS = 3;
@@ -39,5 +41,6 @@ export async function GET() {
     pausedSources,
     hasBlockedSource: blockedSources.length > 0,
     lastRunAt: getLastCollectionRunAt(),
+    isRunning: isJobLocked(LOCK_KEY),
   });
 }
