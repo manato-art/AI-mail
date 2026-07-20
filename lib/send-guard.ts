@@ -9,6 +9,7 @@ import {
 import type { SendGuardResult } from "@/lib/types";
 
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
+const AI_ZONE_PREFIX = /^\{\{AI:/;
 
 /**
  * 送信元がフリーメールの場合、そのドメインを自社扱いにすると
@@ -81,7 +82,7 @@ export function getOwnDomainStatus(): OwnDomainStatus {
 export function checkUnresolvedVariables(subject: string, body: string): string[] {
   const subjectMatches = subject.match(UNRESOLVED_VARIABLE_PATTERN) ?? [];
   const bodyMatches = body.match(UNRESOLVED_VARIABLE_PATTERN) ?? [];
-  return [...subjectMatches, ...bodyMatches];
+  return [...subjectMatches, ...bodyMatches].filter((v) => !AI_ZONE_PREFIX.test(v));
 }
 
 /** サブドメイン（mail.example.com）も自社扱いにする */
