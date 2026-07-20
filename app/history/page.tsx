@@ -141,7 +141,7 @@ export default function HistoryPage() {
     setUpdatingStatusId(prospectId);
     try {
       const res = await fetch(`/api/prospects/${prospectId}/status`, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
