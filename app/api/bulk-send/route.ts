@@ -7,6 +7,7 @@ import {
   getAllPersonas,
   getTemplate,
   getContactByEmail,
+  getCompanyById,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -18,7 +19,7 @@ import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
 import { resolveEmailVariables } from "@/lib/variables";
-import { composeBody, verifyFixedPartIntact } from "@/lib/compose";
+import { composeBody, hasAiZones, verifyFixedPartIntact } from "@/lib/compose";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
@@ -145,6 +146,17 @@ export async function POST(request: NextRequest) {
       { status: 422 }
     );
   }
+  // {{AI:...}} ゾーンがあれば、宛先企業の分析データを引いてAI生成に使う
+  let companyAnalysis: AnalysisResult | null = null;
+  if (hasAiZones(mailBody) && registeredContact?.company_id) {
+    const comp = getCompanyById(registeredContact.company_id);
+    if (comp?.analysis_json) {
+      try {
+        companyAnalysis = JSON.parse(comp.analysis_json) as AnalysisResult;
+      } catch { /* malformed JSON — proceed without analysis */ }
+    }
+  }
+
   let outgoingBody: string;
   try {
     const composed = await composeBody({
@@ -156,6 +168,7 @@ export async function POST(request: NextRequest) {
       service,
       persona,
       companyName: company,
+      analysis: companyAnalysis,
     });
     outgoingBody = composed.body;
   } catch (err) {

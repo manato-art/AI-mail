@@ -122,6 +122,12 @@ export interface AnalysisResult {
   business_summary: string;
   activities: string[];
   recent_topics: string[];
+  /** 会社理念・ミッション・ビジョン（HPに記載があれば） */
+  philosophy?: string;
+  /** 社風・雰囲気（HPの写真やテキストから読み取れる場合） */
+  atmosphere?: string;
+  /** 商材に対するアプローチ戦略（どう提案すべきか） */
+  approach_strategy?: string;
   compatibility: {
     score: "high" | "medium" | "low";
     reason: string;
@@ -204,6 +210,8 @@ export interface Company {
   fit_reason: string;
   fit_service_id: number | null;
   business_summary: string;
+  /** エンリッチメント時のAI分析結果JSON（{{AI:...}}ゾーン生成に使用） */
+  analysis_json: string;
   created_at: string;
 }
 

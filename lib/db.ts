@@ -337,6 +337,7 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "companies", "fit_reason", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(instance, "companies", "fit_service_id", "INTEGER");
   addColumnIfMissing(instance, "companies", "business_summary", "TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(instance, "companies", "analysis_json", "TEXT NOT NULL DEFAULT '{}'");
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -1420,6 +1421,7 @@ export interface CompanyEnrichmentUpdate {
   fit_score?: FitScore;
   fit_reason?: string;
   fit_service_id?: number | null;
+  analysis_json?: string;
 }
 
 export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate): void {
@@ -1432,6 +1434,7 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
        SET hp_url = @hp_url, recruit_page_url = @recruit_page_url,
            business_summary = @business_summary, fit_score = @fit_score,
            fit_reason = @fit_reason, fit_service_id = @fit_service_id,
+           analysis_json = @analysis_json,
            enrichment_status = 'done', enrichment_error = '',
            enriched_at = datetime('now','localtime')
        WHERE id = @id`
@@ -1444,6 +1447,7 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
       fit_score: update.fit_score ?? current.fit_score,
       fit_reason: update.fit_reason ?? current.fit_reason,
       fit_service_id: update.fit_service_id ?? current.fit_service_id,
+      analysis_json: update.analysis_json ?? current.analysis_json,
     });
 }
 

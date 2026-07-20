@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookmarkSimple,
   Copy,
-  PencilSimple,
+  MagicWand,
   Paperclip,
   Plus,
   SpinnerGap,
@@ -36,9 +36,7 @@ export default function TemplatesPage() {
   const [editName, setEditName] = useState("");
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
-  const [editComposeMode, setEditComposeMode] = useState<ComposeMode>("fixed_only");
-  const [editFixedPart, setEditFixedPart] = useState("");
-  const [editAiBrief, setEditAiBrief] = useState("");
+  const [editComposeMode] = useState<ComposeMode>("fixed_only");
   const [editAllowAttachments, setEditAllowAttachments] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -77,14 +75,35 @@ export default function TemplatesPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertAtCursor(text: string) {
+    const ta = bodyRef.current;
+    if (!ta) { setEditBody((prev) => prev + text); return; }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = editBody.slice(0, start);
+    const after = editBody.slice(end);
+    const updated = before + text + after;
+    setEditBody(updated);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.selectionStart = start + text.length;
+      ta.selectionEnd = start + text.length;
+    });
+  }
+
+  function migrateHybridBody(t: TemplateWithAttachments): string {
+    if (t.compose_mode !== "hybrid" || !t.fixed_part) return t.body;
+    const brief = t.ai_brief ? `{{AI:${t.ai_brief}}}` : "";
+    return `${t.fixed_part}${brief ? `\n\n${brief}` : ""}`;
+  }
+
   function startEdit(t: TemplateWithAttachments) {
     setEditingId(t.id);
     setEditName(t.name);
     setEditSubject(t.subject);
-    setEditBody(t.body);
-    setEditComposeMode(t.compose_mode ?? "fixed_only");
-    setEditFixedPart(t.fixed_part ?? "");
-    setEditAiBrief(t.ai_brief ?? "");
+    setEditBody(migrateHybridBody(t));
     setEditAllowAttachments(Boolean(t.allow_attachments));
     setEditAttachmentIds(t.attachments.map((a) => a.id));
     setCreating(false);
@@ -96,9 +115,6 @@ export default function TemplatesPage() {
     setEditName("");
     setEditSubject("");
     setEditBody("");
-    setEditComposeMode("fixed_only");
-    setEditFixedPart("");
-    setEditAiBrief("");
     setEditAllowAttachments(false);
     setEditAttachmentIds([]);
     setCreating(true);
@@ -180,8 +196,8 @@ export default function TemplatesPage() {
             subject: editSubject,
             body: editBody,
             compose_mode: editComposeMode,
-            fixed_part: editFixedPart,
-            ai_brief: editAiBrief,
+            fixed_part: "",
+            ai_brief: "",
             allow_attachments: editAllowAttachments ? 1 : 0,
           }),
         });
@@ -199,8 +215,8 @@ export default function TemplatesPage() {
             subject: editSubject,
             body: editBody,
             compose_mode: editComposeMode,
-            fixed_part: editFixedPart,
-            ai_brief: editAiBrief,
+            fixed_part: "",
+            ai_brief: "",
             allow_attachments: editAllowAttachments ? 1 : 0,
           }),
         });
@@ -357,80 +373,21 @@ export default function TemplatesPage() {
                   placeholder="メールの件名"
                 />
               </div>
-              {/* F4: 文面の作り方 */}
               <div>
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                  文面の作り方
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    ["fixed_only", "そのまま送る", "書いた文章をそのまま使う。差し込み変数だけ置き換わる"],
-                    ["hybrid", "冒頭は固定＋続きはAI", "決めた冒頭をそのまま使い、続きだけAIが相手に合わせて書く"],
-                  ] as [ComposeMode, string, string][]).map(([mode, label, desc]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setEditComposeMode(mode)}
-                      className={`cursor-pointer rounded-lg border-2 p-3 text-left transition-all ${
-                        editComposeMode === mode
-                          ? "border-(--color-primary) bg-(--color-primary-light)"
-                          : "border-(--color-border) hover:border-(--color-primary)/40"
-                      }`}
-                    >
-                      <span className="block text-[13px] font-semibold">{label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-relaxed text-(--color-muted)">{desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {editComposeMode === "hybrid" && (
-                <>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                      冒頭（この通りに送られます）
-                    </label>
-                    <textarea
-                      value={editFixedPart}
-                      onChange={(e) => setEditFixedPart(e.target.value)}
-                      rows={5}
-                      className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                      placeholder={"{{company_name}}\n{{person_name}}様\n\n突然のご連絡失礼いたします。\nCypher One株式会社の金谷と申します。"}
-                    />
-                    <p className="mt-1 text-[11px] text-(--color-muted)">
-                      ここに書いた文章は<strong>一字一句そのまま</strong>送られます（差し込み変数のみ置換）。
-                      送信直前に改変されていないか機械的に確認します。
-                    </p>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                      続きの書き方（AIへの指示）
-                    </label>
-                    <textarea
-                      value={editAiBrief}
-                      onChange={(e) => setEditAiBrief(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                      placeholder="この後、インターン採用の課題に触れつつ、15分ほどのオンライン相談を提案して締めてください。"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                  {editComposeMode === "hybrid" ? "本文（この作り方では使いません）" : "本文"}
+                  本文
                 </label>
                 <textarea
+                  ref={bodyRef}
                   value={editBody}
                   onChange={(e) => setEditBody(e.target.value)}
-                  rows={10}
-                  className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                  placeholder="メール本文"
+                  rows={12}
+                  className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 font-mono text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  placeholder={"{{company_name}}\n{{person_name}}様\n\n突然のご連絡失礼いたします。\n\n{{AI:相手企業の事業内容に触れつつ、自社サービスとの接点を1〜2文で書いてください}}\n\nぜひ一度お話の機会をいただけましたら幸いです。"}
                 />
                 <div className="mt-2 rounded-lg border border-(--color-border) bg-gray-50 px-3 py-2.5 dark:bg-slate-800">
                   <p className="text-[11px] font-medium text-(--color-muted)">
-                    一括送信で宛先ごとに差し替わる変数（件名でも使えます）
+                    本文に挿入できるマーカー
                   </p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {[
@@ -443,18 +400,27 @@ export default function TemplatesPage() {
                       <button
                         key={variable}
                         type="button"
-                        onClick={() => setEditBody((prev) => prev + variable)}
+                        onClick={() => insertAtCursor(variable!)}
                         className="cursor-pointer rounded border border-(--color-border) bg-(--color-card) px-2 py-1 text-[11px] transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-                        title="クリックで本文末尾に挿入"
+                        title="カーソル位置に挿入"
                       >
                         <code>{variable}</code>
                         <span className="ml-1 text-(--color-muted)">{label}</span>
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      onClick={() => insertAtCursor("{{AI:ここにAIへの指示を書く}}")}
+                      className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                      title="AIが企業ごとに書き分ける部分を挿入"
+                    >
+                      <MagicWand size={11} weight="bold" className="mr-1 inline-block align-[-1px]" />
+                      <code>{"{{AI:指示}}"}</code>
+                      <span className="ml-1 font-normal">AIが書く部分</span>
+                    </button>
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-(--color-muted)">
-                    値が入らなかった変数はそのまま残り、送信前にブロックされます。
-                    特定の1社にしか当てはまらない記述（実績・沿革など）は書かないでください。
+                    <strong>固定テキスト</strong>はそのまま送られます。<strong>{"{{変数}}"}</strong>は宛先ごとに置換。<strong>{"{{AI:指示}}"}</strong>を入れた部分は、収集した企業の分析データをもとにAIが企業ごとに書き分けます。どこにでも何個でも配置できます。
                   </p>
                 </div>
               </div>

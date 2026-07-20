@@ -135,6 +135,7 @@ async function enrichCompany(
     fit_score: normalizeFitScore(analysis.compatibility?.score),
     fit_reason: analysis.compatibility?.reason ?? "",
     fit_service_id: service.id,
+    analysis_json: JSON.stringify(analysis),
   });
   logActivity(`✅ ${company.name}: 調査完了（相性: ${analysis.compatibility?.score ?? "—"}）`, "success");
   return "done";
