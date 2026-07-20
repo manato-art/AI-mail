@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -216,6 +216,30 @@ function GeneratePageInner() {
 
   const isBusy =
     batchRunning || status === "crawling" || status === "analyzing" || status === "generating";
+
+  useEffect(() => {
+    if (!isBusy) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    const handleClick = (e: MouseEvent) => {
+      const anchor = (e.target as Element).closest?.("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("http")) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    document.addEventListener("click", handleClick, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, [isBusy]);
 
   const batchTargetUrls = companies
     .filter((c) => selectedCompanyIds.has(c.id))
