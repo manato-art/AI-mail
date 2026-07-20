@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  Buildings,
   CaretDown,
   Check,
   ClockCounterClockwise,
@@ -20,7 +21,7 @@ import {
   CaretRight,
   FileArrowUp,
 } from "@phosphor-icons/react";
-import type { Attachment, Prospect, TemplateWithAttachments } from "@/lib/types";
+import type { Attachment, Company, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
 import { resolveEmailVariables } from "@/lib/variables";
 import type { ColumnKind } from "@/lib/import-parse";
@@ -107,6 +108,13 @@ export default function BulkSendPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyChecked, setHistoryChecked] = useState<Set<number>>(new Set());
+
+  const [companiesOpen, setCompaniesOpen] = useState(false);
+  const [companiesList, setCompaniesList] = useState<Company[]>([]);
+  const [contactsList, setContactsList] = useState<Contact[]>([]);
+  const [companiesSearch, setCompaniesSearch] = useState("");
+  const [companiesChecked, setCompaniesChecked] = useState<Set<number>>(new Set());
+  const [companiesLoading, setCompaniesLoading] = useState(false);
 
   function showToast(msg: string) {
     setToast(null);
@@ -471,6 +479,74 @@ export default function BulkSendPage() {
     showToast(`${toAdd.length}件の宛先を送信履歴から追加しました`);
   }
 
+  async function openCompaniesModal() {
+    setCompaniesOpen(true);
+    setCompaniesChecked(new Set());
+    setCompaniesSearch("");
+    if (companiesList.length > 0) return;
+    setCompaniesLoading(true);
+    try {
+      const res = await fetch("/api/companies");
+      if (res.ok) {
+        const data = await res.json();
+        setCompaniesList(data.companies);
+        setContactsList(data.contacts);
+      }
+    } catch { /* modal shows empty state */ }
+    finally { setCompaniesLoading(false); }
+  }
+
+  const contactsByCompanyId = useMemo(() => {
+    const map = new Map<number, Contact[]>();
+    for (const c of contactsList) {
+      if (c.company_id == null) continue;
+      const list = map.get(c.company_id) ?? [];
+      list.push(c);
+      map.set(c.company_id, list);
+    }
+    return map;
+  }, [contactsList]);
+
+  const filteredCompanies = useMemo(() => {
+    const withEmail = companiesList.filter(
+      (c) => c.enrichment_status === "done" && (contactsByCompanyId.get(c.id)?.length ?? 0) > 0,
+    );
+    if (!companiesSearch) return withEmail;
+    const q = companiesSearch.toLowerCase();
+    return withEmail.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.domain ?? "").toLowerCase().includes(q) ||
+        (contactsByCompanyId.get(c.id) ?? []).some((ct) => ct.email.toLowerCase().includes(q)),
+    );
+  }, [companiesList, companiesSearch, contactsByCompanyId]);
+
+  function handleCompaniesImport() {
+    const toAdd: Omit<Recipient, "id" | "checked">[] = [];
+    const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
+
+    for (const company of filteredCompanies) {
+      if (!companiesChecked.has(company.id)) continue;
+      const contacts = contactsByCompanyId.get(company.id) ?? [];
+      for (const contact of contacts) {
+        if (existingEmails.has(contact.email.toLowerCase())) continue;
+        toAdd.push({ company: company.name, person: contact.person_name, email: contact.email });
+        existingEmails.add(contact.email.toLowerCase());
+      }
+    }
+
+    if (toAdd.length === 0) {
+      showToast("追加できる宛先がありません（既に追加済みの可能性があります）");
+      return;
+    }
+
+    setRecipients((prev) => [...prev, ...toAdd.map((r) => ({ ...r, id: uid(), checked: true }))]);
+    setCompaniesOpen(false);
+    setCompaniesChecked(new Set());
+    setCompaniesSearch("");
+    showToast(`${toAdd.length}件の宛先を企業一覧から追加しました`);
+  }
+
   const allChecked = recipients.length > 0 && recipients.every((r) => r.checked);
   const parsedPreview = parseSpreadsheetText(pasteText);
 
@@ -800,10 +876,18 @@ export default function BulkSendPage() {
             <button
               type="button"
               onClick={() => { setHistoryOpen(true); setHistoryChecked(new Set()); setHistorySearch(""); }}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 border-r border-(--color-border) py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
             >
               <ClockCounterClockwise size={14} weight="bold" />
               送信履歴から追加
+            </button>
+            <button
+              type="button"
+              onClick={openCompaniesModal}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 py-3 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+            >
+              <Buildings size={14} weight="bold" />
+              企業一覧から追加
             </button>
           </div>
         </div>
@@ -1006,6 +1090,107 @@ export default function BulkSendPage() {
                 type="button"
                 onClick={handleHistoryImport}
                 disabled={historyChecked.size === 0}
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus size={14} weight="bold" />
+                宛先に追加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Companies Modal */}
+      {companiesOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setCompaniesOpen(false); }}
+        >
+          <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
+            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
+              <h3 className="text-[15px] font-semibold">企業一覧から宛先を追加</h3>
+              <button
+                type="button"
+                onClick={() => setCompaniesOpen(false)}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 pt-4 pb-3">
+              <div className="relative">
+                <MagnifyingGlass size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
+                <input
+                  type="text"
+                  value={companiesSearch}
+                  onChange={(e) => setCompaniesSearch(e.target.value)}
+                  placeholder="企業名・ドメイン・メールアドレスで検索"
+                  className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 pb-3">
+              {companiesLoading ? (
+                <div className="flex justify-center py-10">
+                  <SpinnerGap size={24} className="animate-spin text-(--color-muted)" />
+                </div>
+              ) : filteredCompanies.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <p className="text-sm text-(--color-muted)">
+                    {companiesSearch ? "該当する企業がありません" : "送れる状態の企業がありません"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredCompanies.map((company) => {
+                    const contacts = contactsByCompanyId.get(company.id) ?? [];
+                    const checked = companiesChecked.has(company.id);
+                    return (
+                      <label
+                        key={company.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${checked ? "border-(--color-primary) bg-(--color-primary-light)/40" : "border-(--color-border) hover:border-(--color-primary)/50 hover:bg-(--color-card-hover)"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setCompaniesChecked((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(company.id)) next.delete(company.id);
+                              else next.add(company.id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary)"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold">{company.name}</p>
+                          <p className="truncate text-[12px] text-(--color-muted)">
+                            {contacts.map((c) => c.email).join(", ")}
+                          </p>
+                        </div>
+                        {company.domain && (
+                          <span className="shrink-0 text-[11px] text-(--color-muted)">{company.domain}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-3.5 dark:bg-slate-700/50">
+              <span className="text-xs text-(--color-muted)">
+                {companiesChecked.size > 0 && (
+                  <>選択中: <strong className="font-semibold text-(--color-foreground)">{companiesChecked.size}</strong> 社</>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={handleCompaniesImport}
+                disabled={companiesChecked.size === 0}
                 className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus size={14} weight="bold" />
