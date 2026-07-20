@@ -296,7 +296,11 @@ export default function TemplatesPage() {
           {templates.map((t) => (
             <div
               key={t.id}
-              className={`flex items-center gap-3 rounded-xl border bg-(--color-card) px-4 py-3 transition-colors ${editingId === t.id ? "border-(--color-primary) ring-2 ring-(--color-primary)/10" : "border-(--color-border) hover:border-(--color-primary)/40"}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => startEdit(t)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") startEdit(t); }}
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-(--color-card) px-4 py-3 transition-colors ${editingId === t.id ? "border-(--color-primary) ring-2 ring-(--color-primary)/10" : "border-(--color-border) hover:border-(--color-primary)/40"}`}
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{t.name}</p>
@@ -311,12 +315,9 @@ export default function TemplatesPage() {
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 gap-1">
+              <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                 <button type="button" onClick={() => handleCopy(t)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-primary-light) hover:text-(--color-primary)" title="コピー">
                   <Copy size={14} />
-                </button>
-                <button type="button" onClick={() => startEdit(t)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-primary-light) hover:text-(--color-primary)" title="編集">
-                  <PencilSimple size={14} />
                 </button>
                 <button type="button" onClick={() => handleDelete(t.id)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)" title="削除">
                   <Trash size={14} />
