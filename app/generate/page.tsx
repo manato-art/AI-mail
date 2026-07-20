@@ -370,7 +370,7 @@ function GeneratePageInner() {
               serviceId: Number(selectedServiceId),
               personaId: Number(selectedPersonaId),
               url: items[i].url,
-              force: false,
+              force: true,
               forceLow: true,
               tone,
               length,
