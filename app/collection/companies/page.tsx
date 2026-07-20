@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowClockwise,
   CheckCircle,
   EnvelopeSimple,
   Hourglass,
+  PaperPlaneTilt,
   SpinnerGap,
   WarningCircle,
   XCircle,
@@ -63,6 +65,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function CompaniesPage() {
+  const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +73,7 @@ export default function CompaniesPage() {
     "all",
   );
   const [reEnriching, setReEnriching] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -127,6 +131,41 @@ export default function CompaniesPage() {
     filter === "all"
       ? companies
       : companies.filter((c) => c.enrichment_status === filter);
+
+  const selectableFiltered = useMemo(
+    () => filtered.filter((c) => c.hp_url),
+    [filtered],
+  );
+
+  const allSelectableChecked =
+    selectableFiltered.length > 0 &&
+    selectableFiltered.every((c) => selectedIds.has(c.id));
+
+  function toggleOne(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelectableChecked) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableFiltered.map((c) => c.id)));
+    }
+  }
+
+  function handleGenerateSelected() {
+    const urls = companies
+      .filter((c) => selectedIds.has(c.id) && c.hp_url)
+      .map((c) => c.hp_url as string);
+    if (urls.length === 0) return;
+    sessionStorage.setItem("batch-generate-urls", JSON.stringify(urls));
+    router.push("/generate?mode=batch");
+  }
 
   const counts = {
     all: companies.length,
@@ -207,6 +246,14 @@ export default function CompaniesPage() {
           <table className="w-full min-w-[700px] text-[13px]">
             <thead>
               <tr className="border-b border-(--color-border) bg-(--color-card) text-left text-(--color-muted)">
+                <th className="w-10 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allSelectableChecked}
+                    onChange={toggleAll}
+                    className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">企業名</th>
                 <th className="px-4 py-3 font-medium">メール</th>
                 <th className="px-4 py-3 font-medium">経路</th>
@@ -225,6 +272,18 @@ export default function CompaniesPage() {
                     key={company.id}
                     className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover) transition-colors"
                   >
+                    <td className="px-3 py-3">
+                      {company.hp_url ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(company.id)}
+                          onChange={() => toggleOne(company.id)}
+                          className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
+                        />
+                      ) : (
+                        <span className="block h-4 w-4" />
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div>
                         <p className="font-medium">{company.name}</p>
@@ -257,6 +316,31 @@ export default function CompaniesPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 px-4 py-3 shadow-lg animate-fade-in">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <span className="tabular-nums text-(--color-primary)">{selectedIds.size}</span>社を選択中
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 px-3 rounded-lg text-[13px] font-medium text-(--color-muted) hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              選択解除
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateSelected}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
+            >
+              <PaperPlaneTilt size={14} weight="fill" />
+              メール生成
+            </button>
+          </div>
         </div>
       )}
 

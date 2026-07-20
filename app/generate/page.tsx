@@ -179,12 +179,26 @@ function GeneratePageInner() {
     const paramUrl = searchParams.get("url");
     const paramService = searchParams.get("service");
     const paramPersona = searchParams.get("persona");
+    const paramMode = searchParams.get("mode");
     if (paramUrl) setUrl(paramUrl);
     if (paramService && services.some((s) => String(s.id) === paramService)) {
       setSelectedServiceId(paramService);
     }
     if (paramPersona && personas.some((p) => String(p.id) === paramPersona)) {
       setSelectedPersonaId(paramPersona);
+    }
+    if (paramMode === "batch") {
+      setMode("batch");
+      const stored = sessionStorage.getItem("batch-generate-urls");
+      if (stored) {
+        try {
+          const urls: string[] = JSON.parse(stored);
+          if (Array.isArray(urls) && urls.length > 0) {
+            setBatchUrls(urls.join("\n"));
+          }
+        } catch { /* ignore malformed data */ }
+        sessionStorage.removeItem("batch-generate-urls");
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingOptions]);
