@@ -204,12 +204,11 @@ export default function CompaniesPage() {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-(--color-border)">
-          <table className="w-full min-w-[850px] text-[13px]">
+          <table className="w-full min-w-[700px] text-[13px]">
             <thead>
               <tr className="border-b border-(--color-border) bg-(--color-card) text-left text-(--color-muted)">
                 <th className="px-4 py-3 font-medium">企業名</th>
                 <th className="px-4 py-3 font-medium">メール</th>
-                <th className="px-4 py-3 font-medium">キーワード</th>
                 <th className="px-4 py-3 font-medium">経路</th>
                 <th className="px-4 py-3 font-medium">ステータス</th>
                 <th className="px-4 py-3 font-medium">登録日</th>
@@ -239,12 +238,9 @@ export default function CompaniesPage() {
                     <td className="px-4 py-3 text-(--color-muted)">
                       {email ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-(--color-muted) max-w-[200px] truncate">
-                      {company.source_detail || "—"}
-                    </td>
                     <td className="px-4 py-3">
                       <span className="rounded bg-(--color-card) px-2 py-0.5 text-[11px] text-(--color-muted)">
-                        {SOURCE_LABELS[company.source] ?? company.source}
+                        {company.source_detail || (SOURCE_LABELS[company.source] ?? company.source)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
