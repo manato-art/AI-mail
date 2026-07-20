@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise,
   Play,
   Plus,
   SpinnerGap,
+  Terminal,
   Trash,
 } from "@phosphor-icons/react";
 import type { CollectionRun, CollectionSource } from "@/lib/types";
+import type { ActivityEntry } from "@/lib/activity-log";
 import { Toast } from "@/components/toast";
 import { InventoryPanel } from "./inventory-panel";
 import type { CollectionStatus, SourcesResponse } from "./types";
@@ -85,6 +87,11 @@ export default function CollectionPage() {
   const [jobRunning, setJobRunning] = useState(false);
   const [noSourceError, setNoSourceError] = useState(false);
 
+  const [logOpen, setLogOpen] = useState(false);
+  const [logEntries, setLogEntries] = useState<ActivityEntry[]>([]);
+  const lastLogId = useRef(0);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
   function showToast(msg: string) {
     setToast(null);
     setTimeout(() => setToast(msg), 0);
@@ -122,6 +129,26 @@ export default function CollectionPage() {
       clearInterval(timer);
     };
   }, [load, jobRunning]);
+
+  useEffect(() => {
+    if (!logOpen) return;
+    let cancelled = false;
+    async function pollLog() {
+      try {
+        const res = await fetch(`/api/collection/activity?after=${lastLogId.current}`);
+        if (!res.ok || cancelled) return;
+        const data: { entries: ActivityEntry[] } = await res.json();
+        if (data.entries.length > 0) {
+          setLogEntries((prev) => [...prev, ...data.entries].slice(-200));
+          lastLogId.current = data.entries[data.entries.length - 1].id;
+          requestAnimationFrame(() => logEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        }
+      } catch { /* retry next tick */ }
+    }
+    pollLog();
+    const timer = setInterval(pollLog, 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [logOpen]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -431,6 +458,60 @@ export default function CollectionPage() {
           </div>
         </div>
       )}
+
+      <section className="rounded-xl border border-(--color-border) bg-(--color-card) overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setLogOpen((v) => !v)}
+          className="flex w-full items-center gap-2 px-5 py-3 text-left text-sm font-bold transition-colors hover:bg-(--color-card-hover) cursor-pointer"
+        >
+          <Terminal size={16} className="text-(--color-muted)" />
+          活動ログ
+          {logEntries.length > 0 && (
+            <span className="ml-1 rounded-full bg-(--color-primary)/10 px-2 py-0.5 text-[11px] tabular-nums text-(--color-primary)">
+              {logEntries.length}
+            </span>
+          )}
+          <svg
+            className={`ml-auto h-4 w-4 text-(--color-muted) transition-transform ${logOpen ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {logOpen && (
+          <div className="border-t border-(--color-border) bg-gray-950 px-4 py-3 font-mono text-[12px] leading-relaxed text-gray-300 max-h-[400px] overflow-y-auto">
+            {logEntries.length === 0 ? (
+              <p className="py-4 text-center text-gray-500">
+                ログはまだありません。「今すぐ収集」を実行するとここに経過が流れます。
+              </p>
+            ) : (
+              logEntries.map((entry) => (
+                <div key={entry.id} className="flex gap-2 py-0.5">
+                  <span className="shrink-0 text-gray-600">{entry.time}</span>
+                  <span
+                    className={
+                      entry.type === "success"
+                        ? "text-green-400"
+                        : entry.type === "warn"
+                          ? "text-yellow-400"
+                          : entry.type === "error"
+                            ? "text-red-400"
+                            : "text-gray-300"
+                    }
+                  >
+                    {entry.message}
+                  </span>
+                </div>
+              ))
+            )}
+            <div ref={logEndRef} />
+          </div>
+        )}
+      </section>
 
       {status && <InventoryPanel status={status} onRetryFailed={handleRetryFailed} />}
 

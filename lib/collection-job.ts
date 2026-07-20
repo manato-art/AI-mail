@@ -6,6 +6,7 @@ import {
   setSetting,
   tryAcquireJobLock,
 } from "@/lib/db";
+import { logActivity } from "@/lib/activity-log";
 import { runCollectionCycle, type CollectionCycleResult } from "@/lib/collection";
 import { runEnrichmentBatch, type EnrichmentBatchResult } from "@/lib/enrichment";
 
@@ -48,9 +49,15 @@ export async function runCollectionJob(trigger: JobTrigger): Promise<CollectionJ
   }
 
   try {
+    logActivity(`🚀 収集ジョブ開始（${trigger}）`);
     const collection = await runCollectionCycle();
+    logActivity(
+      `📦 収集フェーズ完了: ${collection.newCompanies}社を新規追加`,
+      collection.newCompanies > 0 ? "success" : "info"
+    );
     const enrichment = await runEnrichmentBatch();
     setSetting(LAST_RUN_KEY, new Date().toISOString().slice(0, 19).replace("T", " "));
+    logActivity(`🏁 収集ジョブ完了`, "success");
     return { ran: true, collection, enrichment };
   } finally {
     releaseJobLock(LOCK_KEY);

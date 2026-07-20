@@ -1,4 +1,5 @@
 import { getSetting } from "@/lib/db";
+import { logActivity } from "@/lib/activity-log";
 import { webSearch } from "@/lib/keyword-search";
 import { scrapeSearch } from "@/lib/keyword-search-scrape";
 import { crawlWebsite } from "@/lib/crawl";
@@ -86,7 +87,11 @@ export async function resolveCompanyHomepage(
   const validated = validateUrl(origin);
   if (!validated.valid) return null;
 
+  logActivity(`🕷️ ${validated.normalized} をクロール中...`);
   const crawl = await crawlWebsite(validated.normalized);
+  logActivity(
+    `  → ${crawl.pages.length}ページ取得 / メール${crawl.contactEmails.length}件${crawl.formUrl ? " / フォームあり" : ""}`
+  );
   return {
     homepage: validated.normalized,
     domain: new URL(validated.normalized).hostname,
