@@ -158,7 +158,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
               </span>
             )}
             {item.status === "error" && (
-              <span className="shrink-0 text-[11px] text-(--color-danger) max-w-[160px] truncate">
+              <span className="shrink-0 text-[11px] text-(--color-danger) max-w-[300px] break-words text-right">
                 {item.error}
               </span>
             )}

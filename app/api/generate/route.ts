@@ -33,6 +33,9 @@ function classifyError(error: unknown): { message: string; status: number; retry
     return { message: "AI APIへの接続に失敗しました。再試行してください", status: 502, retryable: true };
   }
   if (error instanceof Error) {
+    if (error.message.includes("分析APIエラー") || error.message.includes("分析がブロック")) {
+      return { message: error.message, status: 502, retryable: true };
+    }
     if (error.message.includes("JSONパース")) {
       const stage = error.message.includes("分析") ? "分析" : error.message.includes("生成") ? "生成" : "";
       const detail = error.message.includes("応答切れ") ? "（応答が途中で切れました）" : "";

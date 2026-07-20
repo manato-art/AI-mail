@@ -114,8 +114,25 @@ async function callAnalysisApi(
     },
   });
 
-  const result = await model.generateContent(buildUserPrompt(crawlResult, service));
-  const text = result.response.text();
+  let result;
+  try {
+    result = await model.generateContent(buildUserPrompt(crawlResult, service));
+  } catch (apiErr) {
+    const msg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+    console.error("[analyze] Gemini API error:", msg);
+    throw new Error(`分析APIエラー: ${msg.slice(0, 200)}`);
+  }
+
+  let text: string;
+  try {
+    text = result.response.text();
+  } catch (respErr) {
+    const reason = result.response.promptFeedback?.blockReason
+      ?? result.response.candidates?.[0]?.finishReason
+      ?? "unknown";
+    console.error("[analyze] Gemini response blocked:", reason);
+    throw new Error(`分析がブロックされました（理由: ${reason}）`);
+  }
 
   if (!text) {
     throw new Error("AI応答からテキストを取得できませんでした");
