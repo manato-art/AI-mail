@@ -198,7 +198,7 @@ function checkCompanyName(body: string, analysis: AnalysisResult): DangerFinding
     });
   } else if (!body.includes(name)) {
     findings.push({
-      severity: "block",
+      severity: "warn",
       message: `本文に相手企業の正式名称「${name}」が含まれていません（宛先取り違えの疑い）`,
     });
   }

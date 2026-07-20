@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     subject: outgoingSubject,
     body: outgoingBody,
     senderId,
-    skipOwnDomainCheck: !!body.acknowledgedWarnings,
+    acknowledgedWarnings: !!body.acknowledgedWarnings,
   });
 
   if (!guardResult.canSend) {
