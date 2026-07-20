@@ -92,8 +92,12 @@ export function isOwnDomain(toEmail: string, ownDomains: string[]): boolean {
   return ownDomains.some((own) => domain === own || domain.endsWith(`.${own}`));
 }
 
-export function checkOwnDomainBlock(toEmail: string): boolean {
-  return isOwnDomain(toEmail, getOwnDomains());
+export function checkOwnDomainBlock(toEmail: string): string | null {
+  const domain = toEmail.toLowerCase().split("@")[1];
+  if (!domain) return null;
+  const ownDomains = getOwnDomains();
+  const matched = ownDomains.find((own) => domain === own || domain.endsWith(`.${own}`));
+  return matched ?? null;
 }
 
 export function checkSignaturePresent(body: string): boolean {
@@ -138,6 +142,8 @@ export function runSendGuard(params: {
    * 二重送信ガードの対象外にする。抑止リスト照合など他のガードは常に適用される。
    */
   isFollowup?: boolean;
+  /** 自社ドメイン警告を確認済み（acknowledgedWarnings で解除） */
+  skipOwnDomainCheck?: boolean;
 }): SendGuardResult {
   const reasons: string[] = [];
 
@@ -156,8 +162,11 @@ export function runSendGuard(params: {
     );
   }
 
-  if (checkOwnDomainBlock(params.toEmail)) {
-    reasons.push("自社・グループドメイン宛ての送信はブロックされています");
+  if (!params.skipOwnDomainCheck) {
+    const matchedDomain = checkOwnDomainBlock(params.toEmail);
+    if (matchedDomain) {
+      reasons.push(`自社ドメイン（${matchedDomain}）宛ての送信です。「要確認の指摘があっても送信する」にチェックを入れると送信できます`);
+    }
   }
 
   if (!checkSignaturePresent(params.body)) {

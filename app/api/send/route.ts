@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     body: outgoingBody,
     senderId,
     prospectId,
+    skipOwnDomainCheck: !!body.acknowledgedWarnings,
   });
 
   if (!guardResult.canSend) {
