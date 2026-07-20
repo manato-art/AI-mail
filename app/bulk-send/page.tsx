@@ -731,71 +731,7 @@ export default function BulkSendPage() {
         )}
       </div>
 
-      {/* Direct input: subject + body + buttons */}
-      {inputMode === "direct" && (
-        <div className="mt-4 space-y-3">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-              件名
-            </label>
-            <input
-              type="text"
-              value={directSubject}
-              onChange={(e) => setDirectSubject(e.target.value)}
-              className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-              placeholder="件名を入力（例: {{company_name}}様へのご提案）"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-              本文
-            </label>
-            <textarea
-              ref={directBodyRef}
-              value={directBody}
-              onChange={(e) => setDirectBody(e.target.value)}
-              rows={12}
-              className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-              placeholder={"メール本文を入力\n\n{{company_name}} で企業名、{{person_name}} で担当者名が差し込まれます\n{{AI:ここに指示}} でAIが宛先ごとに文章を生成します"}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-(--color-muted)">差し込み:</span>
-            {["company_name", "person_name", "sender_name", "service_name", "lp_url", "booking_url"].map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => insertAtCursorDirect(`{{${v}}}`)}
-                className="inline-flex h-7 cursor-pointer items-center rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-              >
-                {`{{${v}}}`}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => insertAtCursorDirect("{{AI:ここに指示を書く}}")}
-              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-            >
-              <MagicWand size={12} weight="fill" />
-              AI生成ゾーンを挿入
-            </button>
-            {prospects.some((p) => p.generated_subject && p.generated_body && p.input_url) && (
-              <button
-                type="button"
-                onClick={() => { setGeneratedOpen(true); setGeneratedSearch(""); }}
-                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2.5 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-              >
-                <EnvelopeOpen size={12} />
-                生成済みメールから引用
-              </button>
-            )}
-          </div>
-          <p className="text-[11px] leading-relaxed text-(--color-muted)">
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[10px] dark:bg-slate-700">{"{{AI:指示}}"}</code> を入れると、
-            その部分を宛先企業の分析データに基づいてAIが自動生成します。企業分析が無い場合は企業名のみで生成します。
-          </p>
-        </div>
-      )}
+      {/* Direct input: placeholder — editing moved to the preview panel */}
 
       {/* F22: 添付が許可されていないテンプレでは、添付欄そのものを出さない */}
       {inputMode === "template" && selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
@@ -1035,71 +971,173 @@ export default function BulkSendPage() {
           </div>
         </div>
 
-        {/* Right: Preview */}
+        {/* Right: Preview (template) / Editor (direct) */}
         <div className="sticky top-6 h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
-          <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3.5 dark:bg-slate-700/50">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Eye size={15} />
-              送信プレビュー
-            </h2>
-            {previewRecipient && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-light) px-2 py-0.5 text-[10px] font-semibold text-(--color-success)">
-                <Check size={10} weight="bold" />
-                選択中
-              </span>
-            )}
-          </div>
-
-          {previewRecipient && hasContent ? (
+          {inputMode === "direct" ? (
             <>
-              <div className="space-y-3.5 p-5">
+              <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3 dark:bg-slate-700/50">
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <MagicWand size={15} />
+                  メール作成
+                </h2>
+                {prospects.some((p) => p.generated_subject && p.generated_body && p.input_url) && (
+                  <button
+                    type="button"
+                    onClick={() => { setGeneratedOpen(true); setGeneratedSearch(""); }}
+                    className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                  >
+                    <EnvelopeOpen size={12} />
+                    引用
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2.5 p-4">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">宛先</p>
-                  <p className="mt-0.5 text-[13px]">{previewRecipient.email}</p>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</label>
+                  <input
+                    type="text"
+                    value={directSubject}
+                    onChange={(e) => setDirectSubject(e.target.value)}
+                    className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                    placeholder="{{company_name}}様へのご提案"
+                  />
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</p>
-                  <p className="mt-0.5 text-sm font-semibold">{buildEmail(previewRecipient).subject}</p>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</label>
+                  <textarea
+                    ref={directBodyRef}
+                    value={directBody}
+                    onChange={(e) => setDirectBody(e.target.value)}
+                    rows={10}
+                    className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[12px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                    placeholder={"本文を入力\n\n{{company_name}} → 企業名\n{{person_name}} → 担当者名\n{{AI:指示}} → AI生成"}
+                  />
                 </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</p>
-                  <div className="mt-1 max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-(--color-border) bg-gray-50 p-3.5 text-[12.5px] leading-[1.9] dark:bg-slate-800">
-                    {buildEmail(previewRecipient).body}
+                <div className="flex flex-wrap gap-1">
+                  {["company_name", "person_name", "sender_name", "service_name", "lp_url", "booking_url"].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => insertAtCursorDirect(`{{${v}}}`)}
+                      className="inline-flex h-6 cursor-pointer items-center rounded border border-(--color-border) px-1.5 text-[10px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => insertAtCursorDirect("{{AI:ここに指示を書く}}")}
+                    className="inline-flex h-6 cursor-pointer items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  >
+                    <MagicWand size={10} weight="fill" />
+                    AI
+                  </button>
+                </div>
+              </div>
+              {previewRecipient && hasContent && (
+                <div className="border-t border-(--color-border) bg-gray-50 dark:bg-slate-800/50">
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
+                      差し込みプレビュー
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] tabular-nums text-(--color-muted)">
+                        {clampedPreviewIndex + 1}/{checkedPreviewList.length}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
+                        disabled={clampedPreviewIndex === 0}
+                        className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary) disabled:opacity-30"
+                      >
+                        <CaretLeft size={11} weight="bold" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.min(checkedPreviewList.length - 1, i + 1))}
+                        disabled={clampedPreviewIndex >= checkedPreviewList.length - 1}
+                        className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary) disabled:opacity-30"
+                      >
+                        <CaretRight size={11} weight="bold" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto px-4 pb-3">
+                    <p className="text-[11px] font-semibold">{buildEmail(previewRecipient).subject}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.7] text-(--color-muted)">
+                      {buildEmail(previewRecipient).body}
+                    </p>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-2.5 dark:bg-slate-700/50">
-                <span className="text-[11px] tabular-nums text-(--color-muted)">
-                  {clampedPreviewIndex + 1} / {checkedPreviewList.length} 件目
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
-                    disabled={clampedPreviewIndex === 0}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <CaretLeft size={12} weight="bold" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewIndex((i) => Math.min(checkedPreviewList.length - 1, i + 1))}
-                    disabled={clampedPreviewIndex >= checkedPreviewList.length - 1}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <CaretRight size={12} weight="bold" />
-                  </button>
-                </div>
-              </div>
+              )}
             </>
           ) : (
-            <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-              <p className="text-sm text-(--color-muted)">
-                {!hasContent
-                  ? (inputMode === "template" ? "テンプレートを選択してください" : "件名と本文を入力してください")
-                  : "チェックした宛先のプレビューが表示されます"}
-              </p>
-            </div>
+            <>
+              <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3.5 dark:bg-slate-700/50">
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <Eye size={15} />
+                  送信プレビュー
+                </h2>
+                {previewRecipient && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-light) px-2 py-0.5 text-[10px] font-semibold text-(--color-success)">
+                    <Check size={10} weight="bold" />
+                    選択中
+                  </span>
+                )}
+              </div>
+
+              {previewRecipient && hasContent ? (
+                <>
+                  <div className="space-y-3.5 p-5">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">宛先</p>
+                      <p className="mt-0.5 text-[13px]">{previewRecipient.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</p>
+                      <p className="mt-0.5 text-sm font-semibold">{buildEmail(previewRecipient).subject}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</p>
+                      <div className="mt-1 max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-(--color-border) bg-gray-50 p-3.5 text-[12.5px] leading-[1.9] dark:bg-slate-800">
+                        {buildEmail(previewRecipient).body}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-2.5 dark:bg-slate-700/50">
+                    <span className="text-[11px] tabular-nums text-(--color-muted)">
+                      {clampedPreviewIndex + 1} / {checkedPreviewList.length} 件目
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
+                        disabled={clampedPreviewIndex === 0}
+                        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <CaretLeft size={12} weight="bold" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.min(checkedPreviewList.length - 1, i + 1))}
+                        disabled={clampedPreviewIndex >= checkedPreviewList.length - 1}
+                        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <CaretRight size={12} weight="bold" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+                  <p className="text-sm text-(--color-muted)">
+                    {!hasContent
+                      ? "テンプレートを選択してください"
+                      : "チェックした宛先のプレビューが表示されます"}
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
