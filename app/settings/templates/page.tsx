@@ -283,7 +283,7 @@ export default function TemplatesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_420px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_2fr]">
         {/* Left: template list */}
         <div className="space-y-2">
           {templates.length === 0 && !creating && (
