@@ -3,7 +3,7 @@ import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types
 import { validateUrl } from "@/lib/ssrf";
 
 const FETCH_TIMEOUT_MS = 10000;
-const MAX_PAGES = 5;
+const MAX_PAGES = 7;
 const MAX_TEXT_LENGTH = 10000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -13,9 +13,11 @@ interface LinkCategory {
 }
 
 const LINK_CATEGORIES: LinkCategory[] = [
-  { keywords: ["会社概要", "about", "company"] },
-  { keywords: ["サービス", "事業内容", "service", "business"] },
   { keywords: ["お問い合わせ", "contact"] },
+  { keywords: ["会社概要", "about", "company"] },
+  { keywords: ["特定商取引", "tokushoho", "law", "legal", "特商法"] },
+  { keywords: ["プライバシー", "個人情報", "privacy"] },
+  { keywords: ["サービス", "事業内容", "service", "business"] },
   { keywords: ["ニュース", "お知らせ", "news", "topics"] },
 ];
 
@@ -147,6 +149,13 @@ export function extractText(html: string): string {
   $("script, style, nav, footer, header").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim();
   return text.slice(0, MAX_TEXT_LENGTH);
+}
+
+/** footer/header を含む全テキストからメアドを拾う。extractText は分析用に除去するが、メアド抽出では必要 */
+export function extractFullBodyText(html: string): string {
+  const $ = cheerio.load(html);
+  $("script, style").remove();
+  return $("body").text().replace(/\s+/g, " ").trim();
 }
 
 export function extractTitle(html: string): string {
@@ -351,7 +360,7 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
   pages.push(rootPage);
 
   extractMailtoEmails(rootFetch.html).forEach((email) => emailSet.add(email));
-  extractEmails(rootPage.text).forEach((email) => emailSet.add(email));
+  extractEmails(extractFullBodyText(rootFetch.html)).forEach((email) => emailSet.add(email));
 
   const rootFormUrl = detectFormUrl(rootFetch.html, rootFetch.finalUrl);
   if (rootFormUrl) {
@@ -379,7 +388,7 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
     pages.push(page);
 
     extractMailtoEmails(fetched.html).forEach((email) => emailSet.add(email));
-    extractEmails(page.text).forEach((email) => emailSet.add(email));
+    extractEmails(extractFullBodyText(fetched.html)).forEach((email) => emailSet.add(email));
 
     if (!formUrl) {
       const linkFormUrl = detectFormUrl(fetched.html, fetched.finalUrl);

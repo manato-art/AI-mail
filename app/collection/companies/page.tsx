@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowClockwise,
   CheckCircle,
+  EnvelopeSimple,
   Hourglass,
   SpinnerGap,
   WarningCircle,
@@ -13,6 +14,7 @@ import type { Company, Contact } from "@/lib/types";
 
 const SOURCE_LABELS: Record<string, string> = {
   keyword_search: "キーワード検索",
+  auto_collection: "自動収集",
   csv_import: "CSV取込",
   manual: "手動",
 };
@@ -66,6 +68,7 @@ export default function CompaniesPage() {
   const [filter, setFilter] = useState<"all" | "done" | "pending" | "failed">(
     "all",
   );
+  const [reEnriching, setReEnriching] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -86,13 +89,38 @@ export default function CompaniesPage() {
     load();
   }, [load]);
 
-  const contactsByCompany = new Map<number, Contact[]>();
-  for (const c of contacts) {
-    if (c.company_id == null) continue;
-    const list = contactsByCompany.get(c.company_id) ?? [];
-    list.push(c);
-    contactsByCompany.set(c.company_id, list);
-  }
+  const contactsByCompany = useMemo(() => {
+    const map = new Map<number, Contact[]>();
+    for (const c of contacts) {
+      if (c.company_id == null) continue;
+      const list = map.get(c.company_id) ?? [];
+      list.push(c);
+      map.set(c.company_id, list);
+    }
+    return map;
+  }, [contacts]);
+
+  const noEmailCount = useMemo(() => {
+    return companies.filter(
+      (c) =>
+        c.enrichment_status === "done" &&
+        !(contactsByCompany.get(c.id) ?? []).some((ct) => ct.email),
+    ).length;
+  }, [companies, contactsByCompany]);
+
+  const handleReEnrich = useCallback(async () => {
+    setReEnriching(true);
+    try {
+      const res = await fetch("/api/companies/re-enrich", { method: "POST" });
+      if (res.ok) {
+        await load();
+      }
+    } catch {
+      /* load on next refresh */
+    } finally {
+      setReEnriching(false);
+    }
+  }, [load]);
 
   const filtered =
     filter === "all"
@@ -120,14 +148,33 @@ export default function CompaniesPage() {
         <p className="text-[13px] text-(--color-muted)">
           自動収集・キーワード検索・CSV取込で集めた企業の一覧です。
         </p>
-        <button
-          type="button"
-          onClick={load}
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
-        >
-          <ArrowClockwise size={14} />
-          更新
-        </button>
+        <div className="flex items-center gap-2">
+          {noEmailCount > 0 && (
+            <button
+              type="button"
+              onClick={handleReEnrich}
+              disabled={reEnriching}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            >
+              {reEnriching ? (
+                <SpinnerGap size={14} className="animate-spin" />
+              ) : (
+                <EnvelopeSimple size={14} />
+              )}
+              {reEnriching
+                ? "再取得中..."
+                : `${noEmailCount}社のメールを再取得`}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={load}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
+          >
+            <ArrowClockwise size={14} />
+            更新
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2">

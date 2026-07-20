@@ -1474,6 +1474,24 @@ export function resetFailedEnrichments(): number {
     .run().changes;
 }
 
+/**
+ * 調査完了だがメールが見つからなかった企業を再調査キューに戻す。
+ * contacts にメールを持つ行が無い企業だけが対象。
+ */
+export function resetEnrichedWithoutEmail(): number {
+  return getDb()
+    .prepare(
+      `UPDATE companies
+       SET enrichment_status = 'pending', enrichment_error = ''
+       WHERE enrichment_status = 'done'
+         AND id NOT IN (
+           SELECT DISTINCT company_id FROM contacts
+           WHERE email IS NOT NULL AND email != ''
+         )`
+    )
+    .run().changes;
+}
+
 export interface InventoryStats {
   /** すぐ送れる連絡先の数（抑止・送信済みを除いた実数） */
   readyCount: number;
