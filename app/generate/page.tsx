@@ -116,6 +116,7 @@ function GeneratePageInner() {
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   const abortRef = useRef(false);
+  const batchProgressRef = useRef<HTMLDivElement>(null);
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -437,6 +438,10 @@ function GeneratePageInner() {
     setBatchItems(items);
     setBatchRunning(true);
     abortRef.current = false;
+
+    setTimeout(() => {
+      batchProgressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
 
     const CONCURRENCY = 3;
     let cursor = 0;
@@ -770,11 +775,13 @@ function GeneratePageInner() {
       </div>
 
       {mode === "batch" && batchItems.length > 0 && (
-        <BatchProgress
-          items={batchItems}
-          running={batchRunning}
-          onStop={() => { abortRef.current = true; }}
-        />
+        <div ref={batchProgressRef}>
+          <BatchProgress
+            items={batchItems}
+            running={batchRunning}
+            onStop={() => { abortRef.current = true; }}
+          />
+        </div>
       )}
 
       {mode === "single" && isBusy && <ProgressCard status={status} />}
