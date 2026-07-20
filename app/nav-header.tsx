@@ -25,6 +25,8 @@ interface NavItem {
   Icon: ComponentType<IconProps>;
   /** 現在地の判定に使う接頭辞。href が配下の1ページを指す場合に指定する */
   activePrefix?: string;
+  /** href 以外にもアクティブ判定したいパス接頭辞（例: /prospect → 履歴） */
+  additionalPrefixes?: string[];
 }
 
 /**
@@ -39,7 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/collection", label: "企業リスト", Icon: Stack },
   { href: "/generate", label: "生成", Icon: PaperPlaneTilt },
   { href: "/bulk-send", label: "一括送信", Icon: PaperPlaneRight },
-  { href: "/history", label: "履歴", Icon: Clock },
+  { href: "/history", label: "履歴", Icon: Clock, additionalPrefixes: ["/prospect"] },
   { href: "/settings/templates", label: "設定", Icon: GearSix, activePrefix: "/settings" },
 ];
 
@@ -69,7 +71,8 @@ export function NavHeader() {
   function isActive(item: NavItem) {
     const prefix = item.activePrefix ?? item.href;
     if (prefix === "/") return pathname === "/";
-    return pathname === prefix || pathname.startsWith(`${prefix}/`);
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return true;
+    return item.additionalPrefixes?.some((p) => pathname.startsWith(`${p}/`)) ?? false;
   }
 
   function toggleTheme() {

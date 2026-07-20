@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   PaperPlaneTilt,
@@ -85,8 +85,9 @@ const PROGRESS_STEPS = [
 
 const STEP_DELAY_MS = 2000;
 
-export default function GeneratePage() {
+function GeneratePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [services, setServices] = useState<Service[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -162,6 +163,21 @@ export default function GeneratePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (loadingOptions) return;
+    const paramUrl = searchParams.get("url");
+    const paramService = searchParams.get("service");
+    const paramPersona = searchParams.get("persona");
+    if (paramUrl) setUrl(paramUrl);
+    if (paramService && services.some((s) => String(s.id) === paramService)) {
+      setSelectedServiceId(paramService);
+    }
+    if (paramPersona && personas.some((p) => String(p.id) === paramPersona)) {
+      setSelectedPersonaId(paramPersona);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingOptions]);
 
   const isBusy =
     status === "crawling" || status === "analyzing" || status === "generating";
@@ -720,5 +736,13 @@ function ErrorCard({
         </div>
       </div>
     </div>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense>
+      <GeneratePageInner />
+    </Suspense>
   );
 }

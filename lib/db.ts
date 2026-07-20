@@ -8,6 +8,7 @@ import type {
   CollectionRun,
   CollectionRunStatus,
   CollectionSource,
+  CollectionSourceType,
   Company,
   ComposeMode,
   Contact,
@@ -338,6 +339,15 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "companies", "fit_service_id", "INTEGER");
   addColumnIfMissing(instance, "companies", "business_summary", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(instance, "companies", "analysis_json", "TEXT NOT NULL DEFAULT '{}'");
+
+  // Wantedly直接スクレイピング対応: 収集元の種別を区別する
+  addColumnIfMissing(instance, "collection_sources", "source_type", "TEXT NOT NULL DEFAULT 'keyword_search'");
+
+  // send_log の check-then-act race 対策: gmail_message_id が同じレコードの二重挿入を防ぐ
+  instance.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_send_log_gmail_message_id
+    ON send_log (gmail_message_id) WHERE gmail_message_id IS NOT NULL
+  `);
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -1229,13 +1239,17 @@ export function getCollectionSource(id: number): CollectionSource | undefined {
     .get(id) as CollectionSource | undefined;
 }
 
-export function createCollectionSource(keyword: string, site: string): CollectionSource {
+export function createCollectionSource(
+  keyword: string,
+  site: string,
+  sourceType: CollectionSourceType = "keyword_search"
+): CollectionSource {
   const instance = getDb();
   instance
     .prepare(
-      "INSERT OR IGNORE INTO collection_sources (keyword, site) VALUES (@keyword, @site)"
+      "INSERT OR IGNORE INTO collection_sources (keyword, site, source_type) VALUES (@keyword, @site, @sourceType)"
     )
-    .run({ keyword, site });
+    .run({ keyword, site, sourceType });
   return instance
     .prepare("SELECT * FROM collection_sources WHERE keyword = ? AND site = ?")
     .get(keyword, site) as CollectionSource;

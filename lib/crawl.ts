@@ -5,6 +5,16 @@ import { validateUrl } from "@/lib/ssrf";
 const FETCH_TIMEOUT_MS = 10000;
 const MAX_PAGES = 8;
 const MAX_TEXT_LENGTH = 10000;
+const CRAWL_DELAY_BASE_MS = 1500;
+const CRAWL_DELAY_JITTER_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function nextCrawlDelay(): number {
+  return CRAWL_DELAY_BASE_MS + Math.floor(Math.random() * CRAWL_DELAY_JITTER_MS);
+}
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -444,7 +454,8 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
     (link) => link !== rootFetch.finalUrl
   );
 
-  for (const link of priorityLinks.slice(0, MAX_PAGES - 1)) {
+  for (const [i, link] of priorityLinks.slice(0, MAX_PAGES - 1).entries()) {
+    if (i > 0) await sleep(nextCrawlDelay());
     const fetched = await fetchPage(link);
     if (!fetched) {
       continue;

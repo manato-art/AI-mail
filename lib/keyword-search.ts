@@ -67,8 +67,11 @@ export async function webSearch(
     if (res.status === 503) {
       throw new SearchBlockedError("検索APIが一時的に利用できません", res.status);
     }
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");
+    }
+    if (res.status === 403) {
+      throw new SearchBlockedError("検索APIへのアクセスが拒否されました", res.status);
     }
     throw new Error(`検索APIエラーが発生しました（コード: ${res.status}）`);
   }

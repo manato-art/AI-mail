@@ -220,7 +220,9 @@ async function generateContinuation(params: ComposeParams, resolvedFixed: string
 export async function composeBody(params: ComposeParams): Promise<ComposeResult> {
   if (params.mode === "hybrid") {
     const resolvedFixed = resolveVariables(params.fixedPart, params.variables).text;
-    const continuation = await generateContinuation(params, resolvedFixed);
+    const resolvedBrief = resolveVariables(params.aiBrief, params.variables).text;
+    const resolvedParams = { ...params, aiBrief: resolvedBrief };
+    const continuation = await generateContinuation(resolvedParams, resolvedFixed);
     return {
       body: `${resolvedFixed.trimEnd()}\n\n${continuation}`,
       continuation,

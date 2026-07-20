@@ -81,6 +81,7 @@ export default function CollectionPage() {
   const [keyword, setKeyword] = useState("");
   const [site, setSite] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addingWantedly, setAddingWantedly] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
   const [jobRunning, setJobRunning] = useState(false);
@@ -151,6 +152,33 @@ export default function CollectionPage() {
       showToast("登録に失敗しました");
     } finally {
       setSaving(false);
+    }
+  }
+
+  const hasWantedlySource = sources.some(
+    (s) => s.source_type === "wantedly_direct",
+  );
+
+  async function handleAddWantedly() {
+    if (addingWantedly) return;
+    setAddingWantedly(true);
+    try {
+      const res = await fetch("/api/collection/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_type: "wantedly_direct" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "登録に失敗しました");
+        return;
+      }
+      showToast("Wantedlyを収集元に追加しました");
+      load();
+    } catch {
+      showToast("登録に失敗しました");
+    } finally {
+      setAddingWantedly(false);
     }
   }
 
@@ -306,6 +334,22 @@ export default function CollectionPage() {
           </p>
         )}
 
+        {!hasWantedlySource && (
+          <button
+            type="button"
+            onClick={handleAddWantedly}
+            disabled={addingWantedly}
+            className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-(--color-border) text-sm text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:opacity-40 cursor-pointer"
+          >
+            {addingWantedly ? (
+              <SpinnerGap size={16} className="animate-spin" />
+            ) : (
+              <Plus size={16} />
+            )}
+            Wantedly新着を収集元に追加
+          </button>
+        )}
+
         <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             value={keyword}
@@ -361,8 +405,10 @@ export default function CollectionPage() {
                   )}
                 </div>
                 <p className="mt-0.5 pl-4 text-[11px] text-(--color-muted)">
-                  {source.site || "検索元サイト未定"} ・ 最終実行{" "}
-                  {formatDateTime(source.last_run_at)}
+                  {source.source_type === "wantedly_direct"
+                    ? "Wantedly直接取得"
+                    : source.site || "検索元サイト未定"}
+                  {" "}・ 最終実行 {formatDateTime(source.last_run_at)}
                 </p>
                 {source.paused_kind && (
                   <p

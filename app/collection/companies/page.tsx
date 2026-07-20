@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<
     className: "text-(--color-warning)",
   },
   failed: {
-    label: "失敗",
+    label: "調査できず",
     icon: XCircle,
     className: "text-(--color-danger)",
   },

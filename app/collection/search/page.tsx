@@ -373,7 +373,7 @@ export default function KeywordSearchPage() {
     <div className="animate-fade-in pb-20">
       <div className="mb-6">
         <p className="text-sm text-(--color-muted)">
-          キーワードから企業を探し、メールアドレス・宛名入りの送信先リストを自動で作ります
+          キーワードから企業を探し、メールアドレス・宛名入りの宛先リストを自動で作ります
         </p>
       </div>
 

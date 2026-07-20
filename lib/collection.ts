@@ -17,6 +17,7 @@ import {
   type SearchResultItem,
 } from "@/lib/keyword-search";
 import { scrapeSearch } from "@/lib/keyword-search-scrape";
+import { fetchWantedlyListings } from "@/lib/wantedly-scraper";
 import type { CollectionRunStatus, CollectionSource } from "@/lib/types";
 
 /** 1回の実行で進める検索ページ数。まとめて叩かず少しずつ掘る */
@@ -167,7 +168,94 @@ function decidePause(
   return null;
 }
 
-async function runSource(source: CollectionSource): Promise<SourceOutcome> {
+async function runWantedlySource(source: CollectionSource): Promise<SourceOutcome> {
+  const runId = startCollectionRun(source.id, source.next_page);
+
+  try {
+    const startPage = source.next_page || 1;
+    const { listings, nextPage, emptyPages } = await fetchWantedlyListings(startPage);
+
+    if (listings.length === 0) {
+      const noResultRuns = source.consecutive_no_result_runs + emptyPages;
+      updateCollectionCursor(source.id, {
+        nextPage,
+        consecutiveNoResultRuns: noResultRuns,
+        consecutiveNoNewRuns: source.consecutive_no_new_runs,
+      });
+      finishCollectionRun(runId, {
+        status: "no_result",
+        foundCount: 0,
+        newCount: 0,
+        skippedCount: 0,
+        skipBreakdown: {},
+      });
+
+      const pause = decidePause(noResultRuns, source.consecutive_no_new_runs);
+      if (pause) {
+        pauseCollectionSource(source.id, pause.kind, pause.reason);
+        return { status: "no_result", newCount: 0, pausedReason: pause.reason };
+      }
+      return { status: "no_result", newCount: 0, pausedReason: null };
+    }
+
+    const companies = listings.map((l) => ({
+      name: l.companyName,
+      sourceUrl: l.listingUrl,
+    }));
+    const { newCount, breakdown } = registerCompanies(
+      companies,
+      source,
+      "wantedly.com"
+    );
+
+    const noNewRuns = newCount > 0 ? 0 : source.consecutive_no_new_runs + 1;
+    updateCollectionCursor(source.id, {
+      nextPage,
+      consecutiveNoResultRuns: 0,
+      consecutiveNoNewRuns: noNewRuns,
+    });
+    finishCollectionRun(runId, {
+      status: newCount > 0 ? "success" : "no_new",
+      foundCount: companies.length,
+      newCount,
+      skippedCount: companies.length - newCount,
+      skipBreakdown: breakdown,
+    });
+
+    const pause = decidePause(0, noNewRuns);
+    if (pause) {
+      pauseCollectionSource(source.id, pause.kind, pause.reason);
+      return { status: newCount > 0 ? "success" : "no_new", newCount, pausedReason: pause.reason };
+    }
+    return { status: newCount > 0 ? "success" : "no_new", newCount, pausedReason: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Wantedlyの収集に失敗しました";
+    finishCollectionRun(runId, {
+      status: "error",
+      foundCount: 0,
+      newCount: 0,
+      skippedCount: 0,
+      skipBreakdown: {},
+      error: message,
+    });
+
+    const noResultRuns = source.consecutive_no_result_runs + 1;
+    updateCollectionCursor(source.id, {
+      nextPage: source.next_page,
+      consecutiveNoResultRuns: noResultRuns,
+      consecutiveNoNewRuns: source.consecutive_no_new_runs,
+    });
+
+    const pause = decidePause(noResultRuns, source.consecutive_no_new_runs);
+    if (pause) {
+      pauseCollectionSource(source.id, pause.kind, pause.reason);
+      return { status: "error", newCount: 0, pausedReason: pause.reason };
+    }
+    return { status: "error", newCount: 0, pausedReason: null };
+  }
+}
+
+async function runKeywordSource(source: CollectionSource): Promise<SourceOutcome> {
   const runId = startCollectionRun(source.id, source.next_page);
 
   try {
@@ -258,6 +346,13 @@ async function runSource(source: CollectionSource): Promise<SourceOutcome> {
     }
     return { status: "error", newCount: 0, pausedReason: null };
   }
+}
+
+function runSource(source: CollectionSource): Promise<SourceOutcome> {
+  if (source.source_type === "wantedly_direct") {
+    return runWantedlySource(source);
+  }
+  return runKeywordSource(source);
 }
 
 export interface PausedSourceNotice {

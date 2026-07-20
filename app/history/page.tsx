@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  CaretDown,
   DownloadSimple,
   FunnelSimple,
   MagnifyingGlass,
+  Prohibit,
   SpinnerGap,
   Tray,
   X,
@@ -130,6 +132,59 @@ export default function HistoryPage() {
     setFilterCompat("");
     setFilterStatus("");
     setFilterService("");
+  }
+
+  const [suppressingDomain, setSuppressingDomain] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+
+  async function handleStatusChange(prospectId: number, newStatus: SendStatus) {
+    setUpdatingStatusId(prospectId);
+    try {
+      const res = await fetch(`/api/prospects/${prospectId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "ステータスの更新に失敗しました");
+        return;
+      }
+      setProspects((prev) =>
+        prev.map((p) => (p.id === prospectId ? { ...p, send_status: newStatus } : p))
+      );
+    } catch {
+      alert("通信エラーが発生しました");
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  }
+
+  async function handleSuppress(prospect: Prospect) {
+    if (!confirm(`${prospect.domain} を送信しないリストに追加しますか？`)) return;
+    setSuppressingDomain(prospect.domain);
+    try {
+      const res = await fetch("/api/suppressions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: prospect.domain,
+          target_type: "domain",
+          reason: "manual",
+          note: `履歴一覧 prospect #${prospect.id} から追加`,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "追加に失敗しました");
+        return;
+      }
+      alert(`${prospect.domain} を送信しないリストに追加しました`);
+    } catch {
+      alert("通信エラーが発生しました");
+    } finally {
+      setSuppressingDomain(null);
+    }
   }
 
   function handleExportCsv() {
@@ -323,21 +378,42 @@ export default function HistoryPage() {
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
-                            {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
-                          </span>
+                          <div className="relative inline-flex">
+                            <select
+                              value={(prospect.send_status as SendStatus) || "unsent"}
+                              onChange={(e) => handleStatusChange(prospect.id, e.target.value as SendStatus)}
+                              disabled={updatingStatusId === prospect.id}
+                              className={`h-7 appearance-none rounded-full border-2 border-transparent bg-transparent py-0 pl-2.5 pr-6 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-primary)/20 disabled:opacity-50 ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}
+                            >
+                              {(Object.entries(STATUS_LABELS) as [SendStatus, string][]).map(([k, v]) => (
+                                <option key={k} value={k}>{v}</option>
+                              ))}
+                            </select>
+                            <CaretDown size={10} weight="bold" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                           {truncate(prospect.subject, 40)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
-                          <Link
-                            href={`/prospect/${prospect.id}`}
-                            className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 hover:bg-(--color-card-hover) hover:text-(--color-primary) dark:text-gray-300"
-                          >
-                            詳細
-                            <ArrowRight size={14} />
-                          </Link>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); handleSuppress(prospect); }}
+                              disabled={suppressingDomain === prospect.domain}
+                              title="送信しないリストに追加"
+                              className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-(--color-border) text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger) disabled:opacity-50"
+                            >
+                              <Prohibit size={14} />
+                            </button>
+                            <Link
+                              href={`/prospect/${prospect.id}`}
+                              className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 hover:bg-(--color-card-hover) hover:text-(--color-primary) dark:text-gray-300"
+                            >
+                              詳細
+                              <ArrowRight size={14} />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     ))}

@@ -97,6 +97,7 @@ export default function BulkSendPage() {
   const [generatedSearch, setGeneratedSearch] = useState("");
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [recipientsHydrated, setRecipientsHydrated] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
 
   const [importOpen, setImportOpen] = useState(false);
@@ -189,36 +190,56 @@ export default function BulkSendPage() {
 
   useEffect(() => {
     try {
+      const saved = sessionStorage.getItem("bulk-send-recipients");
+      if (saved) {
+        const parsed: Recipient[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setRecipients(parsed);
+        }
+      }
+
       const raw = sessionStorage.getItem("bulk-send-import");
-      if (!raw) return;
-      sessionStorage.removeItem("bulk-send-import");
-      const imported: { company: string; person: string; email: string }[] = JSON.parse(raw);
-      if (!Array.isArray(imported) || imported.length === 0) return;
-      // sessionStorage はブラウザ専用なので、遅延初期化にするとサーバ描画と
-      // 食い違ってハイドレーションエラーになる。マウント後に一度だけ読むのが正しい
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRecipients((prev) => [
-        ...prev,
-        ...imported.map((item) => ({
-          id: uid(),
-          company: item.company || "",
-          person: item.person || "",
-          email: item.email || "",
-          checked: true,
-        })),
-      ]);
+      if (raw) {
+        sessionStorage.removeItem("bulk-send-import");
+        const imported: { company: string; person: string; email: string }[] = JSON.parse(raw);
+        if (Array.isArray(imported) && imported.length > 0) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setRecipients((prev) => [
+            ...prev,
+            ...imported.map((item) => ({
+              id: uid(),
+              company: item.company || "",
+              person: item.person || "",
+              email: item.email || "",
+              checked: true,
+            })),
+          ]);
+        }
+      }
     } catch { /* ignore */ }
+    setRecipientsHydrated(true);
   }, []);
 
-  // 送信中の離脱を警告する。閉じられると何件送ったかの記録が画面から消える
   useEffect(() => {
-    if (!isSending) return;
+    if (!recipientsHydrated) return;
+    try {
+      if (recipients.length > 0) {
+        sessionStorage.setItem("bulk-send-recipients", JSON.stringify(recipients));
+      } else {
+        sessionStorage.removeItem("bulk-send-recipients");
+      }
+    } catch { /* quota exceeded — ignore */ }
+  }, [recipients, recipientsHydrated]);
+
+  useEffect(() => {
+    if (!isSending && recipients.length === 0) return;
     function warn(e: BeforeUnloadEvent) {
       e.preventDefault();
     }
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [isSending]);
+  }, [isSending, recipients.length]);
 
   const sorted = useMemo(
     () => [...prospects].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),

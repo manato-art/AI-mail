@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowCounterClockwise,
   ArrowSquareOut,
@@ -14,6 +15,7 @@ import {
   Globe,
   Notebook,
   PaperPlaneTilt,
+  Prohibit,
   SpinnerGap,
   Warning,
   WarningCircle,
@@ -74,7 +76,6 @@ interface SenderInfo {
 
 export default function ProspectPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const id = params.id;
 
   const [prospect, setProspect] = useState<Prospect | null>(null);
@@ -101,6 +102,7 @@ export default function ProspectPage() {
   const [hasRefusal, setHasRefusal] = useState(false);
   const [refusalText, setRefusalText] = useState<string | null>(null);
 
+  const [suppressing, setSuppressing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(message: string) {
@@ -244,6 +246,30 @@ export default function ProspectPage() {
     }
   }
 
+  async function handleSuppress() {
+    if (!prospect) return;
+    const domain = prospect.domain;
+    if (!domain) { showToast("ドメインが不明です"); return; }
+    if (!confirm(`${domain} を送信しないリストに追加しますか？`)) return;
+    setSuppressing(true);
+    try {
+      const res = await fetch("/api/suppressions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: domain, target_type: "domain", reason: "manual", note: `prospect #${id} から追加` }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "登録に失敗しました" }));
+        throw new Error(data.error || "登録に失敗しました");
+      }
+      showToast(`${domain} を送信しないリストに追加しました`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "登録に失敗しました");
+    } finally {
+      setSuppressing(false);
+    }
+  }
+
   async function handleSaveTemplate() {
     const name = prompt("テンプレート名を入力してください", prospect?.company_name || "テンプレート");
     if (!name) return;
@@ -361,7 +387,7 @@ export default function ProspectPage() {
       {isTestMode && (
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">
           <Warning size={16} weight="bold" />
-          テストモード: 送信先はテストアドレスに強制上書きされます
+          テストモード: 宛先はテストアドレスに強制上書きされます
         </div>
       )}
 
@@ -389,13 +415,12 @@ export default function ProspectPage() {
 
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+        <Link
+          href="/history"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
         >
           <CaretLeft size={16} weight="bold" />
-        </button>
+        </Link>
         <h1 className="text-lg md:text-xl font-bold tracking-tight">
           {prospect.company_name || prospect.domain} 宛のメール
         </h1>
@@ -404,19 +429,30 @@ export default function ProspectPage() {
           {prospect.domain}
         </span>
 
-        {/* Status selector */}
-        <div className="relative ml-auto w-full md:w-auto mt-2 md:mt-0">
-          <select
-            value={currentStatus}
-            onChange={(e) => handleStatusChange(e.target.value as SendStatus)}
-            disabled={savingStatus}
-            className={`h-8 appearance-none rounded-full border-2 bg-transparent py-0 pl-3 pr-7 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-primary)/20 disabled:opacity-50 ${STATUS_STYLES[currentStatus]}`}
+        {/* Actions */}
+        <div className="ml-auto flex flex-wrap items-center gap-2 mt-2 md:mt-0">
+          <button
+            type="button"
+            onClick={handleSuppress}
+            disabled={suppressing}
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger) disabled:opacity-50"
           >
-            {(Object.entries(STATUS_LABELS) as [SendStatus, string][]).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-          <CaretDown size={10} weight="bold" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+            <Prohibit size={13} />
+            送信しないリストに追加
+          </button>
+          <div className="relative">
+            <select
+              value={currentStatus}
+              onChange={(e) => handleStatusChange(e.target.value as SendStatus)}
+              disabled={savingStatus}
+              className={`h-8 appearance-none rounded-full border-2 bg-transparent py-0 pl-3 pr-7 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-(--color-primary)/20 disabled:opacity-50 ${STATUS_STYLES[currentStatus]}`}
+            >
+              {(Object.entries(STATUS_LABELS) as [SendStatus, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+            <CaretDown size={10} weight="bold" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" />
+          </div>
         </div>
       </div>
 
@@ -535,7 +571,7 @@ export default function ProspectPage() {
 
             {emailsFound.length > 0 && (
               <div className="border-t border-(--color-border) bg-gray-50/50 px-5 py-3.5 dark:bg-slate-800/50">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">送信先</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-(--color-muted)">宛先</p>
                 {emailsFound.map((email) => (
                   <p key={email} className="mt-0.5 text-[13px] text-gray-600 dark:text-gray-400">{email}</p>
                 ))}
