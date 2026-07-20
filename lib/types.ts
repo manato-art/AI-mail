@@ -126,6 +126,12 @@ export interface AnalysisResult {
   philosophy?: string;
   /** 社風・雰囲気（HPの写真やテキストから読み取れる場合） */
   atmosphere?: string;
+  /** HPから引用した印象的な一文 */
+  impressive_quote?: string;
+  /** この企業が抱えているであろう課題 */
+  likely_challenges?: string;
+  /** 共感・尊敬できる具体的なポイント */
+  empathy_point?: string;
   /** 商材に対するアプローチ戦略（どう提案すべきか） */
   approach_strategy?: string;
   compatibility: {
