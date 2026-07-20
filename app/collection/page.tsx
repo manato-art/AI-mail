@@ -34,9 +34,14 @@ const RUN_STATUS_STYLES: Record<string, string> = {
 
 function formatDateTime(value: string | null): string {
   if (!value) return "—";
-  const date = new Date(value.replace(" ", "T"));
+  let iso = value.replace(" ", "T");
+  if (!/[Z+]/.test(iso) && !/T\d{2}:\d{2}:\d{2}[+-]/.test(iso)) {
+    iso += "Z";
+  }
+  const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -215,39 +220,37 @@ export default function CollectionPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-[13px] text-(--color-muted)">
-        登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
-        最終実行: {formatDateTime(status?.lastRunAt ?? null)}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px] text-(--color-muted)">
+          登録したキーワードで1日1回自動収集し、送れる状態まで裏で準備します。
+          最終実行: {formatDateTime(status?.lastRunAt ?? null)}
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={load}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
+          >
+            <ArrowClockwise size={14} />
+            更新
+          </button>
+          <button
+            type="button"
+            onClick={handleRunNow}
+            disabled={running}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+          >
+            {running ? <SpinnerGap size={14} className="animate-spin" /> : <Play size={14} />}
+            今すぐ収集
+          </button>
+        </div>
+      </div>
 
       <section className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold">収集キーワード</h2>
-            <p className="mt-1 text-[12px] text-(--color-muted)">
-              検索エンジン経由で企業を探します。検索元サイトは空欄で構いません（自動で判断します）。
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={load}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
-            >
-              <ArrowClockwise size={14} />
-              更新
-            </button>
-            <button
-              type="button"
-              onClick={handleRunNow}
-              disabled={running}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-            >
-              {running ? <SpinnerGap size={14} className="animate-spin" /> : <Play size={14} />}
-              今すぐ収集
-            </button>
-          </div>
-        </div>
+        <h2 className="text-sm font-bold">収集キーワード</h2>
+        <p className="mt-1 text-[12px] text-(--color-muted)">
+          検索エンジン経由で企業を探します。検索元サイトは空欄で構いません（自動で判断します）。
+        </p>
 
         {noSourceError && (
           <p className="mt-3 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[13px] text-(--color-danger) animate-fade-in">
