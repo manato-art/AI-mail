@@ -77,7 +77,7 @@ export default function TemplatesPage() {
 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
-  function insertAtCursor(text: string) {
+  function insertAtCursor(text: string, cursorBack = 0) {
     const ta = bodyRef.current;
     if (!ta) { setEditBody((prev) => prev + text); return; }
     const start = ta.selectionStart;
@@ -86,10 +86,13 @@ export default function TemplatesPage() {
     const after = editBody.slice(end);
     const updated = before + text + after;
     setEditBody(updated);
+    // cursorBack > 0 なら挿入文字列の末尾から手前にカーソルを置く
+    // （例: {{AI:}} を入れて : と }} の間にカーソルを置き、すぐ指示を書けるように）
+    const caret = start + text.length - cursorBack;
     requestAnimationFrame(() => {
       ta.focus();
-      ta.selectionStart = start + text.length;
-      ta.selectionEnd = start + text.length;
+      ta.selectionStart = caret;
+      ta.selectionEnd = caret;
     });
   }
 
@@ -410,17 +413,17 @@ export default function TemplatesPage() {
                     ))}
                     <button
                       type="button"
-                      onClick={() => insertAtCursor("{{AI:ここにAIへの指示を書く}}")}
+                      onClick={() => insertAtCursor("{{AI:}}", 2)}
                       className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
-                      title="AIが企業ごとに書き分ける部分を挿入"
+                      title="AIが企業ごとに書き分ける部分を挿入（指示は任意）"
                     >
                       <MagicWand size={11} weight="bold" className="mr-1 inline-block align-[-1px]" />
-                      <code>{"{{AI:指示}}"}</code>
+                      <code>{"{{AI:}}"}</code>
                       <span className="ml-1 font-normal">AIが書く部分</span>
                     </button>
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-(--color-muted)">
-                    <strong>固定テキスト</strong>はそのまま送られます。<strong>{"{{変数}}"}</strong>は宛先ごとに置換。<strong>{"{{AI:指示}}"}</strong>を入れた部分は、収集した企業の分析データをもとにAIが企業ごとに書き分けます。どこにでも何個でも配置できます。
+                    <strong>固定テキスト</strong>はそのまま送られます。<strong>{"{{変数}}"}</strong>は宛先ごとに置換。<strong>{"{{AI:}}"}</strong>を入れた部分は、収集した企業の分析データをもとにAIが企業ごとに書き分けます。<strong>{"{{AI:}}"}</strong>だけなら<strong>メール全体に自然になじむ文</strong>をAIが考えます。指示を出したいときは <code>{"{{AI:実績に触れて}}"}</code> のように <code>:</code> の後に書きます。どこにでも何個でも置けます。
                   </p>
                 </div>
               </div>

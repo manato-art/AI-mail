@@ -143,7 +143,7 @@ export default function BulkSendPage() {
     setTimeout(() => setToast(msg), 0);
   }
 
-  function insertAtCursorDirect(text: string) {
+  function insertAtCursorDirect(text: string, cursorBack = 0) {
     const el = directBodyRef.current;
     if (!el) { setDirectBody((prev) => prev + text); return; }
     const start = el.selectionStart;
@@ -152,7 +152,7 @@ export default function BulkSendPage() {
     const after = directBody.slice(end);
     setDirectBody(before + text + after);
     requestAnimationFrame(() => {
-      const pos = start + text.length;
+      const pos = start + text.length - cursorBack;
       el.selectionStart = pos;
       el.selectionEnd = pos;
       el.focus();
@@ -1285,8 +1285,9 @@ export default function BulkSendPage() {
                   ))}
                   <button
                     type="button"
-                    onClick={() => insertAtCursorDirect("{{AI:ここに指示を書く}}")}
+                    onClick={() => insertAtCursorDirect("{{AI:}}", 2)}
                     className="inline-flex h-6 cursor-pointer items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                    title="AIが企業ごとに書く部分。空なら全体になじむ文をAIが考える。: の後に指示も書ける"
                   >
                     <MagicWand size={10} weight="fill" />
                     AI

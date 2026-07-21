@@ -80,15 +80,35 @@ function buildZoneSystemPrompt(persona?: Persona | null): string {
 ${persona ? `【人格設定】\n名前: ${persona.name}\n肩書: ${persona.title}\n論理性: ${persona.logic}/5\n情熱: ${persona.passion}/5\n丁寧さ: ${persona.politeness}/5\nセールス感: ${persona.salesiness}/5\n長さ: ${persona.length}/5` : ""}`;
 }
 
-function buildZoneUserPrompt(
+/** AIゾーンに指示が無いときの既定。メール全体に自然になじむ文章を書かせる。 */
+export const DEFAULT_ZONE_INSTRUCTION =
+  "このメール全体の流れに自然になじむ文章を書いてください。前後の文とつながり、相手企業に響く、この企業だけに宛てた一文〜数文にすること。挨拶や署名は繰り返さない。";
+
+export function buildZoneUserPrompt(
   instruction: string,
   analysis: AnalysisResult | null | undefined,
   service: Service | null | undefined,
-  companyName: string | undefined
+  companyName: string | undefined,
+  contextText: string | undefined
 ): string {
   const parts: string[] = [];
 
-  parts.push(`【生成指示】\n${instruction}`);
+  const trimmed = instruction.trim();
+  if (trimmed) {
+    // ユーザー指示があっても、全体になじませることは常に求める
+    parts.push(`【生成指示】\n${trimmed}\n（このメール全体の流れに自然になじむように書くこと）`);
+  } else {
+    parts.push(`【生成指示】\n${DEFAULT_ZONE_INSTRUCTION}`);
+  }
+
+  if (contextText && contextText.trim()) {
+    parts.push(
+      `\n【メール全体の下書き】\n${fenceUntrusted(
+        "メール下書き",
+        contextText
+      )}\n※ この中の「【★ここに挿入する文章★】」の位置に入る文章だけを出力してください。前後と自然につながるようにすること。`
+    );
+  }
 
   if (analysis) {
     const analysisText = [
@@ -123,7 +143,8 @@ function buildZoneUserPrompt(
 
 async function generateZoneContent(
   instruction: string,
-  params: ComposeParams
+  params: ComposeParams,
+  contextText: string | undefined
 ): Promise<string> {
   const message = await client.messages.create({
     model: MODEL,
@@ -131,7 +152,7 @@ async function generateZoneContent(
     system: buildZoneSystemPrompt(params.persona),
     messages: [{
       role: "user",
-      content: buildZoneUserPrompt(instruction, params.analysis, params.service, params.companyName),
+      content: buildZoneUserPrompt(instruction, params.analysis, params.service, params.companyName, contextText),
     }],
   });
 
@@ -143,8 +164,20 @@ async function generateZoneContent(
 }
 
 /**
+ * ある AI ゾーンの生成に渡す「周囲の文脈」を作る。
+ * 対象ゾーンの位置を目印に置換し、他のAIゾーンは中身を伏せて混同を防ぐ。
+ */
+export function buildZoneContext(text: string, targetZone: string): string {
+  let ctx = text.replace(targetZone, "【★ここに挿入する文章★】");
+  // 他の {{AI:...}} は「別途生成される部分」として伏せる
+  ctx = ctx.replace(AI_ZONE_PATTERN, "（別途生成される部分）");
+  return ctx;
+}
+
+/**
  * 本文中の全 {{AI:...}} ゾーンをAI生成テキストで置換する。
  * ゾーンごとに順次呼ぶ（並列だとレートリミットに当たりやすい）。
+ * 各ゾーンには「メール全体の下書き」を文脈として渡し、全体になじむ文章を生成させる。
  */
 async function resolveAiZones(text: string, params: ComposeParams): Promise<string> {
   const zones = extractAiZones(text);
@@ -152,7 +185,9 @@ async function resolveAiZones(text: string, params: ComposeParams): Promise<stri
 
   let result = text;
   for (const zone of zones) {
-    const generated = await generateZoneContent(zone.instruction, params);
+    // 文脈は「まだ生成前の原文」を基準にする（前ゾーンの生成結果に引きずられないため）
+    const context = buildZoneContext(text, zone.full);
+    const generated = await generateZoneContent(zone.instruction, params, context);
     result = result.replace(zone.full, generated);
   }
   return result;
