@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import type { CrawlPage, CrawlResult, CrawlResultWithRefusal } from "@/lib/types";
-import { validateUrl } from "@/lib/ssrf";
+import { validateUrlWithDns } from "@/lib/ssrf";
 
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_PAGES = 5;
@@ -107,8 +107,11 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
 
   try {
     // redirect:"follow" だと入口の validateUrl を回避して内部ホストへ到達できてしまうため、
-    // 手動で追従し、毎ホップ SSRF 検証をかけ直す
-    let currentUrl = url;
+    // 手動で追従し、毎ホップ SSRF 検証をかけ直す。
+    // 文字列検証だけでは「公開ドメイン→内部IP」を防げないため DNS 解決まで検証する。
+    const entry = await validateUrlWithDns(url);
+    if (!entry.valid) return null;
+    let currentUrl = entry.normalized;
     let res: Response;
 
     for (let hop = 0; ; hop++) {
@@ -128,7 +131,7 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
       if (!location || hop >= MAX_REDIRECTS) return null;
 
       const next = new URL(location, currentUrl).toString();
-      const validated = validateUrl(next);
+      const validated = await validateUrlWithDns(next);
       if (!validated.valid) return null;
       currentUrl = validated.normalized;
     }

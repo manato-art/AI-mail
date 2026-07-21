@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import type { CompanyWithTag, Contact } from "@/lib/types";
 import { ActivityLogPanel } from "../activity-log-panel";
+import { Toast } from "@/components/toast";
 
 const SOURCE_LABELS: Record<string, string> = {
   keyword_search: "キーワード検索",
@@ -81,6 +82,11 @@ export default function CompaniesPage() {
   const [editingHpId, setEditingHpId] = useState<number | null>(null);
   const [hpUrlInput, setHpUrlInput] = useState("");
   const [savingHpUrl, setSavingHpUrl] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToast(null);
+    setTimeout(() => setToast(msg), 0);
+  }, []);
 
   const saveHpUrl = useCallback(async (companyId: number, url: string) => {
     const trimmed = url.trim();
@@ -99,13 +105,17 @@ export default function CompaniesPage() {
         );
         setEditingHpId(null);
         setHpUrlInput("");
+        showToast("HP URLを保存しました");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "HP URLの保存に失敗しました");
       }
     } catch {
-      /* retry on next attempt */
+      showToast("HP URLの保存に失敗しました（通信エラー）");
     } finally {
       setSavingHpUrl(false);
     }
-  }, []);
+  }, [showToast]);
 
   const load = useCallback(async () => {
     try {
@@ -151,13 +161,17 @@ export default function CompaniesPage() {
       const res = await fetch("/api/companies/re-enrich", { method: "POST" });
       if (res.ok) {
         await load();
+        showToast("メール未取得の企業を再調査キューに入れました");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "再調査の開始に失敗しました");
       }
     } catch {
-      /* load on next refresh */
+      showToast("再調査の開始に失敗しました（通信エラー）");
     } finally {
       setReEnriching(false);
     }
-  }, [load]);
+  }, [load, showToast]);
 
   // 絞り込みの選択肢（実際に企業に付いているキーワード・商材だけ出す）
   const keywordOptions = useMemo(
@@ -462,6 +476,7 @@ export default function CompaniesPage() {
       )}
 
       <ActivityLogPanel />
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   );
 }

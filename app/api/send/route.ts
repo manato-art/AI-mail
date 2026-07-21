@@ -6,6 +6,7 @@ import {
   getPersona,
   createSendLog,
   updateProspectStatus,
+  claimProspectForSending,
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { runSendGuard } from "@/lib/send-guard";
@@ -161,8 +162,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
-  // Persist "sending" state BEFORE calling send API (二重送信防止)
-  updateProspectStatus(prospectId, "sending");
+  // 二重送信防止: send_status を条件付きで 'sending' にクレームする（CAS）。
+  // 既に別リクエストが送信中/送信済みなら claimed=false で、送信APIを呼ばず中断する。
+  if (!claimProspectForSending(prospectId)) {
+    return NextResponse.json(
+      { error: "このメールは既に送信処理中または送信済みです" },
+      { status: 409 }
+    );
+  }
 
   const unsubscribeEmail = getSetting("sender_email") ?? sender.email;
 

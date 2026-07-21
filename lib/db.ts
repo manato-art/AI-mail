@@ -714,6 +714,21 @@ export function updateProspectStatus(id: number, status: string): Prospect | und
   return getProspect(id);
 }
 
+/**
+ * 送信直前の排他クレーム（二重送信防止）。
+ * send_status が未送信系（unsent/failed）の時だけ 'sending' に条件付き更新する。
+ * 別リクエストが先に 'sending'/'sent' へ遷移させていたら changes=0 で claimed:false を返す。
+ * これにより「読んでから送るまで」の隙での二重送信を DB レベルで1件に絞る。
+ */
+export function claimProspectForSending(id: number): boolean {
+  const result = getDb()
+    .prepare(
+      "UPDATE prospects SET send_status = 'sending' WHERE id = ? AND send_status IN ('unsent', 'failed')"
+    )
+    .run(id);
+  return result.changes > 0;
+}
+
 export function findProspectByDomain(domain: string): Prospect | undefined {
   return getDb()
     .prepare("SELECT * FROM prospects WHERE domain = ? ORDER BY id DESC LIMIT 1")

@@ -1,3 +1,5 @@
+import dns from "node:dns/promises";
+
 export interface UrlValidationResult {
   valid: boolean;
   normalized: string;
@@ -34,6 +36,13 @@ const PRIVATE_HOSTNAMES = new Set([
   "metadata.goog",
   "instance-data",
 ]);
+
+/** 生のIP文字列（IPv4/IPv6）がプライベート/リンクローカル/メタデータ範囲か判定する */
+export function isPrivateIp(ip: string): boolean {
+  const normalized = ip.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
+  if (PRIVATE_IPV6_PATTERNS.some((p) => p.test(normalized))) return true;
+  return PRIVATE_IPV4_PATTERNS.some((p) => p.test(normalized));
+}
 
 function isPrivateHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "");
@@ -103,4 +112,51 @@ export function validateUrl(urlStr: string): UrlValidationResult {
   }
 
   return { valid: true, normalized: parsed.toString() };
+}
+
+/**
+ * validateUrl（文字列検証）に加えて、ホスト名を実際にDNS解決し、
+ * 解決された全IPがプライベート/内部IPでないことを検証する。
+ *
+ * 文字列検証だけでは「公開ドメインだがAレコードが 127.0.0.1 や
+ * 169.254.169.254（クラウドメタデータ）を指す」偽装ドメインを防げない。
+ * fetch する直前にこの関数を通すこと。
+ *
+ * 注: 解決と実接続の間でDNSが差し替わるDNSリバインディング（TOCTOU）は
+ * この方式では完全には塞げない。より厳密にはundiciのカスタムlookupで
+ * 接続先IPを固定する必要がある（現状は依存追加を避け未実装）。
+ */
+export async function validateUrlWithDns(urlStr: string): Promise<UrlValidationResult> {
+  const base = validateUrl(urlStr);
+  if (!base.valid) return base;
+
+  const hostname = new URL(base.normalized).hostname.replace(/^\[/, "").replace(/\]$/, "");
+
+  // ホスト名がIPリテラルなら文字列検証で既に判定済み。DNS解決は不要。
+  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) {
+    return base;
+  }
+
+  let addresses: { address: string }[];
+  try {
+    addresses = await dns.lookup(hostname, { all: true });
+  } catch {
+    return { valid: false, normalized: base.normalized, error: "ホスト名を解決できませんでした" };
+  }
+
+  if (addresses.length === 0) {
+    return { valid: false, normalized: base.normalized, error: "ホスト名を解決できませんでした" };
+  }
+
+  for (const { address } of addresses) {
+    if (isPrivateIp(address)) {
+      return {
+        valid: false,
+        normalized: base.normalized,
+        error: "内部ネットワーク宛てのため接続できません（DNS解決結果がプライベートIP）",
+      };
+    }
+  }
+
+  return { valid: true, normalized: base.normalized };
 }

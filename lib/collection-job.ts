@@ -19,7 +19,14 @@ const TICK_INTERVAL_MS = 30 * 60 * 1000;
 /** ロックのTTL。途中でプロセスが落ちても、この時間で自動的に外れる */
 const LOCK_TTL_MINUTES = 90;
 
-const LOCK_KEY = "collection_job_lock_until";
+/**
+ * 収集ジョブ + 裏処理(enrichment)の共有ロックキー。
+ * 手動再調査(app/api/companies/re-enrich)もこのキーで排他し、
+ * 定期ジョブと手動再調査が同時に runEnrichmentBatch を走らせて
+ * 同一企業を二重クロール・AI二重課金・分析結果のロストアップデートを起こすのを防ぐ。
+ */
+export const COLLECTION_JOB_LOCK_KEY = "collection_job_lock_until";
+const LOCK_KEY = COLLECTION_JOB_LOCK_KEY;
 const LAST_RUN_KEY = "collection_job_last_run_at";
 
 export type JobTrigger = "schedule" | "manual" | "cron";

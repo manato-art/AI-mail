@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { resetEnrichedWithoutEmail, tryAcquireJobLock, releaseJobLock } from "@/lib/db";
 import { runEnrichmentBatch } from "@/lib/enrichment";
+import { COLLECTION_JOB_LOCK_KEY } from "@/lib/collection-job";
 
-const LOCK_KEY = "lock:re-enrich";
+// 定期収集ジョブと同じロックキーを使い、両者を相互排他にする（二重クロール・ロストアップデート防止）
+const LOCK_KEY = COLLECTION_JOB_LOCK_KEY;
 const LOCK_TTL_MINUTES = 30;
 
 /**

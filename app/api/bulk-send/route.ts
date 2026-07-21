@@ -10,6 +10,7 @@ import {
   createProspect,
   createSendLog,
   updateProspectStatus,
+  claimProspectForSending,
   updateSenderAuthStatus,
   getSetting,
 } from "@/lib/db";
@@ -277,8 +278,14 @@ export async function POST(request: NextRequest) {
     send_status: "unsent",
   });
 
-  // Persist "sending" state BEFORE calling send API (二重送信防止)
-  updateProspectStatus(prospect.id, "sending");
+  // 二重送信防止: send_status を条件付きで 'sending' にクレーム（CAS）。
+  // 新規作成直後なので通常は成功するが、同一prospectへの競合送信をDBレベルで1件に絞る。
+  if (!claimProspectForSending(prospect.id)) {
+    return NextResponse.json(
+      { error: "このメールは既に送信処理中または送信済みです" },
+      { status: 409 }
+    );
+  }
 
   const unsubscribeEmail = getSetting("sender_email") ?? sender.email;
 
