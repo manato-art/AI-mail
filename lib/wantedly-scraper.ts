@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { SearchBlockedError, BLOCKED_STATUSES } from "@/lib/keyword-search";
 
 const WANTEDLY_BASE = "https://www.wantedly.com";
 const LISTING_PATH = "/projects";
@@ -42,6 +43,15 @@ async function fetchListingPage(page: number): Promise<string | null> {
       },
     });
 
+    // 叩き過ぎ・拒否（403/429/503）は「新着0件」と区別し、即座に停止させる。
+    // null で返すと空ページ扱いになり、遅い枯渇判定でしか止まらず状況が悪化する。
+    if (BLOCKED_STATUSES.has(res.status)) {
+      throw new SearchBlockedError(
+        `Wantedlyからアクセスを拒否されました（${res.status}）`,
+        res.status
+      );
+    }
+
     if (!res.ok) return null;
 
     const contentType = res.headers.get("content-type") || "";
@@ -50,7 +60,10 @@ async function fetchListingPage(page: number): Promise<string | null> {
     }
 
     return await res.text();
-  } catch {
+  } catch (error) {
+    // ブロックは呼び出し元（collection.ts）の即停止パスに伝播させる。
+    // その他のネットワークエラー・タイムアウトは従来通り空ページ扱い。
+    if (error instanceof SearchBlockedError) throw error;
     return null;
   } finally {
     clearTimeout(timeout);
