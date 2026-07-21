@@ -21,6 +21,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import type { AnalysisResult, Prospect, SendStatus } from "@/lib/types";
+import { validateEmail } from "@/lib/quality-check";
 import { Toast } from "@/components/toast";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
@@ -163,6 +164,13 @@ export default function ProspectPage() {
   );
 
   const bodyCharCount = useMemo(() => countBodyLength(body), [body]);
+
+  // 生成時の品質チェック結果はAPIが返すがUIが捨てていたため、レビュー画面で
+  // 純関数 validateEmail を再計算して表示する。編集のたびに追従する。
+  const qualityIssues = useMemo<string[]>(
+    () => (analysis ? validateEmail(body, subject, analysis).issues : []),
+    [analysis, body, subject]
+  );
 
   async function handleRegenerate() {
     if (!id) return;
@@ -558,6 +566,23 @@ export default function ProspectPage() {
                   {bodyCharCount}文字
                 </p>
               </div>
+
+              {qualityIssues.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/40 dark:bg-amber-500/10">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    <Warning size={13} weight="bold" />
+                    品質チェック（{qualityIssues.length}件）
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {qualityIssues.map((issue, i) => (
+                      <li key={i} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">・{issue}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400/80">
+                    送信はブロックしません。気になる項目は本文を直すか再生成してください。
+                  </p>
+                </div>
+              )}
             </div>
 
             {prospect.form_url && (
