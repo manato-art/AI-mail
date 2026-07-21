@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveVariables, type VariableValues } from "@/lib/variables";
 import { fenceUntrusted } from "@/lib/prompt-fence";
-import type { AnalysisResult, ComposeMode, Persona, Service } from "@/lib/types";
+import type { AnalysisResult, ComposeMode, Persona, Service, Template } from "@/lib/types";
 
 /**
  * F4 ハイブリッド文面 + {{AI:指示文}} ゾーン。
@@ -338,6 +338,54 @@ export async function composeBody(params: ComposeParams): Promise<ComposeResult>
   }
 
   return { body: resolved, continuation: "" };
+}
+
+/**
+ * テンプレの差し込み変数を、この企業の分析結果・人格・商材から作る。
+ * 会社名・担当者名は生成時に確定させ、プレビューが実データで見えるようにする。
+ * booking_url（日程調整）は送信時に送信者のCalendlyで差し込むため解決しない。
+ */
+export function buildTemplateVariables(
+  analysis: AnalysisResult,
+  service: Service,
+  persona: Persona
+): VariableValues {
+  return {
+    company_name: analysis.company_name || undefined,
+    person_name: analysis.representative_name?.trim() || "ご担当者",
+    sender_name: persona.name || undefined,
+    service_name: service.name || undefined,
+    lp_url: service.lp_url || undefined,
+  };
+}
+
+/**
+ * テンプレから1通を組み立てる共通入口（生成・再生成の両経路で同じ挙動にする）。
+ * 固定文は一字一句保持し、{{AI:...}} ゾーンだけ分析結果で生成、{{company_name}} 等を実値に置換する。
+ * generateEmail（型プロンプト）に渡すとテンプレ本文が書き換わるため、テンプレは必ずこの経路を通す。
+ */
+export async function composeFromTemplate(
+  template: Template,
+  analysis: AnalysisResult,
+  service: Service,
+  persona: Persona
+): Promise<{ subject: string; body: string }> {
+  const variables = buildTemplateVariables(analysis, service, persona);
+  const composed = await composeBody({
+    mode: normalizeComposeMode(template.compose_mode),
+    fixedPart: template.fixed_part,
+    aiBrief: template.ai_brief,
+    body: template.body,
+    variables,
+    service,
+    persona,
+    companyName: analysis.company_name,
+    analysis,
+  });
+  return {
+    subject: resolveVariables(template.subject, variables).text,
+    body: composed.body,
+  };
 }
 
 /**

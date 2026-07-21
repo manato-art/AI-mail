@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProspect, getService, getPersona, updateProspect } from "@/lib/db";
+import { getProspect, getService, getPersona, getTemplate, updateProspect } from "@/lib/db";
 import { generateEmail } from "@/lib/generate";
+import { composeFromTemplate } from "@/lib/compose";
 import type { AnalysisResult } from "@/lib/types";
 
 export async function POST(
@@ -28,7 +29,12 @@ export async function POST(
     const analysis: AnalysisResult = JSON.parse(prospect.analysis_json);
     const isFormOnly = Boolean(prospect.is_form_only);
 
-    const generation = await generateEmail(analysis, service, persona, isFormOnly);
+    // テンプレ由来のprospectは再生成でもテンプレを尊重する（固定文を書き換えない）。
+    // これをしないと「再生成」でテンプレが消え全文自由生成に化ける。
+    const template = prospect.template_id ? getTemplate(prospect.template_id) : undefined;
+    const generation = template
+      ? await composeFromTemplate(template, analysis, service, persona)
+      : await generateEmail(analysis, service, persona, isFormOnly);
 
     const updated = updateProspect(Number(id), {
       subject: generation.subject,

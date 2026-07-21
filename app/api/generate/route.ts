@@ -17,29 +17,9 @@ import { validateUrl } from "@/lib/ssrf";
 import { crawlWebsiteWithRefusal } from "@/lib/crawl";
 import { analyzeCompany } from "@/lib/analyze";
 import { generateEmail } from "@/lib/generate";
-import { composeBody, normalizeComposeMode } from "@/lib/compose";
-import { resolveVariables, type VariableValues } from "@/lib/variables";
+import { composeFromTemplate } from "@/lib/compose";
 import { validateEmail } from "@/lib/quality-check";
-import type { AnalysisResult, GenerationResult, Persona, Service } from "@/lib/types";
-
-/**
- * テンプレの差し込み変数を、この企業の分析結果・人格・商材から作る。
- * 会社名・担当者名などは生成時に確定させ、プレビューが実データで見えるようにする。
- * booking_url（日程調整）は送信時に送信者のCalendlyで差し込むためここでは解決しない。
- */
-function buildTemplateVariables(
-  analysis: AnalysisResult,
-  service: Service,
-  persona: Persona
-): VariableValues {
-  return {
-    company_name: analysis.company_name || undefined,
-    person_name: analysis.representative_name?.trim() || "ご担当者",
-    sender_name: persona.name || undefined,
-    service_name: service.name || undefined,
-    lp_url: service.lp_url || undefined,
-  };
-}
+import type { GenerationResult } from "@/lib/types";
 
 function classifyError(error: unknown): { message: string; status: number; retryable: boolean } {
   if (error instanceof RateLimitError) {
@@ -162,25 +142,9 @@ export async function POST(request: NextRequest) {
 
     let generation: GenerationResult;
     if (template) {
-      // テンプレは compose エンジンで処理する。固定文は一字一句保持し、
-      // {{AI:...}} ゾーンだけ分析結果で生成、{{company_name}} 等は実値に置換する。
-      // これをせず generateEmail（型プロンプト）に渡すとテンプレ本文が書き換わる。
-      const variables = buildTemplateVariables(analysis, service, persona);
-      const composed = await composeBody({
-        mode: normalizeComposeMode(template.compose_mode),
-        fixedPart: template.fixed_part,
-        aiBrief: template.ai_brief,
-        body: template.body,
-        variables,
-        service,
-        persona,
-        companyName: analysis.company_name,
-        analysis,
-      });
-      generation = {
-        subject: resolveVariables(template.subject, variables).text,
-        body: composed.body,
-      };
+      // テンプレは compose エンジンで処理する（固定文保持・{{AI:}}のみ生成・変数置換）。
+      // generateEmail（型プロンプト）に渡すとテンプレ本文が書き換わるため通さない。
+      generation = await composeFromTemplate(template, analysis, service, persona);
     } else {
       const genOptions = {
         tone,
