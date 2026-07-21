@@ -141,6 +141,7 @@ function registerCompanies(
       hp_url: null,
       lp_url: null,
       recruit_page_url: null,
+      collection_source_id: source.id,
     });
     newCount += 1;
   }

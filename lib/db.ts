@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import type {
+  CompanyWithTag,
   Attachment,
   BookingTool,
   CollectionPauseKind,
@@ -342,6 +343,10 @@ function migrateSchema(instance: Database.Database): void {
 
   // Wantedly直接スクレイピング対応: 収集元の種別を区別する
   addColumnIfMissing(instance, "collection_sources", "source_type", "TEXT NOT NULL DEFAULT 'keyword_search'");
+
+  // F1 タグ付け: どのキーワード・どの商材向けに集めたかで後から絞り込む
+  addColumnIfMissing(instance, "collection_sources", "service_id", "INTEGER");
+  addColumnIfMissing(instance, "companies", "collection_source_id", "INTEGER");
 
   // send_log の check-then-act race 対策: gmail_message_id が同じレコードの二重挿入を防ぐ
   instance.exec(`
@@ -988,6 +993,8 @@ export interface CompanyInput {
   hp_url?: string | null;
   lp_url?: string | null;
   recruit_page_url?: string | null;
+  /** F1 タグ付け: どの収集キーワード（=collection_sources）由来かの構造化リンク */
+  collection_source_id?: number | null;
 }
 
 export interface ContactInput {
@@ -1006,6 +1013,25 @@ export function getAllCompanies(): Company[] {
   return getDb()
     .prepare("SELECT * FROM companies ORDER BY created_at DESC, id DESC")
     .all() as Company[];
+}
+
+/**
+ * F1 タグ付け: 企業に「収集キーワード」「商材名」を JOIN で付けて返す。
+ * 企業一覧の絞り込み（キーワード別・商材別）に使う。
+ */
+export function getCompaniesWithTags(): CompanyWithTag[] {
+  return getDb()
+    .prepare(
+      `SELECT c.*,
+              cs.keyword     AS collection_keyword,
+              cs.service_id  AS collection_service_id,
+              s.name         AS collection_service_name
+       FROM companies c
+       LEFT JOIN collection_sources cs ON c.collection_source_id = cs.id
+       LEFT JOIN services s ON cs.service_id = s.id
+       ORDER BY c.created_at DESC, c.id DESC`
+    )
+    .all() as CompanyWithTag[];
 }
 
 export function getAllContacts(): Contact[] {
@@ -1036,8 +1062,8 @@ export function upsertCompany(data: CompanyInput): Company {
 
   const result = instance
     .prepare(
-      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url, recruit_page_url)
-       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url, @recruit_page_url)`
+      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url, recruit_page_url, collection_source_id)
+       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url, @recruit_page_url, @collection_source_id)`
     )
     .run({
       name: data.name,
@@ -1047,6 +1073,7 @@ export function upsertCompany(data: CompanyInput): Company {
       hp_url: data.hp_url ?? null,
       lp_url: data.lp_url ?? null,
       recruit_page_url: data.recruit_page_url ?? null,
+      collection_source_id: data.collection_source_id ?? null,
     });
 
   return instance
@@ -1242,14 +1269,21 @@ export function getCollectionSource(id: number): CollectionSource | undefined {
 export function createCollectionSource(
   keyword: string,
   site: string,
-  sourceType: CollectionSourceType = "keyword_search"
+  sourceType: CollectionSourceType = "keyword_search",
+  serviceId: number | null = null
 ): CollectionSource {
   const instance = getDb();
   instance
     .prepare(
-      "INSERT OR IGNORE INTO collection_sources (keyword, site, source_type) VALUES (@keyword, @site, @sourceType)"
+      "INSERT OR IGNORE INTO collection_sources (keyword, site, source_type, service_id) VALUES (@keyword, @site, @sourceType, @serviceId)"
     )
-    .run({ keyword, site, sourceType });
+    .run({ keyword, site, sourceType, serviceId });
+  // 既存キーワードに後から商材を紐付け直せるよう、指定があれば更新する
+  if (serviceId !== null) {
+    instance
+      .prepare("UPDATE collection_sources SET service_id = ? WHERE keyword = ? AND site = ?")
+      .run(serviceId, keyword, site);
+  }
   return instance
     .prepare("SELECT * FROM collection_sources WHERE keyword = ? AND site = ?")
     .get(keyword, site) as CollectionSource;

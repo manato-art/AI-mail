@@ -218,7 +218,19 @@ export interface Company {
   business_summary: string;
   /** エンリッチメント時のAI分析結果JSON（{{AI:...}}ゾーン生成に使用） */
   analysis_json: string;
+  /** F1 タグ付け: どの収集キーワード（collection_sources）由来か */
+  collection_source_id: number | null;
   created_at: string;
+}
+
+/** F1: 企業に収集キーワード・商材名を JOIN で付けた一覧表示用の型 */
+export interface CompanyWithTag extends Company {
+  /** 収集元キーワード（手動追加・CSV等で無い場合は null） */
+  collection_keyword: string | null;
+  /** そのキーワードに紐づく商材ID */
+  collection_service_id: number | null;
+  /** そのキーワードに紐づく商材名 */
+  collection_service_name: string | null;
 }
 
 /**
@@ -247,6 +259,8 @@ export interface CollectionSource {
   /** 検索対象サイト。空なら実行時にAIが判断する */
   site: string;
   source_type: CollectionSourceType;
+  /** F1 タグ付け: このキーワードをどの商材向けに集めるか（未指定は null） */
+  service_id: number | null;
   is_active: number;
   /** 差分取得のカーソル。次回はこのページから取る */
   next_page: number;

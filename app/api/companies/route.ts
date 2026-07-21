@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getAllCompanies,
+  getCompaniesWithTags,
   getAllContacts,
   upsertCompany,
   upsertContact,
@@ -25,7 +26,7 @@ interface IncomingRow {
 
 export function GET() {
   return NextResponse.json({
-    companies: getAllCompanies(),
+    companies: getCompaniesWithTags(),
     contacts: getAllContacts(),
   });
 }

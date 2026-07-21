@@ -13,7 +13,7 @@ import {
   WarningCircle,
   XCircle,
 } from "@phosphor-icons/react";
-import type { Company, Contact } from "@/lib/types";
+import type { CompanyWithTag, Contact } from "@/lib/types";
 import { ActivityLogPanel } from "../activity-log-panel";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -67,12 +67,15 @@ function formatDate(value: string | null): string {
 
 export default function CompaniesPage() {
   const router = useRouter();
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "done" | "pending" | "failed">(
     "all",
   );
+  // F1 タグ絞り込み: どのキーワード・どの商材で集めた企業かで絞る
+  const [keywordFilter, setKeywordFilter] = useState<string>("all");
+  const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [reEnriching, setReEnriching] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingHpId, setEditingHpId] = useState<number | null>(null);
@@ -156,10 +159,27 @@ export default function CompaniesPage() {
     }
   }, [load]);
 
-  const filtered =
-    filter === "all"
-      ? companies
-      : companies.filter((c) => c.enrichment_status === filter);
+  // 絞り込みの選択肢（実際に企業に付いているキーワード・商材だけ出す）
+  const keywordOptions = useMemo(
+    () => [...new Set(companies.map((c) => c.collection_keyword).filter((k): k is string => !!k))].sort(),
+    [companies],
+  );
+  const serviceOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of companies) {
+      if (c.collection_service_id != null && c.collection_service_name) {
+        map.set(c.collection_service_id, c.collection_service_name);
+      }
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "ja"));
+  }, [companies]);
+
+  const filtered = companies.filter((c) => {
+    if (filter !== "all" && c.enrichment_status !== filter) return false;
+    if (keywordFilter !== "all" && c.collection_keyword !== keywordFilter) return false;
+    if (serviceFilter !== "all" && String(c.collection_service_id) !== serviceFilter) return false;
+    return true;
+  });
 
   const selectableFiltered = useMemo(
     () => filtered.filter((c) => c.hp_url),
@@ -246,7 +266,7 @@ export default function CompaniesPage() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(["all", "done", "pending", "failed"] as const).map((key) => (
           <button
             key={key}
@@ -262,6 +282,34 @@ export default function CompaniesPage() {
             <span className="ml-1.5 tabular-nums">({counts[key]})</span>
           </button>
         ))}
+
+        {/* F1: キーワード・商材タグでの絞り込み（該当タグが1つでもある時だけ出す） */}
+        {keywordOptions.length > 0 && (
+          <select
+            value={keywordFilter}
+            onChange={(e) => setKeywordFilter(e.target.value)}
+            title="収集キーワードで絞り込む"
+            className="h-8 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+          >
+            <option value="all">すべてのキーワード</option>
+            {keywordOptions.map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+        )}
+        {serviceOptions.length > 0 && (
+          <select
+            value={serviceFilter}
+            onChange={(e) => setServiceFilter(e.target.value)}
+            title="商材タグで絞り込む"
+            className="h-8 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+          >
+            <option value="all">すべての商材</option>
+            {serviceOptions.map(([id, name]) => (
+              <option key={id} value={String(id)}>{name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {filtered.length === 0 ? (

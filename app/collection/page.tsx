@@ -8,7 +8,7 @@ import {
   SpinnerGap,
   Trash,
 } from "@phosphor-icons/react";
-import type { CollectionRun, CollectionSource } from "@/lib/types";
+import type { CollectionRun, CollectionSource, Service } from "@/lib/types";
 import { Toast } from "@/components/toast";
 import { ActivityLogPanel } from "./activity-log-panel";
 import { InventoryPanel } from "./inventory-panel";
@@ -80,6 +80,8 @@ export default function CollectionPage() {
 
   const [keyword, setKeyword] = useState("");
   const [site, setSite] = useState("");
+  const [serviceId, setServiceId] = useState<number | "">("");
+  const [services, setServices] = useState<Service[]>([]);
   const [saving, setSaving] = useState(false);
   const [addingWantedly, setAddingWantedly] = useState(false);
 
@@ -95,10 +97,15 @@ export default function CollectionPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statusRes, sourcesRes] = await Promise.all([
+      const [statusRes, sourcesRes, servicesRes] = await Promise.all([
         fetch("/api/collection/status"),
         fetch("/api/collection/sources"),
+        fetch("/api/services"),
       ]);
+      if (servicesRes.ok) {
+        const data = await servicesRes.json();
+        setServices(Array.isArray(data.services) ? data.services : data);
+      }
       if (statusRes.ok) {
         const data = await statusRes.json();
         setStatus(data);
@@ -136,7 +143,7 @@ export default function CollectionPage() {
       const res = await fetch("/api/collection/sources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword, site }),
+        body: JSON.stringify({ keyword, site, service_id: serviceId === "" ? null : serviceId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -145,6 +152,7 @@ export default function CollectionPage() {
       }
       setKeyword("");
       setSite("");
+      setServiceId("");
       setNoSourceError(false);
       showToast("キーワードを追加しました。次回の収集から対象になります");
       load();
@@ -361,8 +369,19 @@ export default function CollectionPage() {
             value={site}
             onChange={(e) => setSite(e.target.value)}
             placeholder="検索元サイト（任意）"
-            className="h-10 rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) sm:w-[200px]"
+            className="h-10 rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) sm:w-[160px]"
           />
+          <select
+            value={serviceId}
+            onChange={(e) => setServiceId(e.target.value === "" ? "" : Number(e.target.value))}
+            title="このキーワードで集める企業に付ける商材タグ（任意）"
+            className="h-10 rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) sm:w-[180px]"
+          >
+            <option value="">商材タグなし</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
           <button
             type="submit"
             disabled={saving || !keyword.trim()}

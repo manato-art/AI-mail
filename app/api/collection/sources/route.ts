@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { keyword?: string; site?: string; source_type?: string };
+  let body: { keyword?: string; site?: string; source_type?: string; service_id?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -21,11 +21,14 @@ export async function POST(request: NextRequest) {
   }
 
   const sourceType = body.source_type === "wantedly_direct" ? "wantedly_direct" as const : "keyword_search" as const;
+  // F1: このキーワードをどの商材向けに集めるか（任意）
+  const serviceId =
+    typeof body.service_id === "number" && Number.isInteger(body.service_id) ? body.service_id : null;
 
   if (sourceType === "wantedly_direct") {
     const label = "Wantedly 新着";
     return NextResponse.json({
-      source: createCollectionSource(label, "wantedly.com", sourceType),
+      source: createCollectionSource(label, "wantedly.com", sourceType, serviceId),
     });
   }
 
@@ -39,5 +42,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "キーワードを入力してください" }, { status: 400 });
   }
 
-  return NextResponse.json({ source: createCollectionSource(keyword, site, sourceType) });
+  return NextResponse.json({ source: createCollectionSource(keyword, site, sourceType, serviceId) });
 }
