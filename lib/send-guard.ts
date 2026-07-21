@@ -142,20 +142,33 @@ export function runSendGuard(params: {
    * 二重送信ガードの対象外にする。抑止リスト照合など他のガードは常に適用される。
    */
   isFollowup?: boolean;
-  /** チェックが入っていたら全ガードをスキップして送信する */
+  /**
+   * チェックが入っていたら「承知の上で押し切れる」警告をスキップする。
+   * ただし抑止リストのうち本人由来（配信停止依頼・バウンス・返信での拒否）は
+   * force でも絶対にスキップしない（特定電子メール法・二重の配信停止対応義務）。
+   * AIが自動検出した営業お断り（refusal_detected）だけは誤検知があり得るため、
+   * force で押し切れる（画面の抑止リストから手動解除する運用も可能）。
+   */
   force?: boolean;
 }): SendGuardResult {
-  if (params.force) {
-    return { canSend: true, reasons: [] };
-  }
-
   const reasons: string[] = [];
 
+  // --- 抑止リスト照合: force でも本人由来の登録は絶対にブロックする ---
   const suppression = isEmailSuppressed(params.toEmail);
   if (suppression) {
-    reasons.push(
-      `送信抑止リストに登録されています（理由: ${suppression.reason}、対象: ${suppression.target}）`
-    );
+    const forceableReason = suppression.reason === "refusal_detected";
+    if (!params.force || !forceableReason) {
+      reasons.push(
+        `送信抑止リストに登録されています（理由: ${suppression.reason}、対象: ${suppression.target}）`
+      );
+      // 本人由来の抑止は他の警告と関係なく即座に送信不可を確定させる
+      return { canSend: false, reasons };
+    }
+  }
+
+  // --- ここから下は force（承知の上で送る）ならスキップ可能な警告 ---
+  if (params.force) {
+    return { canSend: reasons.length === 0, reasons };
   }
 
   const unresolvedVars = checkUnresolvedVariables(params.subject, params.body);
