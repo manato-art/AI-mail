@@ -121,9 +121,10 @@ export async function POST(request: NextRequest) {
   const registeredContact = getContactByEmail(rawToEmail);
   const recipientLpUrl = registeredContact?.lp_url || service?.lp_url || undefined;
 
+  const personRaw = typeof body.person === "string" ? body.person.trim() : "";
   const variables = {
     company_name: company,
-    person_name: typeof body.person === "string" ? body.person.trim() : undefined,
+    person_name: personRaw || "ご担当者",
     sender_name: persona?.name,
     service_name: service?.name,
     lp_url: recipientLpUrl,

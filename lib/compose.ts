@@ -54,6 +54,7 @@ export function hasAiZones(text: string): boolean {
 
 /** テンプレ本文から {{AI:...}} ゾーンの指示を全て抽出する */
 export function extractAiZones(text: string): Array<{ full: string; instruction: string }> {
+  AI_ZONE_PATTERN.lastIndex = 0;
   const zones: Array<{ full: string; instruction: string }> = [];
   for (const match of text.matchAll(AI_ZONE_PATTERN)) {
     zones.push({ full: match[0], instruction: match[1].trim() });
