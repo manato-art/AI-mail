@@ -48,6 +48,7 @@ type RowSendState = "sending" | "sent" | "failed";
 interface RowStatus {
   state: RowSendState;
   error?: string;
+  warning?: string;
 }
 
 function formatSize(bytes: number): string {
@@ -477,7 +478,8 @@ export default function BulkSendPage() {
           setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: msg } }));
           failCount++;
         } else {
-          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sent" } }));
+          const warning = Array.isArray(data.warnings) ? data.warnings.join(" / ") : undefined;
+          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sent", warning } }));
           okCount++;
         }
       } catch {
@@ -971,6 +973,13 @@ export default function BulkSendPage() {
                       <tr className="border-b border-(--color-border) last:border-0 bg-(--color-danger-light)">
                         <td colSpan={8} className="px-4 py-2 text-[12px] text-(--color-danger)">
                           {rowStatus[r.id].error}
+                        </td>
+                      </tr>
+                    )}
+                    {rowStatus[r.id]?.state === "sent" && rowStatus[r.id]?.warning && (
+                      <tr className="border-b border-(--color-border) last:border-0">
+                        <td colSpan={8} className="px-4 py-2 text-[12px] text-amber-600 dark:text-amber-400">
+                          {rowStatus[r.id].warning}
                         </td>
                       </tr>
                     )}

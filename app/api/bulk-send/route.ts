@@ -150,11 +150,13 @@ export async function POST(request: NextRequest) {
   // {{AI:...}} ゾーンがあれば、宛先企業の分析データを解決してAI生成に使う。
   // DB既存→企業名→ドメイン→公式サイト検索+クロール+Gemini分析の順で探す。
   let companyAnalysis: AnalysisResult | null = null;
+  let analysisFailed = false;
   if (hasAiZones(mailBody)) {
     try {
       companyAnalysis = await resolveAnalysisForRecipient(company, rawToEmail, service);
     } catch (err) {
       console.error("company analysis resolution failed:", err);
+      analysisFailed = true;
     }
   }
 
@@ -303,11 +305,17 @@ export async function POST(request: NextRequest) {
 
     updateProspectStatus(prospect.id, "sent");
 
+    const responseWarnings: string[] = [];
+    if (analysisFailed) {
+      responseWarnings.push("企業分析に失敗したため、汎用文面で送信しました");
+    }
+
     return NextResponse.json({
       success: true,
       prospectId: prospect.id,
       messageId: result.messageId,
       testMode: TEST_MODE,
+      ...(responseWarnings.length > 0 && { warnings: responseWarnings }),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

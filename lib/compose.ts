@@ -107,6 +107,9 @@ function buildZoneUserPrompt(
     parts.push(`\n【相手企業の分析データ】\n${fenceUntrusted("企業分析", analysisText)}`);
   } else if (companyName) {
     parts.push(`\n【宛先の企業名】\n${companyName}`);
+    parts.push("\n【重要】相手企業の詳細データが取得できませんでした。企業名以外の固有情報（事業内容・最近の動き等）には言及せず、どの企業にも適用できる汎用的な文章を書いてください。");
+  } else {
+    parts.push("\n【重要】宛先企業の情報がありません。特定の企業に言及せず、どの企業にも通用する汎用的な文章を書いてください。");
   }
 
   if (service) {
