@@ -127,6 +127,9 @@ export default function BulkSendPage() {
   const [companiesChecked, setCompaniesChecked] = useState<Set<number>>(new Set());
   const [companiesLoading, setCompaniesLoading] = useState(false);
 
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   function showToast(msg: string) {
     setToast(null);
     setTimeout(() => setToast(msg), 0);
@@ -863,7 +866,16 @@ export default function BulkSendPage() {
                   {recipients.map((r, i) => (
                     <Fragment key={r.id}>
                     <tr
-                      className={`border-b border-(--color-border) last:border-0 transition-colors ${r.checked ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"} ${rowStatus[r.id]?.state === "sent" ? "opacity-50" : ""}`}
+                      className={`relative border-b border-(--color-border) last:border-0 transition-colors ${r.checked ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"} ${rowStatus[r.id]?.state === "sent" ? "opacity-50" : ""}`}
+                      onMouseEnter={() => {
+                        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+                        hoverTimerRef.current = setTimeout(() => setHoveredRowId(r.id), 300);
+                      }}
+                      onMouseLeave={() => {
+                        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+                        hoverTimerRef.current = null;
+                        setHoveredRowId(null);
+                      }}
                     >
                       <td className="px-3 text-center">
                         <input
@@ -936,6 +948,25 @@ export default function BulkSendPage() {
                         </button>
                       </td>
                     </tr>
+                    {hoveredRowId === r.id && hasContent && (() => {
+                      const preview = buildEmail(r);
+                      return preview.subject || preview.body ? (
+                        <tr className="border-b border-(--color-border)">
+                          <td colSpan={8} className="bg-gray-50/80 px-4 py-3 dark:bg-slate-800/60">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">送信プレビュー</p>
+                            <p className="mt-1.5 text-[12px] font-semibold">{preview.subject}</p>
+                            <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[11px] leading-[1.7] text-(--color-muted)">
+                              {preview.body}
+                            </p>
+                            {preview.unresolved.length > 0 && (
+                              <p className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+                                未解決: {preview.unresolved.join(", ")}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null;
+                    })()}
                     {rowStatus[r.id]?.state === "failed" && rowStatus[r.id]?.error && (
                       <tr className="border-b border-(--color-border) last:border-0 bg-(--color-danger-light)">
                         <td colSpan={8} className="px-4 py-2 text-[12px] text-(--color-danger)">
