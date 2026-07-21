@@ -62,7 +62,7 @@ function sanitizeUserInstruction(raw: string): string {
     .trim();
 }
 
-function buildSystemPrompt(isFormOnly: boolean, options?: GenerateOptions): string {
+export function buildSystemPrompt(isFormOnly: boolean, options?: GenerateOptions): string {
   const formOnlySection = isFormOnly ? `\n\n${FORM_ONLY_INSTRUCTIONS}` : "";
 
   const toneInstruction = TONE_MAP[options?.tone ?? ""] ?? TONE_MAP.balanced;
@@ -70,6 +70,9 @@ function buildSystemPrompt(isFormOnly: boolean, options?: GenerateOptions): stri
   const ctaInstruction = CTA_MAP[options?.cta ?? ""] ?? CTA_MAP.online_meeting;
 
   const hasFixedText = Boolean(options?.fixedText?.trim());
+  // テンプレート使用時はテンプレが文体・長さ・CTA・段落構成の権威。
+  // トーン/文章量/CTAの既定値を重ねて注入するとテンプレの構成を壊すので抑止する。
+  const hasTemplate = Boolean(options?.templateSubject && options?.templateBody);
 
   const fixedTextSection = options?.fixedText
     ? `\n\n【固定テキスト（そのまま転記 — 改変厳禁）】
@@ -116,6 +119,28 @@ ${options.templateBody}
 --- テンプレートここまで ---`
     : "";
 
+  const styleGuidance = hasTemplate
+    ? `【スタイル（テンプレート最優先）】
+文体・長さ・段落構成・CTAはすべてテンプレートに従う。トーン/文章量/CTAの既定値（例: 300字前後・オンライン商談）を新たに持ち込まず、テンプレートの構成・言い回しを崩さないこと。宛名・初回挨拶・名乗り・署名（絶対ルール）は必ず満たす。`
+    : `【トーン】
+${toneInstruction}
+
+【文章量】
+${hasFixedText
+      ? "あなたが書く導入部は2〜4文に収める（固定テキストの分量はこの指定に含めない）。"
+      : lengthInstruction}
+
+【行動喚起（CTA）】
+${hasFixedText
+      ? "固定テキストがCTAを持っている場合、あなたはCTAを書かない。持っていない場合のみ、次の方針で末尾に足す: " + ctaInstruction
+      : ctaInstruction}
+
+【本文構成の型】
+${hasFixedText
+      ? `宛名 → 挨拶+名乗り（1-2文） → **あなたが書く導入部（2-4文。詳細は【固定テキストがある場合のあなたの仕事】を参照）** → 固定テキストをそのまま配置 → （固定テキスト側に結びの挨拶・署名が無い場合のみ）結びの挨拶 → 署名
+※ 提案とCTAは固定テキストが持っている。あなたは書かない。`
+      : `宛名 → 挨拶+名乗り（1-2文） → きっかけ+共感（HPの具体的な内容に触れつつ、相手の取組みへの関心・共感を1-2文で自然に。印象的な一文の引用があれば織り込む） → 提案（相手の事業の具体的な場面×自社サービスの具体的な強みを、読み手が「なるほど、うちに合ってそう」と思える粒度で。サービスのカタログ的な説明ではなく「御社の○○の場面で、弊社の○○が○○できる」のように。1-2文） → CTA → 結びの挨拶 → 署名`}`;
+
   return `あなたは営業メール作成AIです。指定された人格として、分析結果に基づいた営業メールを作成します。
 
 【絶対ルール — 人格設定より常に優先】
@@ -132,24 +157,7 @@ ${options.templateBody}
     : "相手企業の話→自社サービスの提案の流れが、読み手にとって「たしかにそれは助かる」と思える自然な文脈であること。「だからこそ弊社の○○が」のような定型の接続は使わない。相手の具体的な事業場面（例: 採用を強化中なら「候補者との最初の接点」、新サービス立上げなら「認知を広げる段階」）に対して、自社サービスの具体的な機能や強みがどう役立つかを、会話の延長線上で述べる。"}
 9. 分析結果に無い固有名詞・数値を本文に書かない（ハルシネーション禁止）。
 
-【トーン】
-${toneInstruction}
-
-【文章量】
-${hasFixedText
-    ? "あなたが書く導入部は2〜4文に収める（固定テキストの分量はこの指定に含めない）。"
-    : lengthInstruction}
-
-【行動喚起（CTA）】
-${hasFixedText
-    ? "固定テキストがCTAを持っている場合、あなたはCTAを書かない。持っていない場合のみ、次の方針で末尾に足す: " + ctaInstruction
-    : ctaInstruction}
-
-【本文構成の型】
-${hasFixedText
-    ? `宛名 → 挨拶+名乗り（1-2文） → **あなたが書く導入部（2-4文。詳細は【固定テキストがある場合のあなたの仕事】を参照）** → 固定テキストをそのまま配置 → （固定テキスト側に結びの挨拶・署名が無い場合のみ）結びの挨拶 → 署名
-※ 提案とCTAは固定テキストが持っている。あなたは書かない。`
-    : `宛名 → 挨拶+名乗り（1-2文） → きっかけ+共感（HPの具体的な内容に触れつつ、相手の取組みへの関心・共感を1-2文で自然に。印象的な一文の引用があれば織り込む） → 提案（相手の事業の具体的な場面×自社サービスの具体的な強みを、読み手が「なるほど、うちに合ってそう」と思える粒度で。サービスのカタログ的な説明ではなく「御社の○○の場面で、弊社の○○が○○できる」のように。1-2文） → CTA → 結びの挨拶 → 署名`}
+${styleGuidance}
 
 【件名ルール】
 - 20〜35文字目安

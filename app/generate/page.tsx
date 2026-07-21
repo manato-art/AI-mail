@@ -660,7 +660,7 @@ function GeneratePageInner() {
                 </div>
                 {selectedTemplateId && (
                   <p className="mt-1 text-[11px] text-(--color-muted)">
-                    テンプレートの構成に沿ってメールを生成します
+                    テンプレートが文体・長さ・CTAを管理します（トーン等の個別指定は不要）
                   </p>
                 )}
               </>
@@ -674,6 +674,8 @@ function GeneratePageInner() {
             )}
           </div>
 
+          {!selectedTemplateId && (
+          <>
           <div>
             <label className="block text-xs font-medium text-(--color-muted) mb-2">トーン</label>
             <div className="flex flex-wrap gap-2">
@@ -749,6 +751,8 @@ function GeneratePageInner() {
               ))}
             </div>
           </div>
+          </>
+          )}
 
           <div>
             <label className="flex items-center gap-1.5 text-xs font-medium text-(--color-muted) mb-1.5">
