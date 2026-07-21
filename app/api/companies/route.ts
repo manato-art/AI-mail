@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getAllCompanies,
   getCompaniesWithTags,
   getAllContacts,
-  upsertCompany,
-  upsertContact,
+  importCompaniesWithContacts,
   deleteCompany,
   updateCompanyHpUrl,
 } from "@/lib/db";
 import { validateUrl } from "@/lib/ssrf";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BATCH = 500;
 
 interface IncomingRow {
@@ -51,50 +48,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "登録する企業がありません" }, { status: 400 });
   }
 
-  let companiesAdded = 0;
-  let contactsAdded = 0;
-  let skipped = 0;
-
-  const beforeCompanies = new Set(getAllCompanies().map((c) => c.id));
-  const beforeContacts = new Set(getAllContacts().map((c) => c.id));
-
-  for (const row of rows) {
-    const name = typeof row.name === "string" ? row.name.trim() : "";
-    if (!name) { skipped++; continue; }
-
-    const company = upsertCompany({
-      name,
-      domain: typeof row.domain === "string" ? row.domain.trim() : null,
-      source,
-      source_detail: sourceDetail,
+  // 全行を単一トランザクションで登録する。途中失敗しても部分登録を残さない。
+  const result = importCompaniesWithContacts(
+    rows.map((row) => ({
+      name: typeof row.name === "string" ? row.name : "",
+      domain: typeof row.domain === "string" ? row.domain : null,
       hp_url: typeof row.hpUrl === "string" ? row.hpUrl : null,
       recruit_page_url: typeof row.recruitPageUrl === "string" ? row.recruitPageUrl : null,
       lp_url: typeof row.lpUrl === "string" ? row.lpUrl : null,
-    });
-    if (!beforeCompanies.has(company.id)) {
-      beforeCompanies.add(company.id);
-      companiesAdded++;
-    }
+      email: typeof row.email === "string" ? row.email : null,
+      person_name: typeof row.personName === "string" ? row.personName : null,
+      email_source_url: typeof row.emailSourceUrl === "string" ? row.emailSourceUrl : null,
+    })),
+    source,
+    sourceDetail
+  );
 
-    const email = typeof row.email === "string" ? row.email.trim() : "";
-    if (!email || !EMAIL_PATTERN.test(email)) continue;
-
-    const contact = upsertContact({
-      company_id: company.id,
-      company_name: name,
-      person_name: typeof row.personName === "string" ? row.personName : "",
-      email,
-      email_source_url: typeof row.emailSourceUrl === "string" ? row.emailSourceUrl : row.hpUrl ?? null,
-      source,
-      lp_url: typeof row.lpUrl === "string" ? row.lpUrl : null,
-    });
-    if (!beforeContacts.has(contact.id)) {
-      beforeContacts.add(contact.id);
-      contactsAdded++;
-    }
-  }
-
-  return NextResponse.json({ companiesAdded, contactsAdded, skipped });
+  return NextResponse.json(result);
 }
 
 export async function PATCH(request: NextRequest) {

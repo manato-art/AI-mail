@@ -1127,6 +1127,94 @@ export function upsertContact(data: ContactInput): Contact {
     .get(Number(result.lastInsertRowid)) as Contact;
 }
 
+export interface ImportRow {
+  name: string;
+  domain?: string | null;
+  hp_url?: string | null;
+  recruit_page_url?: string | null;
+  lp_url?: string | null;
+  email?: string | null;
+  person_name?: string | null;
+  email_source_url?: string | null;
+}
+
+export interface ImportResult {
+  companiesAdded: number;
+  contactsAdded: number;
+  skipped: number;
+}
+
+const IMPORT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * CSV取込・キーワード検索結果の企業＋連絡先を一括登録する（仕様書F1/F8）。
+ *
+ * 全行を単一トランザクションで処理する。1行が途中で失敗しても全体を
+ * ロールバックし、部分登録（企業だけ入って連絡先が入らない、途中まで入る）を
+ * 残さない。1件ごとの暗黙コミット(fsync)もまとまるため大量行でも速い。
+ */
+export function importCompaniesWithContacts(
+  rows: ImportRow[],
+  source: string,
+  sourceDetail: string
+): ImportResult {
+  const instance = getDb();
+
+  const run = instance.transaction((): ImportResult => {
+    let companiesAdded = 0;
+    let contactsAdded = 0;
+    let skipped = 0;
+
+    const seenCompanies = new Set(
+      (instance.prepare("SELECT id FROM companies").all() as Array<{ id: number }>).map((c) => c.id)
+    );
+    const seenContacts = new Set(
+      (instance.prepare("SELECT id FROM contacts").all() as Array<{ id: number }>).map((c) => c.id)
+    );
+
+    for (const row of rows) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!name) { skipped++; continue; }
+
+      const company = upsertCompany({
+        name,
+        domain: typeof row.domain === "string" ? row.domain.trim() : null,
+        source,
+        source_detail: sourceDetail,
+        hp_url: typeof row.hp_url === "string" ? row.hp_url : null,
+        recruit_page_url: typeof row.recruit_page_url === "string" ? row.recruit_page_url : null,
+        lp_url: typeof row.lp_url === "string" ? row.lp_url : null,
+      });
+      if (!seenCompanies.has(company.id)) {
+        seenCompanies.add(company.id);
+        companiesAdded++;
+      }
+
+      const email = typeof row.email === "string" ? row.email.trim() : "";
+      if (!email || !IMPORT_EMAIL_PATTERN.test(email)) continue;
+
+      const contact = upsertContact({
+        company_id: company.id,
+        company_name: name,
+        person_name: typeof row.person_name === "string" ? row.person_name : "",
+        email,
+        email_source_url:
+          typeof row.email_source_url === "string" ? row.email_source_url : row.hp_url ?? null,
+        source,
+        lp_url: typeof row.lp_url === "string" ? row.lp_url : null,
+      });
+      if (!seenContacts.has(contact.id)) {
+        seenContacts.add(contact.id);
+        contactsAdded++;
+      }
+    }
+
+    return { companiesAdded, contactsAdded, skipped };
+  });
+
+  return run();
+}
+
 /** F4/F9: 宛先メールから登録済みの連絡先を引く */
 export function getContactByEmail(email: string): Contact | undefined {
   return getDb()
