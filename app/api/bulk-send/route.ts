@@ -7,7 +7,6 @@ import {
   getAllPersonas,
   getTemplate,
   getContactByEmail,
-  getCompanyById,
   createProspect,
   createSendLog,
   updateProspectStatus,
@@ -20,6 +19,7 @@ import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
 import { resolveEmailVariables } from "@/lib/variables";
 import { composeBody, hasAiZones, verifyFixedPartIntact } from "@/lib/compose";
+import { resolveAnalysisForRecipient } from "@/lib/company-analysis";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 const TEST_MODE_RECIPIENT = process.env.TEST_MODE_RECIPIENT?.trim() ?? "";
@@ -147,14 +147,14 @@ export async function POST(request: NextRequest) {
       { status: 422 }
     );
   }
-  // {{AI:...}} ゾーンがあれば、宛先企業の分析データを引いてAI生成に使う
+  // {{AI:...}} ゾーンがあれば、宛先企業の分析データを解決してAI生成に使う。
+  // DB既存→企業名→ドメイン→公式サイト検索+クロール+Gemini分析の順で探す。
   let companyAnalysis: AnalysisResult | null = null;
-  if (hasAiZones(mailBody) && registeredContact?.company_id) {
-    const comp = getCompanyById(registeredContact.company_id);
-    if (comp?.analysis_json) {
-      try {
-        companyAnalysis = JSON.parse(comp.analysis_json) as AnalysisResult;
-      } catch { /* malformed JSON — proceed without analysis */ }
+  if (hasAiZones(mailBody)) {
+    try {
+      companyAnalysis = await resolveAnalysisForRecipient(company, rawToEmail, service);
+    } catch (err) {
+      console.error("company analysis resolution failed:", err);
     }
   }
 
