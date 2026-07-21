@@ -317,6 +317,8 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "prospects", "send_status", "TEXT NOT NULL DEFAULT 'unsent'");
   addColumnIfMissing(instance, "prospects", "has_refusal", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(instance, "prospects", "refusal_text", "TEXT");
+  // 生成元テンプレートの記録。テンプレ由来のメールは品質チェックの文字数・構成チェックを外す
+  addColumnIfMissing(instance, "prospects", "template_id", "INTEGER");
   // F14: 日程調整リンク
   addColumnIfMissing(instance, "senders", "booking_tool", "TEXT NOT NULL DEFAULT 'calendly'");
   addColumnIfMissing(instance, "senders", "booking_url", "TEXT NOT NULL DEFAULT ''");
@@ -586,7 +588,7 @@ export function getProspect(id: number): Prospect | undefined {
 }
 
 export function createProspect(
-  data: Omit<Prospect, "id" | "created_at">
+  data: Omit<Prospect, "id" | "created_at" | "template_id"> & { template_id?: number | null }
 ): Prospect {
   const instance = getDb();
   const result = instance
@@ -595,11 +597,11 @@ export function createProspect(
     INSERT INTO prospects (
       input_url, domain, company_name, analysis_json, service_id, persona_id,
       subject, body, generated_subject, generated_body, emails_found_json,
-      form_url, is_form_only, compatibility_score, has_refusal, refusal_text
+      form_url, is_form_only, compatibility_score, has_refusal, refusal_text, template_id
     ) VALUES (
       @input_url, @domain, @company_name, @analysis_json, @service_id, @persona_id,
       @subject, @body, @generated_subject, @generated_body, @emails_found_json,
-      @form_url, @is_form_only, @compatibility_score, @has_refusal, @refusal_text
+      @form_url, @is_form_only, @compatibility_score, @has_refusal, @refusal_text, @template_id
     )
   `
     )
@@ -620,6 +622,7 @@ export function createProspect(
       compatibility_score: data.compatibility_score,
       has_refusal: data.has_refusal,
       refusal_text: data.refusal_text ?? null,
+      template_id: data.template_id ?? null,
     });
 
   return getProspect(Number(result.lastInsertRowid)) as Prospect;

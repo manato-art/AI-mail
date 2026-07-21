@@ -30,13 +30,17 @@ function extractBodyWithoutSignature(body: string): string {
 export function validateEmail(
   body: string,
   subject: string,
-  analysis: AnalysisResult
+  analysis: AnalysisResult,
+  options: { fromTemplate?: boolean } = {}
 ): QualityCheckResult {
   const issues: string[] = [];
+  // テンプレ由来のメールは文字数・フック・商談誘導・件名長を「テンプレ」が管理する。
+  // これらの構成チェックは外す（絵文字・変数漏れ・汎用表現などの実害チェックは残す）。
+  const { fromTemplate = false } = options;
 
   const mainBody = extractBodyWithoutSignature(body).trim();
   const bodyLength = mainBody.length;
-  if (bodyLength < MIN_BODY_LENGTH || bodyLength > MAX_BODY_LENGTH) {
+  if (!fromTemplate && (bodyLength < MIN_BODY_LENGTH || bodyLength > MAX_BODY_LENGTH)) {
     issues.push(
       `本文の文字数が範囲外です（${bodyLength}字、${MIN_BODY_LENGTH}〜${MAX_BODY_LENGTH}字が目安）`
     );
@@ -46,7 +50,7 @@ export function validateEmail(
     issues.push("本文に相手企業名が含まれていません");
   }
 
-  if (analysis.hook) {
+  if (!fromTemplate && analysis.hook) {
     const hookFragment = analysis.hook.slice(0, HOOK_FRAGMENT_LENGTH);
     if (hookFragment && !body.includes(hookFragment)) {
       issues.push("本文に相手企業固有のフックが反映されていません");
@@ -56,7 +60,7 @@ export function validateEmail(
   const hasCommercialClose = COMMERCIAL_CLOSE_KEYWORDS.some((keyword) =>
     body.includes(keyword)
   );
-  if (!hasCommercialClose) {
+  if (!fromTemplate && !hasCommercialClose) {
     issues.push("商談・打ち合わせへの誘導表現が含まれていません");
   }
 
@@ -76,7 +80,7 @@ export function validateEmail(
   }
 
   const subjectLength = subject.trim().length;
-  if (subjectLength < MIN_SUBJECT_LENGTH || subjectLength > MAX_SUBJECT_LENGTH) {
+  if (!fromTemplate && (subjectLength < MIN_SUBJECT_LENGTH || subjectLength > MAX_SUBJECT_LENGTH)) {
     issues.push(
       `件名の文字数が推奨範囲外です（${subjectLength}字、20〜35字が目安）`
     );

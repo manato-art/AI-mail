@@ -168,8 +168,13 @@ export default function ProspectPage() {
   // 生成時の品質チェック結果はAPIが返すがUIが捨てていたため、レビュー画面で
   // 純関数 validateEmail を再計算して表示する。編集のたびに追従する。
   const qualityIssues = useMemo<string[]>(
-    () => (analysis ? validateEmail(body, subject, analysis).issues : []),
-    [analysis, body, subject]
+    () =>
+      analysis
+        ? validateEmail(body, subject, analysis, {
+            fromTemplate: Boolean(prospect?.template_id),
+          }).issues
+        : [],
+    [analysis, body, subject, prospect]
   );
 
   async function handleRegenerate() {

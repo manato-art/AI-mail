@@ -17,7 +17,29 @@ import { validateUrl } from "@/lib/ssrf";
 import { crawlWebsiteWithRefusal } from "@/lib/crawl";
 import { analyzeCompany } from "@/lib/analyze";
 import { generateEmail } from "@/lib/generate";
+import { composeBody, normalizeComposeMode } from "@/lib/compose";
+import { resolveVariables, type VariableValues } from "@/lib/variables";
 import { validateEmail } from "@/lib/quality-check";
+import type { AnalysisResult, GenerationResult, Persona, Service } from "@/lib/types";
+
+/**
+ * テンプレの差し込み変数を、この企業の分析結果・人格・商材から作る。
+ * 会社名・担当者名などは生成時に確定させ、プレビューが実データで見えるようにする。
+ * booking_url（日程調整）は送信時に送信者のCalendlyで差し込むためここでは解決しない。
+ */
+function buildTemplateVariables(
+  analysis: AnalysisResult,
+  service: Service,
+  persona: Persona
+): VariableValues {
+  return {
+    company_name: analysis.company_name || undefined,
+    person_name: analysis.representative_name?.trim() || "ご担当者",
+    sender_name: persona.name || undefined,
+    service_name: service.name || undefined,
+    lp_url: service.lp_url || undefined,
+  };
+}
 
 function classifyError(error: unknown): { message: string; status: number; retryable: boolean } {
   if (error instanceof RateLimitError) {
@@ -136,23 +158,45 @@ export async function POST(request: NextRequest) {
       crawlResult.contactEmails.length === 0 && Boolean(crawlResult.formUrl);
 
     const template = templateId ? getTemplate(Number(templateId)) : undefined;
-    const genOptions = {
-      tone,
-      length,
-      cta,
-      additionalInstructions,
-      fixedText: typeof fixedText === "string" ? fixedText : undefined,
-      templateSubject: template?.subject,
-      templateBody: template?.body,
-    };
+    const fromTemplate = Boolean(template);
 
-    let generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
-    let qualityCheck = validateEmail(generation.body, generation.subject, analysis);
-
-    if (!qualityCheck.passed) {
+    let generation: GenerationResult;
+    if (template) {
+      // テンプレは compose エンジンで処理する。固定文は一字一句保持し、
+      // {{AI:...}} ゾーンだけ分析結果で生成、{{company_name}} 等は実値に置換する。
+      // これをせず generateEmail（型プロンプト）に渡すとテンプレ本文が書き換わる。
+      const variables = buildTemplateVariables(analysis, service, persona);
+      const composed = await composeBody({
+        mode: normalizeComposeMode(template.compose_mode),
+        fixedPart: template.fixed_part,
+        aiBrief: template.ai_brief,
+        body: template.body,
+        variables,
+        service,
+        persona,
+        companyName: analysis.company_name,
+        analysis,
+      });
+      generation = {
+        subject: resolveVariables(template.subject, variables).text,
+        body: composed.body,
+      };
+    } else {
+      const genOptions = {
+        tone,
+        length,
+        cta,
+        additionalInstructions,
+        fixedText: typeof fixedText === "string" ? fixedText : undefined,
+      };
       generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
-      qualityCheck = validateEmail(generation.body, generation.subject, analysis);
+      // 品質チェックが通らなければ一度だけ再生成（自由生成のみ。テンプレは再生成しない）
+      if (!validateEmail(generation.body, generation.subject, analysis).passed) {
+        generation = await generateEmail(analysis, service, persona, isFormOnly, genOptions);
+      }
     }
+
+    const qualityCheck = validateEmail(generation.body, generation.subject, analysis, { fromTemplate });
 
     const prospect = createProspect({
       input_url: validated.normalized,
@@ -173,6 +217,7 @@ export async function POST(request: NextRequest) {
       compatibility_score: analysis.compatibility.score,
       has_refusal: crawlResult.hasRefusal ? 1 : 0,
       refusal_text: crawlResult.refusalText,
+      template_id: templateId ? Number(templateId) : null,
       send_status: "unsent",
     });
 

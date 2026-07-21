@@ -70,6 +70,8 @@ export interface Prospect {
   compatibility_score: string;
   has_refusal: number;
   refusal_text: string | null;
+  /** このprospectをどのテンプレートから生成したか（自由生成はnull）。品質チェックの構成判定に使う */
+  template_id: number | null;
   send_status: SendStatus;
   created_at: string;
 }
