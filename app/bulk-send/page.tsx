@@ -531,10 +531,12 @@ export default function BulkSendPage() {
     let okCount = 0;
     let failCount = 0;
 
+    const rawSubject = inputMode === "direct" ? directSubject : selectedTemplate?.subject ?? "";
+    const rawBody = inputMode === "direct" ? directBody : selectedTemplate?.body ?? "";
+
     for (const [index, r] of toGenerate.entries()) {
       if (cancelGenerateRef.current) break;
       setGenerateProgress({ done: index, total: toGenerate.length });
-      const { subject: srcSubject, body: srcBody } = buildEmail(r);
       try {
         const res = await fetch("/api/bulk-send/preview", {
           method: "POST",
@@ -545,8 +547,8 @@ export default function BulkSendPage() {
             company: r.company,
             person: r.person,
             email: r.email,
-            subject: srcSubject,
-            body: srcBody,
+            subject: rawSubject,
+            body: rawBody,
           }),
         });
         const data = await res.json();
@@ -1169,6 +1171,28 @@ export default function BulkSendPage() {
                       />
                     </div>
                   </div>
+                  {(() => {
+                    const gen = generatedEmails[previewRecipient.id];
+                    const resolved = resolveEmailVariables(gen.subject, gen.body, {
+                      company_name: previewRecipient.company,
+                      person_name: previewRecipient.person,
+                    });
+                    return (
+                      <div className="border-t border-(--color-border) bg-gray-50 dark:bg-slate-800/50">
+                        <div className="px-4 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
+                            差し込みプレビュー
+                          </p>
+                        </div>
+                        <div className="max-h-[180px] overflow-y-auto px-4 pb-3">
+                          <p className="text-[11px] font-semibold">{resolved.subject}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.7] text-(--color-muted)">
+                            {resolved.body}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-2.5 dark:bg-slate-700/50">
                     <span className="text-[11px] tabular-nums text-(--color-muted)">
                       {clampedPreviewIndex + 1} / {checkedPreviewList.length} 件目

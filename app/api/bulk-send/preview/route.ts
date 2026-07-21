@@ -9,7 +9,6 @@ import {
   getContactByEmail,
   getSetting,
 } from "@/lib/db";
-import { resolveEmailVariables } from "@/lib/variables";
 import { composeBody, hasAiZones } from "@/lib/compose";
 import { resolveAnalysisForRecipient } from "@/lib/company-analysis";
 import type { Persona, Service } from "@/lib/types";
@@ -30,8 +29,9 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * 一括送信のプレビュー生成API。
- * bulk-send と同じ処理（企業分析→AI生成→変数解決）を行うが、送信はしない。
- * 生成結果の件名・本文を返す。
+ * {{AI:...}} ゾーンのみ解決し、通常の差し込み変数（{{company_name}} 等）は残す。
+ * 変数の解決は送信APIが行うため、ここでは解決しない。
+ * ユーザーはAI生成部分だけを編集し、変数は送信時に宛先ごとに解決される。
  */
 export async function POST(request: NextRequest) {
   let body: {
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       fixedPart: template?.fixed_part ?? "",
       aiBrief: template?.ai_brief ?? "",
       body: mailBody,
-      variables,
+      variables: {},
       service,
       persona,
       companyName: company,
@@ -136,17 +136,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const resolved = resolveEmailVariables(subject, outgoingBody, variables);
-
   const warnings: string[] = [];
   if (analysisFailed) {
     warnings.push("企業分析に失敗したため、汎用文面で生成しました");
   }
 
   return NextResponse.json({
-    subject: resolved.subject,
-    body: resolved.body,
-    unresolved: resolved.unresolved,
+    subject,
+    body: outgoingBody,
     ...(warnings.length > 0 && { warnings }),
   });
 }
