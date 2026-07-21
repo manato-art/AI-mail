@@ -1075,14 +1075,21 @@ export default function BulkSendPage() {
                   />
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {["company_name", "person_name", "sender_name", "service_name", "lp_url", "booking_url"].map((v) => (
+                  {([
+                    ["company_name", "企業名"],
+                    ["person_name", "担当者名"],
+                    ["sender_name", "送信者名"],
+                    ["service_name", "サービス名"],
+                    ["lp_url", "LP"],
+                    ["booking_url", "予約URL"],
+                  ] as const).map(([v, label]) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => insertAtCursorDirect(`{{${v}}}`)}
                       className="inline-flex h-6 cursor-pointer items-center rounded border border-(--color-border) px-1.5 text-[10px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
                     >
-                      {v}
+                      {label}
                     </button>
                   ))}
                   <button
