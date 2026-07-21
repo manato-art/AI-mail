@@ -22,6 +22,8 @@ import {
   CaretLeft,
   CaretRight,
   FileArrowUp,
+  PencilSimple,
+  ArrowsClockwise,
 } from "@phosphor-icons/react";
 import type { Attachment, Company, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
@@ -130,6 +132,11 @@ export default function BulkSendPage() {
 
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [generatedEmails, setGeneratedEmails] = useState<Record<string, { subject: string; body: string }>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState({ done: 0, total: 0 });
+  const cancelGenerateRef = useRef(false);
 
   function showToast(msg: string) {
     setToast(null);
@@ -451,7 +458,8 @@ export default function BulkSendPage() {
         break;
       }
       setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sending" } }));
-      const { subject, body: emailBody } = buildEmail(r);
+      const generated = generatedEmails[r.id];
+      const { subject, body: emailBody } = generated ?? buildEmail(r);
       try {
         const res = await fetch("/api/bulk-send", {
           method: "POST",
@@ -508,6 +516,88 @@ export default function BulkSendPage() {
     cancelRef.current = true;
     showToast("現在の1件を送り終えたら停止します");
   }
+
+  async function handleGenerateAll() {
+    const canGenerate = inputMode === "template"
+      ? !!selectedTemplate && !!selectedSenderId
+      : !!(directSubject.trim() && directBody.trim() && selectedSenderId);
+    if (!canGenerate || checkedRecipients.length === 0 || isGenerating) return;
+    const toGenerate = checkedRecipients.filter((r) => r.email);
+    if (toGenerate.length === 0) { showToast("生成対象がありません"); return; }
+
+    setIsGenerating(true);
+    cancelGenerateRef.current = false;
+    setGenerateProgress({ done: 0, total: toGenerate.length });
+    let okCount = 0;
+    let failCount = 0;
+
+    for (const [index, r] of toGenerate.entries()) {
+      if (cancelGenerateRef.current) break;
+      setGenerateProgress({ done: index, total: toGenerate.length });
+      const { subject: srcSubject, body: srcBody } = buildEmail(r);
+      try {
+        const res = await fetch("/api/bulk-send/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderId: selectedSenderId,
+            templateId: inputMode === "template" ? selectedTemplate?.id : undefined,
+            company: r.company,
+            person: r.person,
+            email: r.email,
+            subject: srcSubject,
+            body: srcBody,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setGeneratedEmails((prev) => ({
+            ...prev,
+            [r.id]: { subject: data.subject, body: data.body },
+          }));
+          okCount++;
+        } else {
+          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: data.error || "生成に失敗しました" } }));
+          failCount++;
+        }
+      } catch {
+        setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: "通信エラーが発生しました" } }));
+        failCount++;
+      }
+    }
+
+    setGenerateProgress({ done: toGenerate.length, total: toGenerate.length });
+    setIsGenerating(false);
+    cancelGenerateRef.current = false;
+    setPreviewIndex(0);
+
+    if (failCount === 0) {
+      showToast(`${okCount}件のメールを生成しました`);
+    } else {
+      showToast(`生成完了: 成功${okCount}件 / 失敗${failCount}件`);
+    }
+  }
+
+  function handleCancelGenerating() {
+    cancelGenerateRef.current = true;
+    showToast("生成を中断します");
+  }
+
+  function handleUpdateGenerated(id: string, field: "subject" | "body", value: string) {
+    setGeneratedEmails((prev) => {
+      const existing = prev[id];
+      if (!existing) return prev;
+      return { ...prev, [id]: { ...existing, [field]: value } };
+    });
+  }
+
+  function handleClearGenerated() {
+    setGeneratedEmails({});
+    setRowStatus({});
+    showToast("生成結果をクリアしました");
+  }
+
+  const hasGenerated = Object.keys(generatedEmails).length > 0;
 
   const sentProspects = useMemo(() => {
     const q = historySearch.toLowerCase();
@@ -1032,9 +1122,86 @@ export default function BulkSendPage() {
           </div>
         </div>
 
-        {/* Right: Preview (template) / Editor (direct) */}
+        {/* Right: Generated editor / Input / Preview */}
         <div className="sticky top-6 h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
-          {inputMode === "direct" ? (
+          {hasGenerated ? (
+            <>
+              <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3 dark:bg-slate-700/50">
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <PencilSimple size={15} />
+                  生成結果を編集
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleClearGenerated}
+                  disabled={isSending}
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger) disabled:opacity-40"
+                >
+                  <ArrowsClockwise size={12} />
+                  やり直し
+                </button>
+              </div>
+              {previewRecipient && generatedEmails[previewRecipient.id] ? (
+                <>
+                  <div className="space-y-2.5 p-4">
+                    <div className="flex items-center gap-2 rounded-lg bg-(--color-primary-light)/40 px-3 py-1.5">
+                      <Buildings size={13} className="shrink-0 text-(--color-primary)" />
+                      <span className="truncate text-[12px] font-medium">{previewRecipient.company || previewRecipient.email}</span>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</label>
+                      <input
+                        type="text"
+                        value={generatedEmails[previewRecipient.id].subject}
+                        onChange={(e) => handleUpdateGenerated(previewRecipient.id, "subject", e.target.value)}
+                        disabled={isSending}
+                        className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</label>
+                      <textarea
+                        value={generatedEmails[previewRecipient.id].body}
+                        onChange={(e) => handleUpdateGenerated(previewRecipient.id, "body", e.target.value)}
+                        disabled={isSending}
+                        rows={14}
+                        className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[12px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-2.5 dark:bg-slate-700/50">
+                    <span className="text-[11px] tabular-nums text-(--color-muted)">
+                      {clampedPreviewIndex + 1} / {checkedPreviewList.length} 件目
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
+                        disabled={clampedPreviewIndex === 0}
+                        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <CaretLeft size={12} weight="bold" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewIndex((i) => Math.min(checkedPreviewList.length - 1, i + 1))}
+                        disabled={clampedPreviewIndex >= checkedPreviewList.length - 1}
+                        className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <CaretRight size={12} weight="bold" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+                  <p className="text-sm text-(--color-muted)">
+                    {previewRecipient ? "この宛先は未生成です" : "チェックした宛先を選択してください"}
+                  </p>
+                </div>
+              )}
+            </>
+          ) : inputMode === "direct" ? (
             <>
               <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3 dark:bg-slate-700/50">
                 <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -1217,41 +1384,64 @@ export default function BulkSendPage() {
             <p className="text-[13px] text-(--color-muted)">
               <span className="text-lg font-bold text-(--color-foreground)">{checkedRecipients.length}</span> / {recipients.length} 件選択中
             </p>
-            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-(--color-muted)">
-              <input
-                type="checkbox"
-                checked={allowWarnings}
-                onChange={(e) => setAllowWarnings(e.target.checked)}
-                disabled={isSending}
-                className="h-4 w-4 cursor-pointer accent-(--color-primary)"
-              />
-              要確認の指摘があっても送信する
-            </label>
+            {hasGenerated && (
+              <label className="flex cursor-pointer items-center gap-2 text-[13px] text-(--color-muted)">
+                <input
+                  type="checkbox"
+                  checked={allowWarnings}
+                  onChange={(e) => setAllowWarnings(e.target.checked)}
+                  disabled={isSending}
+                  className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+                />
+                要確認の指摘があっても送信する
+              </label>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {isSending && (
+            {(isSending || isGenerating) && (
               <button
                 type="button"
-                onClick={handleCancelSending}
+                onClick={isSending ? handleCancelSending : handleCancelGenerating}
                 className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-4 text-sm font-semibold text-(--color-danger) transition-colors hover:bg-(--color-danger-light)"
               >
                 <X size={15} weight="bold" />
                 中断
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleSendAll}
-              disabled={!hasContent || !selectedSenderId || checkedRecipients.length === 0 || isSending}
-              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isSending ? (
-                <SpinnerGap size={16} className="animate-spin" />
-              ) : (
-                <PaperPlaneTilt size={16} weight="fill" />
-              )}
-              {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
-            </button>
+            {!hasGenerated ? (
+              <button
+                type="button"
+                onClick={handleGenerateAll}
+                disabled={!hasContent || !selectedSenderId || checkedRecipients.length === 0 || isGenerating}
+                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isGenerating ? (
+                  <>
+                    <SpinnerGap size={16} className="animate-spin" />
+                    生成中... ({generateProgress.done}/{generateProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <MagicWand size={16} weight="fill" />
+                    {`選択した${checkedRecipients.length}件を生成`}
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendAll}
+                disabled={!selectedSenderId || checkedRecipients.length === 0 || isSending}
+                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isSending ? (
+                  <SpinnerGap size={16} className="animate-spin" />
+                ) : (
+                  <PaperPlaneTilt size={16} weight="fill" />
+                )}
+                {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
+              </button>
+            )}
           </div>
         </div>
       )}
