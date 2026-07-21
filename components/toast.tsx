@@ -48,8 +48,15 @@ function ToastBody({
   const isError = message.includes("失敗") || message.includes("エラー");
 
   return (
-    <div className={`toast-container ${exiting ? "toast-out" : "toast-in"}`}>
-      <span className={`toast-icon ${isError ? "toast-icon-error" : "toast-icon-ok"}`}>
+    <div
+      className={`toast-container ${exiting ? "toast-out" : "toast-in"}`}
+      // 成功は polite(status)、失敗は挿入時も確実に読まれる alert(assertive) で通知する。
+      // これが無いと保存・送信・エラーの結果がスクリーンリーダーに一切届かない。
+      role={isError ? "alert" : "status"}
+      aria-live={isError ? "assertive" : "polite"}
+      aria-atomic="true"
+    >
+      <span className={`toast-icon ${isError ? "toast-icon-error" : "toast-icon-ok"}`} aria-hidden="true">
         {isError ? (
           <XIcon size={14} weight="bold" color="#fff" />
         ) : (

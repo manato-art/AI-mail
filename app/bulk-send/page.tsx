@@ -27,6 +27,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Attachment, Company, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import { Modal } from "@/components/modal";
 import { resolveEmailVariables } from "@/lib/variables";
 import type { ColumnKind } from "@/lib/import-parse";
 
@@ -1473,16 +1474,14 @@ export default function BulkSendPage() {
 
       {/* History Modal */}
       {historyOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setHistoryOpen(false); }}
-        >
+        <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} labelledBy="bulk-history-title">
           <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
-              <h3 className="text-[15px] font-semibold">送信履歴から宛先を追加</h3>
+              <h3 id="bulk-history-title" className="text-[15px] font-semibold">送信履歴から宛先を追加</h3>
               <button
                 type="button"
                 onClick={() => setHistoryOpen(false)}
+                aria-label="閉じる"
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
               >
                 <X size={16} />
@@ -1563,21 +1562,19 @@ export default function BulkSendPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Companies Modal */}
       {companiesOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setCompaniesOpen(false); }}
-        >
+        <Modal open={companiesOpen} onClose={() => setCompaniesOpen(false)} labelledBy="bulk-companies-title">
           <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
-              <h3 className="text-[15px] font-semibold">企業一覧から宛先を追加</h3>
+              <h3 id="bulk-companies-title" className="text-[15px] font-semibold">企業一覧から宛先を追加</h3>
               <button
                 type="button"
                 onClick={() => setCompaniesOpen(false)}
+                aria-label="閉じる"
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
               >
                 <X size={16} />
@@ -1664,21 +1661,19 @@ export default function BulkSendPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Import Modal */}
       {importOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) closeImport(); }}
-        >
+        <Modal open={importOpen} onClose={closeImport} labelledBy="bulk-import-title">
           <div className="w-full max-w-[640px] overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
-              <h3 className="text-[15px] font-semibold">宛先を一括追加</h3>
+              <h3 id="bulk-import-title" className="text-[15px] font-semibold">宛先を一括追加</h3>
               <button
                 type="button"
                 onClick={closeImport}
+                aria-label="閉じる"
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
               >
                 <X size={16} />
@@ -1858,22 +1853,20 @@ export default function BulkSendPage() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
 
       {/* Generated Email Picker Modal */}
       {generatedOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setGeneratedOpen(false); }}
-        >
+        <Modal open={generatedOpen} onClose={() => setGeneratedOpen(false)} labelledBy="bulk-generated-title">
           <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
-              <h3 className="text-[15px] font-semibold">生成済みメールから引用</h3>
+              <h3 id="bulk-generated-title" className="text-[15px] font-semibold">生成済みメールから引用</h3>
               <button
                 type="button"
                 onClick={() => setGeneratedOpen(false)}
+                aria-label="閉じる"
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
               >
                 <X size={16} />
@@ -1929,7 +1922,7 @@ export default function BulkSendPage() {
               )}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       <Toast message={toast} onDone={() => setToast(null)} />

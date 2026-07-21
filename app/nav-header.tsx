@@ -18,6 +18,7 @@ import {
 import type { IconProps } from "@phosphor-icons/react";
 import logoIcon from "./icon.png";
 import { useTheme } from "@/lib/theme-context";
+import { Modal } from "@/components/modal";
 
 interface NavItem {
   href: string;
@@ -170,38 +171,35 @@ export function NavHeader() {
         </div>
       </nav>
 
-      {moreOpen && (
-        <div className="fixed inset-0 z-40 flex flex-col justify-end md:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-pointer bg-black/40"
-            onClick={() => setMoreOpen(false)}
-            aria-label="閉じる"
-          />
-          <div className="relative rounded-t-2xl border-t border-(--color-border) bg-(--color-card) px-4 pb-6 pt-4">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-(--color-border)" />
-            {MORE_SHEET_ITEMS.map((item) => {
-              const active = isActive(item);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMoreOpen(false)}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors ${
-                    active
-                      ? "bg-(--color-primary-light) text-(--color-primary)"
-                      : "text-(--color-foreground) hover:bg-(--color-card-hover)"
-                  }`}
-                >
-                  <item.Icon size={20} weight={active ? "fill" : "regular"} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
+      <Modal
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        label="その他のメニュー"
+        overlayClassName="fixed inset-0 z-40 flex flex-col justify-end bg-black/40 md:hidden"
+      >
+        <div className="relative rounded-t-2xl border-t border-(--color-border) bg-(--color-card) px-4 pb-6 pt-4">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-(--color-border)" />
+          {MORE_SHEET_ITEMS.map((item) => {
+            const active = isActive(item);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMoreOpen(false)}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-(--color-primary-light) text-(--color-primary)"
+                    : "text-(--color-foreground) hover:bg-(--color-card-hover)"
+                }`}
+              >
+                <item.Icon size={20} weight={active ? "fill" : "regular"} />
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
-      )}
+      </Modal>
     </>
   );
 }
