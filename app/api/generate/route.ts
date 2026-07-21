@@ -33,6 +33,18 @@ function classifyError(error: unknown): { message: string; status: number; retry
     return { message: "AI APIへの接続に失敗しました。再試行してください", status: 502, retryable: true };
   }
   if (error instanceof Error) {
+    // 設定不備（APIキー未設定・無効）はリトライしても直らない。
+    // 汎用500に握りつぶさず、運用者が何を直すべきか分かる形で返す。
+    if (error.message.includes("が設定されていません")) {
+      return { message: error.message, status: 500, retryable: false };
+    }
+    if (error.message.includes("API key not valid") || error.message.includes("API_KEY_INVALID")) {
+      return {
+        message: "AI APIキーが無効です。GEMINI_API_KEY を確認してください",
+        status: 500,
+        retryable: false,
+      };
+    }
     if (error.message.includes("分析APIエラー") || error.message.includes("分析がブロック")) {
       return { message: error.message, status: 502, retryable: true };
     }
