@@ -163,34 +163,96 @@ async function generateZoneContent(
   return block.text.trim();
 }
 
+const ZONE_MARKER = "【★ここに挿入する文章★】";
+const ZONE_HIDDEN = "（別途生成される部分）";
+
 /**
- * ある AI ゾーンの生成に渡す「周囲の文脈」を作る。
+ * 本文中の全 {{AI:...}} ゾーンを出現順に列挙する（位置情報付き）。
+ *
+ * AI_ZONE_PATTERN はモジュール共有のグローバル正規表現。matchAll はクローンの
+ * 開始位置に元の lastIndex を引き継ぐため、直前に hasAiZones()（.test()）が
+ * lastIndex を進めていると途中から走査してゾーンを取りこぼす。必ず 0 に戻す。
+ */
+function matchAiZones(text: string): RegExpMatchArray[] {
+  AI_ZONE_PATTERN.lastIndex = 0;
+  return [...text.matchAll(AI_ZONE_PATTERN)];
+}
+
+/**
+ * matches[targetIndex] のゾーンだけを挿入目印に置換し、
+ * 他のAIゾーンは中身を伏せた「メール全体の下書き」を作る。
+ *
+ * 位置(index)で対象を特定するため、空の {{AI:}} を複数置いても
+ * それぞれのゾーンの実際の位置に目印が付く（文字列一致だと先頭に固定されズレる）。
+ */
+function renderZoneContext(text: string, matches: RegExpMatchArray[], targetIndex: number): string {
+  let out = "";
+  let cursor = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const start = match.index ?? 0;
+    out += text.slice(cursor, start) + (i === targetIndex ? ZONE_MARKER : ZONE_HIDDEN);
+    cursor = start + match[0].length;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
+/**
+ * 本文中の各 AI ゾーンについて、そのゾーンを目印に・他ゾーンを伏せた文脈を
+ * 出現順に返す。extractAiZones と同じ順序で並ぶ。
+ */
+export function buildZoneContexts(text: string): string[] {
+  const matches = matchAiZones(text);
+  return matches.map((_, i) => renderZoneContext(text, matches, i));
+}
+
+/**
+ * ある AI ゾーンの生成に渡す「周囲の文脈」を作る（後方互換の単一指定API）。
  * 対象ゾーンの位置を目印に置換し、他のAIゾーンは中身を伏せて混同を防ぐ。
+ * 同一文字列のゾーンが複数ある場合は最初の1個を対象とみなす。
  */
 export function buildZoneContext(text: string, targetZone: string): string {
-  let ctx = text.replace(targetZone, "【★ここに挿入する文章★】");
-  // 他の {{AI:...}} は「別途生成される部分」として伏せる
-  ctx = ctx.replace(AI_ZONE_PATTERN, "（別途生成される部分）");
-  return ctx;
+  const matches = matchAiZones(text);
+  const targetIndex = matches.findIndex((m) => m[0] === targetZone);
+  if (targetIndex === -1) {
+    // 目印が見つからない場合も他ゾーンは伏せる（従来挙動の保険）
+    return text.replace(AI_ZONE_PATTERN, ZONE_HIDDEN);
+  }
+  return renderZoneContext(text, matches, targetIndex);
 }
 
 /**
  * 本文中の全 {{AI:...}} ゾーンをAI生成テキストで置換する。
- * ゾーンごとに順次呼ぶ（並列だとレートリミットに当たりやすい）。
+ * ゾーンごとに順次生成する（並列だとレートリミットに当たりやすい）。
  * 各ゾーンには「メール全体の下書き」を文脈として渡し、全体になじむ文章を生成させる。
+ *
+ * 文脈も最終組み立ても位置(index)基準で行うため、空の {{AI:}} を複数置いても
+ * 生成文脈・挿入位置がゾーンごとに正しく対応する。
  */
 async function resolveAiZones(text: string, params: ComposeParams): Promise<string> {
-  const zones = extractAiZones(text);
-  if (zones.length === 0) return text;
+  const matches = matchAiZones(text);
+  if (matches.length === 0) return text;
 
-  let result = text;
-  for (const zone of zones) {
-    // 文脈は「まだ生成前の原文」を基準にする（前ゾーンの生成結果に引きずられないため）
-    const context = buildZoneContext(text, zone.full);
-    const generated = await generateZoneContent(zone.instruction, params, context);
-    result = result.replace(zone.full, generated);
+  // 文脈は「まだ生成前の原文」を基準にする（前ゾーンの生成結果に引きずられないため）
+  const generated: string[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const context = renderZoneContext(text, matches, i);
+    const instruction = matches[i][1].trim();
+    generated.push(await generateZoneContent(instruction, params, context));
   }
-  return result;
+
+  // 位置基準で組み立てる。生成文が {{...}} を含んでもズレない。
+  let out = "";
+  let cursor = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    const start = match.index ?? 0;
+    out += text.slice(cursor, start) + generated[i];
+    cursor = start + match[0].length;
+  }
+  out += text.slice(cursor);
+  return out;
 }
 
 // --- 旧 hybrid モード（後方互換）---
