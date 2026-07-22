@@ -71,6 +71,7 @@ export default function HistoryPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterService, setFilterService] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [sentCountsByDomain, setSentCountsByDomain] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -78,16 +79,19 @@ export default function HistoryPage() {
       setLoading(true);
       setError(null);
       try {
-        const [prospectsRes, servicesRes] = await Promise.all([
+        const [prospectsRes, servicesRes, sendCountsRes] = await Promise.all([
           fetch("/api/prospects"),
           fetch("/api/services"),
+          fetch("/api/prospects/send-counts"),
         ]);
         if (!prospectsRes.ok) throw new Error("履歴の取得に失敗しました。");
         const prospectsData: Prospect[] = await prospectsRes.json();
         const servicesData: Service[] = servicesRes.ok ? await servicesRes.json() : [];
+        const sendCountsData: Record<string, number> = sendCountsRes.ok ? await sendCountsRes.json() : {};
         if (!cancelled) {
           setProspects(prospectsData);
           setServices(servicesData);
+          setSentCountsByDomain(sendCountsData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -106,6 +110,11 @@ export default function HistoryPage() {
     services.forEach((service) => map.set(service.id, service.name));
     return map;
   }, [services]);
+
+  /** この宛先企業（ドメイン）へ通算何通送ったか（send_log 基準の実送信回数） */
+  function sentCountFor(domain: string | null | undefined): number {
+    return sentCountsByDomain[(domain || "").toLowerCase().trim()] ?? 0;
+  }
 
   const filtered = useMemo(() => {
     const sorted = [...prospects].sort(
@@ -332,11 +341,16 @@ export default function HistoryPage() {
                     </span>
                   </div>
                   <p className="text-xs text-(--color-muted) truncate mt-0.5">{truncate(prospect.subject, 50)}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-[11px] text-(--color-muted)">{formatDate(prospect.created_at)}</span>
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLES[prospect.send_status as SendStatus] ?? STATUS_STYLES.unsent}`}>
                       {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
                     </span>
+                    {sentCountFor(prospect.domain) > 0 && (
+                      <span className="inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                        この会社へ通算{sentCountFor(prospect.domain)}通
+                      </span>
+                    )}
                   </div>
                 </div>
                 <ArrowRight size={14} className="shrink-0 text-(--color-muted)" />
@@ -368,6 +382,14 @@ export default function HistoryPage() {
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                           {prospect.company_name || prospect.domain}
+                          {sentCountFor(prospect.domain) > 0 && (
+                            <span
+                              title="この会社へ実際に送信した通算回数"
+                              className="ml-2 inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[10px] font-medium text-(--color-primary) align-middle"
+                            >
+                              通算{sentCountFor(prospect.domain)}通
+                            </span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-400">
                           {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}

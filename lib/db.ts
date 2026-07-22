@@ -1551,6 +1551,26 @@ export function getRecentCollectionRuns(limit: number = 30): CollectionRun[] {
     .all(limit) as CollectionRun[];
 }
 
+/**
+ * ドメイン別の通算送信数（send_log 基準の実送信回数）。
+ * 履歴の各行に「この会社へ通算◯通」を出すために、ドメイン→件数の辞書で返す。
+ */
+export function getSendCountsByDomain(): Record<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT ${EMAIL_DOMAIN_SQL} as domain, COUNT(*) as count
+       FROM send_log
+       WHERE to_email IS NOT NULL AND instr(to_email, '@') > 0
+       GROUP BY ${EMAIL_DOMAIN_SQL}`
+    )
+    .all() as { domain: string; count: number }[];
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.domain) map[r.domain] = r.count;
+  }
+  return map;
+}
+
 /** 重複排除: このドメイン宛に一度でも送信していれば、収集し直さない */
 export function hasSentToDomain(domain: string): boolean {
   const row = getDb()
