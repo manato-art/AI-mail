@@ -25,7 +25,7 @@ import {
   PencilSimple,
   ArrowsClockwise,
 } from "@phosphor-icons/react";
-import type { Attachment, CompanyWithTag, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
+import type { Attachment, CompanyWithTag, Contact, Prospect, Service, TemplateWithAttachments } from "@/lib/types";
 
 /** 収集元(source)を、非エンジニアにも分かる日本語ラベルにする */
 function sourceLabel(source: string): string {
@@ -114,6 +114,14 @@ export default function BulkSendPage() {
   const [generatedChecked, setGeneratedChecked] = useState<Set<number>>(new Set());
   const [sendingGenerated, setSendingGenerated] = useState(false);
   const [genRowStatus, setGenRowStatus] = useState<Record<number, { state: "sending" | "sent" | "failed"; error?: string }>>({});
+  const [genEmailFilter, setGenEmailFilter] = useState("");
+  const [genServiceFilter, setGenServiceFilter] = useState("");
+  const [services, setServices] = useState<Service[]>([]);
+  // 生成メールの内容プレビュー/編集（展開中の1件）
+  const [genEditingId, setGenEditingId] = useState<number | null>(null);
+  const [genEditSubject, setGenEditSubject] = useState("");
+  const [genEditBody, setGenEditBody] = useState("");
+  const [genSavingEdit, setGenSavingEdit] = useState(false);
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientsHydrated, setRecipientsHydrated] = useState(false);
@@ -256,22 +264,60 @@ export default function BulkSendPage() {
     showToast(fail === 0 ? `${ok}件を送信しました` : `送信完了: 成功${ok}件 / 失敗${fail}件`);
   }
 
+  /** 生成メールの内容プレビュー/編集の開閉。開くとき現在の送信本文(subject/body)を下書きに読み込む */
+  function toggleGenEdit(p: Prospect) {
+    if (genEditingId === p.id) {
+      setGenEditingId(null);
+      return;
+    }
+    setGenEditingId(p.id);
+    setGenEditSubject(p.subject);
+    setGenEditBody(p.body);
+  }
+
+  /** 編集した件名・本文を保存（この内容が実際に送信される。/api/prospects/[id] PUT を流用） */
+  async function handleSaveGenEdit(p: Prospect) {
+    setGenSavingEdit(true);
+    try {
+      const res = await fetch(`/api/prospects/${p.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: genEditSubject, body: genEditBody }),
+      });
+      if (!res.ok) {
+        showToast("保存に失敗しました");
+        return;
+      }
+      setProspects((prev) =>
+        prev.map((x) => (x.id === p.id ? { ...x, subject: genEditSubject, body: genEditBody } : x))
+      );
+      setGenEditingId(null);
+      showToast("内容を保存しました（この内容で送信されます）");
+    } catch {
+      showToast("保存に失敗しました（通信エラー）");
+    } finally {
+      setGenSavingEdit(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [tplRes, pRes, sRes, sendersRes, attachRes] = await Promise.all([
+        const [tplRes, pRes, sRes, sendersRes, attachRes, svcRes] = await Promise.all([
           fetch("/api/templates"),
           fetch("/api/prospects"),
           fetch("/api/settings"),
           fetch("/api/senders"),
           fetch("/api/attachments"),
+          fetch("/api/services"),
         ]);
         const tplData: TemplateWithAttachments[] = tplRes.ok ? await tplRes.json() : [];
         const pData: Prospect[] = pRes.ok ? await pRes.json() : [];
         const sData = sRes.ok ? await sRes.json() : {};
         const sendersData: SenderInfo[] = sendersRes.ok ? await sendersRes.json() : [];
         const attachData: Attachment[] = attachRes.ok ? await attachRes.json() : [];
+        const svcData: Service[] = svcRes.ok ? await svcRes.json() : [];
         if (!cancelled) {
           setTemplates(tplData);
           setProspects(pData);
@@ -279,6 +325,7 @@ export default function BulkSendPage() {
           setSenders(sendersData);
           if (sendersData.length > 0) setSelectedSenderId(sendersData[0].id);
           setAttachmentsLib(attachData);
+          setServices(svcData);
         }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
@@ -734,16 +781,36 @@ export default function BulkSendPage() {
       );
   }, [sorted, historySearch]);
 
+  const serviceNameOf = useCallback(
+    (id: number) => services.find((s) => s.id === id)?.name ?? "",
+    [services]
+  );
+
+  /** 生成メールに実際に使われている商材の選択肢（service_id → 名前） */
+  const genServiceOptions = useMemo(() => {
+    const ids = new Set<number>();
+    for (const p of prospects) {
+      if (p.generated_subject && p.generated_body && p.input_url) ids.add(p.service_id);
+    }
+    return [...ids].map((id) => ({ id, name: serviceNameOf(id) || `#${id}` }));
+  }, [prospects, serviceNameOf]);
+
   const generatedProspects = useMemo(() => {
     const q = generatedSearch.toLowerCase();
     return sorted
       .filter((p) => p.generated_subject && p.generated_body && p.input_url)
+      .filter((p) => {
+        if (genEmailFilter === "has") return !!firstEmailOf(p);
+        if (genEmailFilter === "none") return !firstEmailOf(p);
+        return true;
+      })
+      .filter((p) => !genServiceFilter || p.service_id === Number(genServiceFilter))
       .filter((p) =>
         !q ||
         (p.company_name || "").toLowerCase().includes(q) ||
         (p.generated_subject || "").toLowerCase().includes(q)
       );
-  }, [sorted, generatedSearch]);
+  }, [sorted, generatedSearch, genEmailFilter, genServiceFilter]);
 
   function handleHistoryImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
@@ -2092,6 +2159,31 @@ export default function BulkSendPage() {
                   className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
                 />
               </div>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <select
+                  value={genEmailFilter}
+                  onChange={(e) => setGenEmailFilter(e.target.value)}
+                  aria-label="メール有無で絞り込む"
+                  className="h-8 rounded-lg border border-(--color-border) bg-gray-50 px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                >
+                  <option value="">✉️ メアド有無：すべて</option>
+                  <option value="has">✉️ メアドあり</option>
+                  <option value="none">⚠️ メアド未取得</option>
+                </select>
+                {genServiceOptions.length > 0 && (
+                  <select
+                    value={genServiceFilter}
+                    onChange={(e) => setGenServiceFilter(e.target.value)}
+                    aria-label="商材で絞り込む"
+                    className="h-8 rounded-lg border border-(--color-border) bg-gray-50 px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                  >
+                    <option value="">📦 すべての商材</option>
+                    {genServiceOptions.map((s) => (
+                      <option key={s.id} value={String(s.id)}>📦 {s.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-3">
@@ -2105,53 +2197,111 @@ export default function BulkSendPage() {
                 <div className="space-y-1.5">
                   <p className="mb-2 text-[11px] leading-relaxed text-(--color-muted)">
                     チェックした生成メールを、<b>各社の個別本文のまま</b>それぞれの会社のメアドへまとめて送信できます（メアドあり・未送信のみ対象）。
-                    「引用」を押すと、そのメールの件名・本文を直接入力欄のテンプレとして読み込みます。
+                    「内容」で本文の確認・編集、「引用」で直接入力欄のテンプレに読み込みます。
                   </p>
                   {generatedProspects.map((p) => {
                     const email = firstEmailOf(p);
                     const already = p.send_status === "sent";
                     const st = genRowStatus[p.id];
                     const selectable = !!email && !already;
+                    const editing = genEditingId === p.id;
+                    const svcName = serviceNameOf(p.service_id);
                     return (
-                      <div key={p.id} className="flex items-center gap-3 rounded-lg border border-(--color-border) px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={generatedChecked.has(p.id)}
-                          disabled={!selectable || sendingGenerated}
-                          onChange={() =>
-                            setGeneratedChecked((prev) => {
-                              const n = new Set(prev);
-                              if (n.has(p.id)) n.delete(p.id);
-                              else n.add(p.id);
-                              return n;
-                            })
-                          }
-                          className="h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
-                          <p className="truncate text-[12px] text-(--color-muted)">{p.generated_subject}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                            {email ? (
-                              <span className="truncate text-(--color-muted)">{email}</span>
-                            ) : (
-                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⚠️ メアド無し</span>
-                            )}
-                            {already && (
-                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">送信済</span>
-                            )}
-                            {st?.state === "sending" && <span className="text-(--color-primary)">送信中…</span>}
-                            {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
-                            {st?.state === "failed" && <span className="text-(--color-danger)">✕ {st.error}</span>}
+                      <div key={p.id} className="rounded-lg border border-(--color-border)">
+                        <div className="flex items-center gap-3 px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={generatedChecked.has(p.id)}
+                            disabled={!selectable || sendingGenerated}
+                            onChange={() =>
+                              setGeneratedChecked((prev) => {
+                                const n = new Set(prev);
+                                if (n.has(p.id)) n.delete(p.id);
+                                else n.add(p.id);
+                                return n;
+                              })
+                            }
+                            className="h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
+                            <p className="truncate text-[12px] text-(--color-muted)">{p.subject}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              {email ? (
+                                <span className="truncate text-(--color-muted)">{email}</span>
+                              ) : (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⚠️ メアド無し</span>
+                              )}
+                              {svcName && (
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">📦 {svcName}</span>
+                              )}
+                              {already && (
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-(--color-muted) dark:bg-slate-700">送信済</span>
+                              )}
+                              {st?.state === "sending" && <span className="text-(--color-primary)">送信中…</span>}
+                              {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
+                              {st?.state === "failed" && <span className="text-(--color-danger)">✕ {st.error}</span>}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleGenEdit(p)}
+                            className={`shrink-0 cursor-pointer rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                              editing
+                                ? "border-(--color-primary) text-(--color-primary)"
+                                : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                            }`}
+                          >
+                            {editing ? "閉じる" : "内容"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePickGenerated(p)}
+                            className="shrink-0 cursor-pointer rounded-lg border border-(--color-border) px-2.5 py-1 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                          >
+                            引用
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handlePickGenerated(p)}
-                          className="shrink-0 cursor-pointer rounded-lg border border-(--color-border) px-2.5 py-1 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-                        >
-                          引用
-                        </button>
+                        {editing && (
+                          <div className="space-y-2 border-t border-(--color-border) bg-gray-50/60 px-3 py-3 dark:bg-slate-800/40">
+                            <div>
+                              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</label>
+                              <input
+                                type="text"
+                                value={genEditSubject}
+                                onChange={(e) => setGenEditSubject(e.target.value)}
+                                className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文（この会社に実際に届く内容）</label>
+                              <textarea
+                                value={genEditBody}
+                                onChange={(e) => setGenEditBody(e.target.value)}
+                                rows={12}
+                                className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 text-[13px] leading-[1.9] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                              />
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setGenEditingId(null)}
+                                className="h-8 cursor-pointer rounded-lg border border-(--color-border) px-3 text-[12px] font-medium text-(--color-muted) hover:bg-(--color-card-hover)"
+                              >
+                                キャンセル
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveGenEdit(p)}
+                                disabled={genSavingEdit}
+                                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[12px] font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-40"
+                              >
+                                {genSavingEdit ? <SpinnerGap size={13} className="animate-spin" /> : null}
+                                保存（この内容で送る）
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
