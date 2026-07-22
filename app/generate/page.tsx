@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,7 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
-  Company,
+  CompanyWithTag,
   Persona,
   Prospect,
   QualityCheckResult,
@@ -23,6 +23,18 @@ import type {
   Template,
 } from "@/lib/types";
 import { BatchProgress, type BatchItem } from "./batch-progress";
+
+/** 収集経路の表示名（企業選択のタグ表示用） */
+function sourceLabel(source: string): string {
+  switch (source) {
+    case "keyword_search": return "キーワード検索";
+    case "wantedly_direct":
+    case "wantedly": return "Wantedly";
+    case "csv_import": return "CSV取込";
+    case "manual": return "手動追加";
+    default: return source || "その他";
+  }
+}
 
 type Status =
   | "idle"
@@ -109,7 +121,7 @@ function GeneratePageInner() {
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [fixedText, setFixedText] = useState("");
 
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   const [mode, setMode] = useState<"single" | "batch">("batch");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
   const [companySearch, setCompanySearch] = useState("");
@@ -164,7 +176,7 @@ function GeneratePageInner() {
           setPersonas(personasData);
           setTemplates(templatesData);
           setCompanies(
-            (companiesData.companies as Company[]).filter((c) => c.hp_url && c.enrichment_status === "done")
+            (companiesData.companies as CompanyWithTag[]).filter((c) => c.hp_url && c.enrichment_status === "done")
           );
         }
       } catch {
@@ -835,7 +847,7 @@ function CompanyPicker({
   onSearchChange,
   disabled,
 }: {
-  companies: Company[];
+  companies: CompanyWithTag[];
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
   onToggleAll: (ids: Set<number>) => void;
@@ -843,13 +855,33 @@ function CompanyPicker({
   onSearchChange: (v: string) => void;
   disabled: boolean;
 }) {
-  const filtered = search.trim()
-    ? companies.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search.toLowerCase()) ||
-          (c.domain ?? "").toLowerCase().includes(search.toLowerCase())
-      )
-    : companies;
+  // どのキーワード・どの商材向けに集めた企業かで絞り込めるよう、実データから選択肢を作る
+  const [keywordFilter, setKeywordFilter] = useState("");
+  const [serviceFilter, setServiceFilter] = useState("");
+
+  const keywordOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of companies) if (c.collection_keyword) set.add(c.collection_keyword);
+    return [...set].sort();
+  }, [companies]);
+  const serviceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of companies) if (c.collection_service_name) set.add(c.collection_service_name);
+    return [...set].sort();
+  }, [companies]);
+
+  const filtered = useMemo(() => {
+    let list = companies;
+    if (keywordFilter) list = list.filter((c) => c.collection_keyword === keywordFilter);
+    if (serviceFilter) list = list.filter((c) => c.collection_service_name === serviceFilter);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) => c.name.toLowerCase().includes(q) || (c.domain ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [companies, keywordFilter, serviceFilter, search]);
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
@@ -885,6 +917,38 @@ function CompanyPicker({
             </span>
           )}
         </div>
+        {(keywordOptions.length > 0 || serviceOptions.length > 0) && (
+          <div className="flex flex-wrap gap-2 border-b border-(--color-border) bg-gray-50/60 px-3 py-2 dark:bg-slate-700/30">
+            {keywordOptions.length > 0 && (
+              <select
+                value={keywordFilter}
+                onChange={(e) => setKeywordFilter(e.target.value)}
+                disabled={disabled}
+                aria-label="キーワードで絞り込む"
+                className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
+              >
+                <option value="">🔍 すべてのキーワード</option>
+                {keywordOptions.map((k) => (
+                  <option key={k} value={k}>🔍 {k}</option>
+                ))}
+              </select>
+            )}
+            {serviceOptions.length > 0 && (
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                disabled={disabled}
+                aria-label="商材で絞り込む"
+                className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
+              >
+                <option value="">📦 すべての商材</option>
+                {serviceOptions.map((s) => (
+                  <option key={s} value={s}>📦 {s}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
         <div className="max-h-[240px] overflow-y-auto">
           {filtered.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-(--color-muted)">
@@ -909,23 +973,40 @@ function CompanyPicker({
               {filtered.map((company) => (
                 <label
                   key={company.id}
-                  className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors"
+                  className="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors"
                 >
                   <input
                     type="checkbox"
                     checked={selectedIds.has(company.id)}
                     onChange={() => onToggle(company.id)}
                     disabled={disabled}
-                    className="h-4 w-4 shrink-0 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
                   />
-                  <span className="min-w-0 truncate text-[13px]">
-                    <span className="font-medium">{company.name}</span>
-                    {company.domain && (
-                      <span className="ml-1.5 text-(--color-muted) text-[11px]">
-                        {company.domain}
+                  <div className="min-w-0 flex-1">
+                    <span className="block min-w-0 truncate text-[13px]">
+                      <span className="font-medium">{company.name}</span>
+                      {company.domain && (
+                        <span className="ml-1.5 text-(--color-muted) text-[11px]">
+                          {company.domain}
+                        </span>
+                      )}
+                    </span>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {company.collection_keyword && (
+                        <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                          🔍 {company.collection_keyword}
+                        </span>
+                      )}
+                      {company.collection_service_name && (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          📦 {company.collection_service_name}
+                        </span>
+                      )}
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
+                        {sourceLabel(company.source)}
                       </span>
-                    )}
-                  </span>
+                    </div>
+                  </div>
                 </label>
               ))}
             </>
