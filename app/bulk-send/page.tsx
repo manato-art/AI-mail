@@ -25,7 +25,19 @@ import {
   PencilSimple,
   ArrowsClockwise,
 } from "@phosphor-icons/react";
-import type { Attachment, Company, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
+import type { Attachment, CompanyWithTag, Contact, Prospect, TemplateWithAttachments } from "@/lib/types";
+
+/** 収集元(source)を、非エンジニアにも分かる日本語ラベルにする */
+function sourceLabel(source: string): string {
+  switch (source) {
+    case "keyword_search": return "キーワード検索";
+    case "wantedly_direct":
+    case "wantedly": return "Wantedly";
+    case "csv_import": return "CSV取込";
+    case "manual": return "手動追加";
+    default: return source || "その他";
+  }
+}
 import { Toast } from "@/components/toast";
 import { Modal } from "@/components/modal";
 import { resolveEmailVariables } from "@/lib/variables";
@@ -125,7 +137,9 @@ export default function BulkSendPage() {
   const [historyChecked, setHistoryChecked] = useState<Set<number>>(new Set());
 
   const [companiesOpen, setCompaniesOpen] = useState(false);
-  const [companiesList, setCompaniesList] = useState<Company[]>([]);
+  const [companiesList, setCompaniesList] = useState<CompanyWithTag[]>([]);
+  const [companiesKeywordFilter, setCompaniesKeywordFilter] = useState("");
+  const [companiesServiceFilter, setCompaniesServiceFilter] = useState("");
   const [contactsList, setContactsList] = useState<Contact[]>([]);
   const [companiesSearch, setCompaniesSearch] = useState("");
   const [companiesChecked, setCompaniesChecked] = useState<Set<number>>(new Set());
@@ -655,6 +669,8 @@ export default function BulkSendPage() {
     setCompaniesOpen(true);
     setCompaniesChecked(new Set());
     setCompaniesSearch("");
+    setCompaniesKeywordFilter("");
+    setCompaniesServiceFilter("");
     if (companiesList.length > 0) return;
     setCompaniesLoading(true);
     try {
@@ -679,19 +695,33 @@ export default function BulkSendPage() {
     return map;
   }, [contactsList]);
 
+  // どのキーワード・どの商材で集めた企業かを選べるよう、実データから選択肢を作る
+  const companyKeywordOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of companiesList) if (c.collection_keyword) set.add(c.collection_keyword);
+    return [...set].sort();
+  }, [companiesList]);
+  const companyServiceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of companiesList) if (c.collection_service_name) set.add(c.collection_service_name);
+    return [...set].sort();
+  }, [companiesList]);
+
   const filteredCompanies = useMemo(() => {
-    const withEmail = companiesList.filter(
+    let list = companiesList.filter(
       (c) => c.enrichment_status === "done" && (contactsByCompanyId.get(c.id)?.length ?? 0) > 0,
     );
-    if (!companiesSearch) return withEmail;
+    if (companiesKeywordFilter) list = list.filter((c) => c.collection_keyword === companiesKeywordFilter);
+    if (companiesServiceFilter) list = list.filter((c) => c.collection_service_name === companiesServiceFilter);
+    if (!companiesSearch) return list;
     const q = companiesSearch.toLowerCase();
-    return withEmail.filter(
+    return list.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.domain ?? "").toLowerCase().includes(q) ||
         (contactsByCompanyId.get(c.id) ?? []).some((ct) => ct.email.toLowerCase().includes(q)),
     );
-  }, [companiesList, companiesSearch, contactsByCompanyId]);
+  }, [companiesList, companiesSearch, contactsByCompanyId, companiesKeywordFilter, companiesServiceFilter]);
 
   function handleCompaniesImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
@@ -1168,7 +1198,7 @@ export default function BulkSendPage() {
                         onChange={(e) => handleUpdateGenerated(previewRecipient.id, "body", e.target.value)}
                         disabled={isSending}
                         rows={14}
-                        className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[12px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
+                        className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 text-[13px] leading-[1.9] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -1179,15 +1209,16 @@ export default function BulkSendPage() {
                       person_name: previewRecipient.person,
                     });
                     return (
-                      <div className="border-t border-(--color-border) bg-gray-50 dark:bg-slate-800/50">
-                        <div className="px-4 py-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
-                            差し込みプレビュー
+                      <div className="border-t border-(--color-border) bg-(--color-success-light)/30">
+                        <div className="flex items-center gap-1.5 px-4 py-2">
+                          <PaperPlaneTilt size={12} weight="fill" className="text-(--color-success)" />
+                          <p className="text-[11px] font-bold text-(--color-success)">
+                            この宛先に実際に届くメール
                           </p>
                         </div>
-                        <div className="max-h-[180px] overflow-y-auto px-4 pb-3">
-                          <p className="text-[11px] font-semibold">{resolved.subject}</p>
-                          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-[1.7] text-(--color-muted)">
+                        <div className="max-h-[320px] overflow-y-auto px-4 pb-4">
+                          <p className="text-[13px] font-bold text-(--color-foreground)">{resolved.subject}</p>
+                          <p className="mt-2 whitespace-pre-wrap text-[13px] leading-[1.9] text-(--color-foreground)">
                             {resolved.body}
                           </p>
                         </div>
@@ -1359,10 +1390,13 @@ export default function BulkSendPage() {
                       <p className="mt-0.5 text-sm font-semibold">{buildEmail(previewRecipient).subject}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</p>
-                      <div className="mt-1 max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-(--color-border) bg-gray-50 p-3.5 text-[12.5px] leading-[1.9] dark:bg-slate-800">
-                        {buildEmail(previewRecipient).body}
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文（下書き）</p>
+                      <div className="mt-1 max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-(--color-border) bg-gray-50 p-3.5 text-[13px] leading-[1.9] dark:bg-slate-800">
+                        {buildEmail(previewRecipient).body.replace(/\{\{AI:[\s\S]*?\}\}/g, "【AIが会社ごとに書く部分】")}
                       </div>
+                      <p className="mt-1.5 text-[11px] text-(--color-muted)">
+                        「選択した{checkedRecipients.length}件を生成」を押すと、【AIが書く部分】に会社ごとの文章が入ります。
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center justify-between border-t border-(--color-border) bg-gray-50 px-5 py-2.5 dark:bg-slate-700/50">
@@ -1592,6 +1626,36 @@ export default function BulkSendPage() {
                   className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
                 />
               </div>
+              {(companyKeywordOptions.length > 0 || companyServiceOptions.length > 0) && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {companyKeywordOptions.length > 0 && (
+                    <select
+                      value={companiesKeywordFilter}
+                      onChange={(e) => setCompaniesKeywordFilter(e.target.value)}
+                      aria-label="キーワードで絞り込む"
+                      className="h-9 rounded-lg border border-(--color-border) bg-gray-50 px-2.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                    >
+                      <option value="">🔍 すべてのキーワード</option>
+                      {companyKeywordOptions.map((k) => (
+                        <option key={k} value={k}>🔍 {k}</option>
+                      ))}
+                    </select>
+                  )}
+                  {companyServiceOptions.length > 0 && (
+                    <select
+                      value={companiesServiceFilter}
+                      onChange={(e) => setCompaniesServiceFilter(e.target.value)}
+                      aria-label="商材で絞り込む"
+                      className="h-9 rounded-lg border border-(--color-border) bg-gray-50 px-2.5 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                    >
+                      <option value="">📦 すべての商材</option>
+                      {companyServiceOptions.map((s) => (
+                        <option key={s} value={s}>📦 {s}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-3">
@@ -1633,9 +1697,24 @@ export default function BulkSendPage() {
                           <p className="truncate text-[12px] text-(--color-muted)">
                             {contacts.map((c) => c.email).join(", ")}
                           </p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            {company.collection_keyword && (
+                              <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                                🔍 {company.collection_keyword}
+                              </span>
+                            )}
+                            {company.collection_service_name && (
+                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                📦 {company.collection_service_name}
+                              </span>
+                            )}
+                            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
+                              {sourceLabel(company.source)}
+                            </span>
+                          </div>
                         </div>
                         {company.domain && (
-                          <span className="shrink-0 text-[11px] text-(--color-muted)">{company.domain}</span>
+                          <span className="shrink-0 self-start text-[11px] text-(--color-muted)">{company.domain}</span>
                         )}
                       </label>
                     );
