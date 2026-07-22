@@ -17,7 +17,11 @@ import {
   type SearchResultItem,
 } from "@/lib/keyword-search";
 import { scrapeSearch } from "@/lib/keyword-search-scrape";
-import { fetchWantedlyListings } from "@/lib/wantedly-scraper";
+import {
+  fetchWantedlyListings,
+  fetchWantedlyListingsFromUrl,
+  type WantedlyFetchResult,
+} from "@/lib/wantedly-scraper";
 import type { CollectionRunStatus, CollectionSource } from "@/lib/types";
 
 /** 1回の実行で進める検索ページ数。まとめて叩かず少しずつ掘る */
@@ -169,12 +173,28 @@ function decidePause(
   return null;
 }
 
-async function runWantedlySource(source: CollectionSource): Promise<SourceOutcome> {
+type ListingFetcher = (startPage: number) => Promise<WantedlyFetchResult>;
+
+function runWantedlySource(source: CollectionSource): Promise<SourceOutcome> {
+  return runListingSource(source, (startPage) => fetchWantedlyListings(startPage), "wantedly.com");
+}
+
+/** 貼り付けられた Wantedly 検索URLから収集する（新着ではなく、そのURLの結果を page 送り） */
+function runWantedlyUrlSource(source: CollectionSource): Promise<SourceOutcome> {
+  const url = source.url ?? "";
+  return runListingSource(source, (startPage) => fetchWantedlyListingsFromUrl(url, startPage), "wantedly.com");
+}
+
+async function runListingSource(
+  source: CollectionSource,
+  fetchListings: ListingFetcher,
+  siteLabel: string
+): Promise<SourceOutcome> {
   const runId = startCollectionRun(source.id, source.next_page);
 
   try {
     const startPage = source.next_page || 1;
-    const { listings, nextPage, emptyPages } = await fetchWantedlyListings(startPage);
+    const { listings, nextPage, emptyPages } = await fetchListings(startPage);
 
     if (listings.length === 0) {
       const noResultRuns = source.consecutive_no_result_runs + emptyPages;
@@ -206,7 +226,7 @@ async function runWantedlySource(source: CollectionSource): Promise<SourceOutcom
     const { newCount, breakdown } = registerCompanies(
       companies,
       source,
-      "wantedly.com"
+      siteLabel
     );
 
     const noNewRuns = newCount > 0 ? 0 : source.consecutive_no_new_runs + 1;
@@ -352,6 +372,9 @@ async function runKeywordSource(source: CollectionSource): Promise<SourceOutcome
 function runSource(source: CollectionSource): Promise<SourceOutcome> {
   if (source.source_type === "wantedly_direct") {
     return runWantedlySource(source);
+  }
+  if (source.source_type === "wantedly_url") {
+    return runWantedlyUrlSource(source);
   }
   return runKeywordSource(source);
 }

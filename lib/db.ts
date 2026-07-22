@@ -346,6 +346,9 @@ function migrateSchema(instance: Database.Database): void {
   // Wantedly直接スクレイピング対応: 収集元の種別を区別する
   addColumnIfMissing(instance, "collection_sources", "source_type", "TEXT NOT NULL DEFAULT 'keyword_search'");
 
+  // 貼り付けたWantedly検索URLから収集するソース用に、収集元URLを持たせる
+  addColumnIfMissing(instance, "collection_sources", "url", "TEXT");
+
   // F1 タグ付け: どのキーワード・どの商材向けに集めたかで後から絞り込む
   addColumnIfMissing(instance, "collection_sources", "service_id", "INTEGER");
   addColumnIfMissing(instance, "companies", "collection_source_id", "INTEGER");
@@ -1447,6 +1450,41 @@ export function createCollectionSource(
 
 export function deleteCollectionSource(id: number): boolean {
   return getDb().prepare("DELETE FROM collection_sources WHERE id = ?").run(id).changes > 0;
+}
+
+/** URL からタグ用の短い一意ラベルを作る（乱数不使用の決定的ハッシュ） */
+function shortHash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36).slice(0, 6);
+}
+
+/**
+ * 貼り付けられた Wantedly 検索URLを収集ソースとして登録する。
+ * 同じURLは1件に集約する。keyword は企業タグにも出るので短いラベルにし、
+ * 実URLは url 列に持たせる。
+ */
+export function createWantedlyUrlSource(
+  url: string,
+  serviceId: number | null = null
+): CollectionSource {
+  const instance = getDb();
+  const existing = instance
+    .prepare("SELECT * FROM collection_sources WHERE url = ?")
+    .get(url) as CollectionSource | undefined;
+  if (existing) {
+    if (serviceId !== null) {
+      instance.prepare("UPDATE collection_sources SET service_id = ? WHERE id = ?").run(serviceId, existing.id);
+    }
+    return instance.prepare("SELECT * FROM collection_sources WHERE id = ?").get(existing.id) as CollectionSource;
+  }
+  const keyword = `Wantedly:${shortHash(url)}`;
+  instance
+    .prepare(
+      "INSERT INTO collection_sources (keyword, site, source_type, service_id, url) VALUES (?, 'wantedly.com', 'wantedly_url', ?, ?)"
+    )
+    .run(keyword, serviceId, url);
+  return instance.prepare("SELECT * FROM collection_sources WHERE url = ?").get(url) as CollectionSource;
 }
 
 export function setCollectionSourceActive(id: number, isActive: boolean): void {

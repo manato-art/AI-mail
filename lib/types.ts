@@ -252,7 +252,7 @@ export type FitScore = "" | "high" | "medium" | "low";
  * この2つを混ぜると、単なる枯渇を障害として報告し続けることになる。
  */
 export type CollectionPauseKind = "" | "blocked" | "exhausted" | "manual";
-export type CollectionSourceType = "keyword_search" | "wantedly_direct";
+export type CollectionSourceType = "keyword_search" | "wantedly_direct" | "wantedly_url";
 
 /** F1: 常時収集のソース（キーワード1本 = 1ソース） */
 export interface CollectionSource {
@@ -261,6 +261,8 @@ export interface CollectionSource {
   /** 検索対象サイト。空なら実行時にAIが判断する */
   site: string;
   source_type: CollectionSourceType;
+  /** wantedly_url ソースのときの、貼り付けられた収集元URL（それ以外は null） */
+  url: string | null;
   /** F1 タグ付け: このキーワードをどの商材向けに集めるか（未指定は null） */
   service_id: number | null;
   is_active: number;

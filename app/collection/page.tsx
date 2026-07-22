@@ -84,6 +84,8 @@ export default function CollectionPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [saving, setSaving] = useState(false);
   const [addingWantedly, setAddingWantedly] = useState(false);
+  const [wantedlyUrl, setWantedlyUrl] = useState("");
+  const [addingUrl, setAddingUrl] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
   const [jobRunning, setJobRunning] = useState(false);
@@ -187,6 +189,36 @@ export default function CollectionPage() {
       showToast("登録に失敗しました");
     } finally {
       setAddingWantedly(false);
+    }
+  }
+
+  async function handleAddUrl(e: React.FormEvent) {
+    e.preventDefault();
+    const url = wantedlyUrl.trim();
+    if (!url || addingUrl) return;
+    setAddingUrl(true);
+    try {
+      const res = await fetch("/api/collection/sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_type: "wantedly_url",
+          url,
+          service_id: serviceId === "" ? null : serviceId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "登録に失敗しました");
+        return;
+      }
+      setWantedlyUrl("");
+      showToast("URLを収集元に追加しました。次回の収集からこのURLのページを巡回します");
+      load();
+    } catch {
+      showToast("登録に失敗しました");
+    } finally {
+      setAddingUrl(false);
     }
   }
 
@@ -358,6 +390,27 @@ export default function CollectionPage() {
           </button>
         )}
 
+        <form onSubmit={handleAddUrl} className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={wantedlyUrl}
+            onChange={(e) => setWantedlyUrl(e.target.value)}
+            placeholder="WantedlyのURLを貼り付け（検索条件付きのページ可）"
+            className="h-10 flex-1 rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+          />
+          <button
+            type="submit"
+            disabled={addingUrl || !wantedlyUrl.trim()}
+            title="貼り付けたWantedlyの一覧/検索URLのページを巡回して企業を集めます"
+            className="flex h-10 items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer sm:w-[180px]"
+          >
+            {addingUrl ? <SpinnerGap size={16} className="animate-spin" /> : <Plus size={16} />}
+            このURLから収集
+          </button>
+        </form>
+        <p className="mt-1.5 text-[11px] text-(--color-muted)">
+          Wantedlyの検索結果や一覧ページのURLを貼ると、そのページ（と続きのページ）を巡回して企業を集めます。上の商材タグも一緒に付きます。
+        </p>
+
         <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             value={keyword}
@@ -416,7 +469,9 @@ export default function CollectionPage() {
                       isActive ? "bg-(--color-success)" : "bg-(--color-muted)"
                     }`}
                   />
-                  <p className="truncate text-sm font-medium">{source.keyword}</p>
+                  <p className="truncate text-sm font-medium">
+                    {source.source_type === "wantedly_url" ? (source.url ?? source.keyword) : source.keyword}
+                  </p>
                   {isActive && (
                     <span className="shrink-0 rounded-full bg-(--color-success-light) px-2 py-0.5 text-[10px] font-medium text-(--color-success)">
                       収集対象
@@ -426,7 +481,9 @@ export default function CollectionPage() {
                 <p className="mt-0.5 pl-4 text-[11px] text-(--color-muted)">
                   {source.source_type === "wantedly_direct"
                     ? "Wantedly直接取得"
-                    : source.site || "検索元サイト未定"}
+                    : source.source_type === "wantedly_url"
+                      ? "Wantedly URL収集"
+                      : source.site || "検索元サイト未定"}
                   {" "}・ 最終実行 {formatDateTime(source.last_run_at)}
                 </p>
                 {source.paused_kind && (

@@ -27,8 +27,26 @@ function nextDelay(): number {
   return REQUEST_DELAY_BASE_MS + Math.floor(Math.random() * REQUEST_DELAY_JITTER_MS);
 }
 
-async function fetchListingPage(page: number): Promise<string | null> {
-  const url = `${WANTEDLY_BASE}${LISTING_PATH}?new=true&page=${page}&order=mixed`;
+/** wantedly.com（サブドメイン含む）のHTTPS/HTTP URLだけを許可する（SSRF対策） */
+export function isWantedlyUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    const host = u.hostname.toLowerCase();
+    return host === "wantedly.com" || host.endsWith(".wantedly.com");
+  } catch {
+    return false;
+  }
+}
+
+/** ベースURLの page クエリを差し替えてページ送りURLを作る */
+function buildPagedUrl(baseUrl: string, page: number): string {
+  const u = new URL(baseUrl);
+  u.searchParams.set("page", String(page));
+  return u.toString();
+}
+
+async function fetchHtmlPage(url: string): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -68,6 +86,11 @@ async function fetchListingPage(page: number): Promise<string | null> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** 新着フィード（?new=true&order=mixed）の指定ページを取得する */
+function fetchListingPage(page: number): Promise<string | null> {
+  return fetchHtmlPage(`${WANTEDLY_BASE}${LISTING_PATH}?new=true&page=${page}&order=mixed`);
 }
 
 /**
@@ -151,6 +174,58 @@ export async function fetchWantedlyListings(
     allListings.push(...listings);
     page += 1;
 
+    if (page > MAX_PAGE) break;
+  }
+
+  return {
+    listings: allListings,
+    nextPage: page > MAX_PAGE ? 1 : page,
+    emptyPages,
+  };
+}
+
+/**
+ * 貼り付けられた Wantedly 検索/一覧URLを、page を進めながら巡回して企業を収集する。
+ * wantedly.com 以外のURLは弾く（SSRF対策）。一覧ページと同じカード構造なので parseListings で抽出できる。
+ */
+export async function fetchWantedlyListingsFromUrl(
+  baseUrl: string,
+  startPage: number
+): Promise<WantedlyFetchResult> {
+  if (!isWantedlyUrl(baseUrl)) {
+    // 呼び出し側は listings=0 で「収集元が無効」を検知できる
+    return { listings: [], nextPage: 1, emptyPages: PAGES_PER_RUN };
+  }
+
+  const allListings: WantedlyListing[] = [];
+  const seen = new Set<string>();
+  let page = startPage;
+  let emptyPages = 0;
+
+  for (let i = 0; i < PAGES_PER_RUN; i++) {
+    if (i > 0) await sleep(nextDelay());
+
+    const html = await fetchHtmlPage(buildPagedUrl(baseUrl, page));
+    if (!html) {
+      emptyPages += 1;
+      page += 1;
+      continue;
+    }
+
+    const listings = parseListings(html).filter((l) => {
+      if (seen.has(l.listingUrl)) return false;
+      seen.add(l.listingUrl);
+      return true;
+    });
+    if (listings.length === 0) {
+      emptyPages += 1;
+      page += 1;
+      if (page > MAX_PAGE) break;
+      continue;
+    }
+
+    allListings.push(...listings);
+    page += 1;
     if (page > MAX_PAGE) break;
   }
 
