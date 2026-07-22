@@ -78,6 +78,7 @@ export default function CompaniesPage() {
   const [keywordFilter, setKeywordFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [reEnriching, setReEnriching] = useState(false);
+  const [enrichingPending, setEnrichingPending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingHpId, setEditingHpId] = useState<number | null>(null);
   const [hpUrlInput, setHpUrlInput] = useState("");
@@ -173,6 +174,27 @@ export default function CompaniesPage() {
     }
   }, [load, showToast]);
 
+  // 準備中（未調査）の企業をまとめて調査する。HP特定→メール抽出まで背景で進める。
+  const handleEnrichPending = useCallback(async () => {
+    setEnrichingPending(true);
+    try {
+      const res = await fetch("/api/companies/enrich-pending", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.started) {
+        await load();
+        showToast(`準備中${data.queued}社の調査を開始しました（HP取得・メール抽出。数分かかります）`);
+      } else if (res.ok) {
+        showToast(data.message || "準備中の企業はありません");
+      } else {
+        showToast(data.error || "調査の開始に失敗しました");
+      }
+    } catch {
+      showToast("調査の開始に失敗しました（通信エラー）");
+    } finally {
+      setEnrichingPending(false);
+    }
+  }, [load, showToast]);
+
   // 絞り込みの選択肢（実際に企業に付いているキーワード・商材だけ出す）
   const keywordOptions = useMemo(
     () => [...new Set(companies.map((c) => c.collection_keyword).filter((k): k is string => !!k))].sort(),
@@ -252,6 +274,22 @@ export default function CompaniesPage() {
           自動収集・キーワード検索・CSV取込で集めた企業の一覧です。
         </p>
         <div className="flex items-center gap-2">
+          {counts.pending > 0 && (
+            <button
+              type="button"
+              onClick={handleEnrichPending}
+              disabled={enrichingPending}
+              title="準備中の企業のHPを取得し、連絡先メールまで調査します"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            >
+              {enrichingPending ? (
+                <SpinnerGap size={14} className="animate-spin" />
+              ) : (
+                <GlobeSimple size={14} />
+              )}
+              {enrichingPending ? "調査を開始中..." : `準備中${counts.pending}社を調査`}
+            </button>
+          )}
           {noEmailCount > 0 && (
             <button
               type="button"

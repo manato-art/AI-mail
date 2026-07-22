@@ -1647,6 +1647,14 @@ export function getCompaniesPendingEnrichment(limit: number): Company[] {
     .all(limit) as Company[];
 }
 
+/** 未処理（準備中）の企業数。バックログを手動で調査する導線の件数表示・上限判定に使う */
+export function countCompaniesPendingEnrichment(): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) as count FROM companies WHERE enrichment_status = 'pending'")
+    .get() as { count: number };
+  return row.count;
+}
+
 export interface CompanyEnrichmentUpdate {
   hp_url?: string | null;
   recruit_page_url?: string | null;
