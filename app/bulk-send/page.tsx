@@ -111,6 +111,9 @@ export default function BulkSendPage() {
 
   const [generatedOpen, setGeneratedOpen] = useState(false);
   const [generatedSearch, setGeneratedSearch] = useState("");
+  const [generatedChecked, setGeneratedChecked] = useState<Set<number>>(new Set());
+  const [sendingGenerated, setSendingGenerated] = useState(false);
+  const [genRowStatus, setGenRowStatus] = useState<Record<number, { state: "sending" | "sent" | "failed"; error?: string }>>({});
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientsHydrated, setRecipientsHydrated] = useState(false);
@@ -181,6 +184,76 @@ export default function BulkSendPage() {
     setGeneratedSearch("");
     if (inputMode !== "direct") setInputMode("direct");
     showToast("生成済みメールを読み込みました");
+  }
+
+  /** 生成済みメールに紐づく送信先メール（HP分析時に見つけたもの）を1件返す */
+  function firstEmailOf(p: Prospect): string | null {
+    try {
+      const emails: string[] = p.emails_found_json ? JSON.parse(p.emails_found_json) : [];
+      return emails.find((e) => typeof e === "string" && e.includes("@")) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 選択した生成済みメールを、各社の個別本文のまま各社のメアドへまとめて送る（既存の個別送信APIを流用） */
+  async function handleSendGenerated() {
+    if (!selectedSenderId) {
+      showToast("送信者（人格）を選択してください");
+      return;
+    }
+    const targets = generatedProspects.filter(
+      (p) => generatedChecked.has(p.id) && firstEmailOf(p) && p.send_status !== "sent"
+    );
+    if (targets.length === 0) {
+      showToast("送信できる選択がありません（メアドあり・未送信のみ対象）");
+      return;
+    }
+    const sender = senders.find((s) => s.id === selectedSenderId);
+    const confirmMsg = testMode
+      ? `テストモード: 生成メール${targets.length}件をテストアドレス宛に送信します。よろしいですか？`
+      : `生成した個別メール${targets.length}件を、それぞれの会社（${sender?.email ?? ""} から）へ送信します。よろしいですか？`;
+    if (!confirm(confirmMsg)) return;
+
+    setSendingGenerated(true);
+    let ok = 0;
+    let fail = 0;
+    for (const p of targets) {
+      const email = firstEmailOf(p);
+      if (!email) continue;
+      setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "sending" } }));
+      try {
+        const res = await fetch("/api/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prospectId: p.id,
+            senderId: selectedSenderId,
+            toEmail: email,
+            acknowledgedWarnings: allowWarnings,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = Array.isArray(data.reasons)
+            ? data.reasons.join(" / ")
+            : data.error || "送信に失敗しました";
+          setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "failed", error: msg } }));
+          fail++;
+        } else {
+          setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "sent" } }));
+          setProspects((prev) => prev.map((x) => (x.id === p.id ? { ...x, send_status: "sent" } : x)));
+          ok++;
+        }
+      } catch {
+        setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "failed", error: "通信エラーが発生しました" } }));
+        fail++;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    setSendingGenerated(false);
+    setGeneratedChecked(new Set());
+    showToast(fail === 0 ? `${ok}件を送信しました` : `送信完了: 成功${ok}件 / 失敗${fail}件`);
   }
 
   useEffect(() => {
@@ -2019,31 +2092,85 @@ export default function BulkSendPage() {
               ) : (
                 <div className="space-y-1.5">
                   <p className="mb-2 text-[11px] leading-relaxed text-(--color-muted)">
-                    選択したメールの件名・本文が直接入力欄に読み込まれます。
-                    他社向けの内容が含まれている場合は、該当箇所を
-                    <code className="mx-0.5 rounded bg-gray-100 px-1 py-0.5 text-[10px] dark:bg-slate-700">{"{{AI:指示}}"}</code>
-                    や変数に置き換えてから送信してください。
+                    チェックした生成メールを、<b>各社の個別本文のまま</b>それぞれの会社のメアドへまとめて送信できます（メアドあり・未送信のみ対象）。
+                    「引用」を押すと、そのメールの件名・本文を直接入力欄のテンプレとして読み込みます。
                   </p>
-                  {generatedProspects.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handlePickGenerated(p)}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-(--color-border) px-4 py-3 text-left transition-colors hover:border-(--color-primary)/50 hover:bg-(--color-card-hover)"
-                    >
-                      <EnvelopeOpen size={18} className="shrink-0 text-(--color-muted)" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
-                        <p className="truncate text-[12px] text-(--color-muted)">{p.generated_subject}</p>
+                  {generatedProspects.map((p) => {
+                    const email = firstEmailOf(p);
+                    const already = p.send_status === "sent";
+                    const st = genRowStatus[p.id];
+                    const selectable = !!email && !already;
+                    return (
+                      <div key={p.id} className="flex items-center gap-3 rounded-lg border border-(--color-border) px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={generatedChecked.has(p.id)}
+                          disabled={!selectable || sendingGenerated}
+                          onChange={() =>
+                            setGeneratedChecked((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(p.id)) n.delete(p.id);
+                              else n.add(p.id);
+                              return n;
+                            })
+                          }
+                          className="h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold">{p.company_name || p.domain}</p>
+                          <p className="truncate text-[12px] text-(--color-muted)">{p.generated_subject}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                            {email ? (
+                              <span className="truncate text-(--color-muted)">{email}</span>
+                            ) : (
+                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⚠️ メアド無し</span>
+                            )}
+                            {already && (
+                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">送信済</span>
+                            )}
+                            {st?.state === "sending" && <span className="text-(--color-primary)">送信中…</span>}
+                            {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
+                            {st?.state === "failed" && <span className="text-(--color-danger)">✕ {st.error}</span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handlePickGenerated(p)}
+                          className="shrink-0 cursor-pointer rounded-lg border border-(--color-border) px-2.5 py-1 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                        >
+                          引用
+                        </button>
                       </div>
-                      <span className="shrink-0 text-[11px] text-(--color-muted)">
-                        {new Date(p.created_at).toLocaleDateString("ja-JP")}
-                      </span>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
+
+            {generatedProspects.length > 0 && (
+              <div className="flex items-center justify-between gap-3 border-t border-(--color-border) px-5 py-3">
+                <span className="text-[12px] text-(--color-muted)">
+                  {!selectedSenderId
+                    ? "先に送信者（人格）を選択してください"
+                    : generatedChecked.size > 0
+                      ? `${generatedChecked.size}件を選択中`
+                      : "送信するメールにチェック"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSendGenerated}
+                  disabled={sendingGenerated || generatedChecked.size === 0 || !selectedSenderId}
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                >
+                  {sendingGenerated ? (
+                    <SpinnerGap size={15} className="animate-spin" />
+                  ) : (
+                    <PaperPlaneTilt size={15} weight="fill" />
+                  )}
+                  {testMode ? "テスト送信" : "選択を各社へ送信"}
+                </button>
+              </div>
+            )}
           </div>
         </Modal>
       )}
