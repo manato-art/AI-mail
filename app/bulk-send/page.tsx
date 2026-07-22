@@ -812,6 +812,26 @@ export default function BulkSendPage() {
       );
   }, [sorted, generatedSearch, genEmailFilter, genServiceFilter]);
 
+  /** 表示中の生成メールのうち、送信できる対象（メアドあり・未送信）。全選択の対象 */
+  const genSelectable = useMemo(
+    () => generatedProspects.filter((p) => firstEmailOf(p) && p.send_status !== "sent"),
+    [generatedProspects]
+  );
+  const allGenSelected =
+    genSelectable.length > 0 && genSelectable.every((p) => generatedChecked.has(p.id));
+
+  function toggleGenSelectAll() {
+    setGeneratedChecked((prev) => {
+      const n = new Set(prev);
+      if (allGenSelected) {
+        for (const p of genSelectable) n.delete(p.id);
+      } else {
+        for (const p of genSelectable) n.add(p.id);
+      }
+      return n;
+    });
+  }
+
   function handleHistoryImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
     const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
@@ -2199,6 +2219,23 @@ export default function BulkSendPage() {
                     チェックした生成メールを、<b>各社の個別本文のまま</b>それぞれの会社のメアドへまとめて送信できます（メアドあり・未送信のみ対象）。
                     「内容」で本文の確認・編集、「引用」で直接入力欄のテンプレに読み込みます。
                   </p>
+                  <div className="sticky top-0 z-10 mb-1.5 flex items-center justify-between rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-2">
+                    <label className={`flex items-center gap-2 ${genSelectable.length > 0 ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}>
+                      <input
+                        type="checkbox"
+                        checked={allGenSelected}
+                        onChange={toggleGenSelectAll}
+                        disabled={genSelectable.length === 0 || sendingGenerated}
+                        className="h-4 w-4 cursor-pointer accent-(--color-primary) disabled:cursor-not-allowed"
+                      />
+                      <span className="text-[12px] font-medium text-(--color-muted)">
+                        すべて選択（送信可能 {genSelectable.length}件）
+                      </span>
+                    </label>
+                    {generatedChecked.size > 0 && (
+                      <span className="text-[11px] font-medium text-(--color-primary)">{generatedChecked.size}件選択中</span>
+                    )}
+                  </div>
                   {generatedProspects.map((p) => {
                     const email = firstEmailOf(p);
                     const already = p.send_status === "sent";
