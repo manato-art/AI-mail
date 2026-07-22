@@ -1,4 +1,5 @@
 import {
+  countCompaniesPendingEnrichment,
   getSetting,
   hasIntervalElapsed,
   isJobLocked,
@@ -18,6 +19,16 @@ const TICK_INTERVAL_MS = 30 * 60 * 1000;
 
 /** ロックのTTL。途中でプロセスが落ちても、この時間で自動的に外れる */
 const LOCK_TTL_MINUTES = 90;
+
+/**
+ * 準備中バックログの自動消化の間隔とバッチ。
+ * enrichment は「相手企業自身のHP」を1社ずつ間隔を空けて見る処理で、収集元(媒体)の
+ * 検知リスクとは無関係。そのため収集の24hとは切り離し、準備中が溜まっている時だけ
+ * 数分おきに少しずつ捌いて「集めたのに準備中で止まる」を自動で解消する。
+ */
+const ENRICH_TICK_INTERVAL_MS = 5 * 60 * 1000;
+const ENRICH_TICK_BATCH = 20;
+const ENRICH_LOCK_TTL_MINUTES = 30;
 
 /**
  * 収集ジョブ + 裏処理(enrichment)の共有ロックキー。
@@ -93,6 +104,7 @@ export function getLastCollectionRunAt(): string | null {
 
 type ScheduleHolder = typeof globalThis & {
   __collectionSchedule?: NodeJS.Timeout;
+  __enrichSchedule?: NodeJS.Timeout;
 };
 
 async function tick(): Promise<void> {
@@ -111,6 +123,33 @@ async function tick(): Promise<void> {
 }
 
 /**
+ * 準備中（未調査）の企業を自動で少しずつ消化する見回り。
+ * 収集の24hゲートとは独立して動くが、準備中が無い時・別処理が走っている時は何もしない。
+ * これにより「収集したのに準備中で止まる」状態が手動ボタンを押さずとも自動で解けていく。
+ */
+async function enrichTick(): Promise<void> {
+  try {
+    // 収集ジョブ・手動調査が動作中なら触らない（無駄なロック取得で他をブロックしない）
+    if (isJobLocked(LOCK_KEY)) return;
+    if (countCompaniesPendingEnrichment() === 0) return;
+    if (!tryAcquireJobLock(LOCK_KEY, ENRICH_LOCK_TTL_MINUTES)) return;
+    try {
+      const result = await runEnrichmentBatch(ENRICH_TICK_BATCH);
+      if (result.processed > 0 || result.failed > 0 || result.excluded > 0) {
+        console.info(
+          `enrich tick: ${result.processed} enriched / ${result.failed} failed / ${result.excluded} excluded`
+        );
+      }
+    } finally {
+      releaseJobLock(LOCK_KEY);
+    }
+  } catch (error) {
+    // 見回り自体は止めない。次のtickで再試行する
+    console.error("enrich tick failed:", error);
+  }
+}
+
+/**
  * 常時収集のスケジューラ。instrumentation.ts の register() から呼ぶ。
  *
  * 前回実行時刻はDBに持っているので、再起動でタイマーが巻き戻っても
@@ -124,7 +163,15 @@ export function startCollectionSchedule(): void {
   timer.unref?.();
   holder.__collectionSchedule = timer;
 
+  // 準備中バックログを自動消化する見回り（収集の24hとは独立。詰まっている時だけ動く）
+  const enrichTimer = setInterval(enrichTick, ENRICH_TICK_INTERVAL_MS);
+  enrichTimer.unref?.();
+  holder.__enrichSchedule = enrichTimer;
+
   // 起動直後は他の初期化と競合させたくないので、少し置いてから1回目を見る
   const firstTick = setTimeout(tick, 60 * 1000);
   firstTick.unref?.();
+  // 起動直後にバックログがあれば早めに1回消化を始める
+  const firstEnrich = setTimeout(enrichTick, 90 * 1000);
+  firstEnrich.unref?.();
 }
