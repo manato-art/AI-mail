@@ -148,7 +148,7 @@ export default function BulkSendPage() {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [generatedEmails, setGeneratedEmails] = useState<Record<string, { subject: string; body: string }>>({});
+  const [generatedEmails, setGeneratedEmails] = useState<Record<string, { subject: string; body: string; warnings?: string[] }>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateProgress, setGenerateProgress] = useState({ done: 0, total: 0 });
   const cancelGenerateRef = useRef(false);
@@ -454,15 +454,40 @@ export default function BulkSendPage() {
       ? !!selectedTemplate && !!selectedSenderId
       : !!(directSubject.trim() && directBody.trim() && selectedSenderId);
     if (!canSend || checkedRecipients.length === 0 || isSending) return;
-    const toSend = checkedRecipients.filter(
+    const candidates = checkedRecipients.filter(
       (r) => r.email && rowStatus[r.id]?.state !== "sent"
     );
-    if (toSend.length === 0) { showToast("送信対象がありません"); return; }
+    if (candidates.length === 0) { showToast("送信対象がありません"); return; }
+
+    // 同一メールアドレスの重複は1回だけ送る（#7: リスト内の重複による二重送信を防ぐ）。
+    // 先頭の1件だけ送り、以降の重複行は理由付きでスキップ表示する。
+    const seenEmails = new Set<string>();
+    const toSend: typeof candidates = [];
+    const duplicateRows: typeof candidates = [];
+    for (const r of candidates) {
+      const key = r.email.trim().toLowerCase();
+      if (seenEmails.has(key)) { duplicateRows.push(r); continue; }
+      seenEmails.add(key);
+      toSend.push(r);
+    }
+    if (duplicateRows.length > 0) {
+      setRowStatus((prev) => {
+        const next = { ...prev };
+        for (const r of duplicateRows) {
+          next[r.id] = {
+            state: "failed",
+            error: "同一メールアドレスが重複しているためスキップしました（先頭の1件のみ送信）",
+          };
+        }
+        return next;
+      });
+    }
 
     const sender = senders.find((s) => s.id === selectedSenderId);
+    const dupNote = duplicateRows.length > 0 ? `（重複 ${duplicateRows.length}件は除外）` : "";
     const confirmMsg = testMode
-      ? `テストモード: ${toSend.length}件分をテストアドレス宛に送信します。よろしいですか？`
-      : `${toSend.length}件のメールを ${sender?.email ?? ""} から送信します。よろしいですか？`;
+      ? `テストモード: ${toSend.length}件分をテストアドレス宛に送信します${dupNote}。よろしいですか？`
+      : `${toSend.length}件のメールを ${sender?.email ?? ""} から送信します${dupNote}。よろしいですか？`;
     if (!confirm(confirmMsg)) return;
 
     setIsSending(true);
@@ -572,9 +597,13 @@ export default function BulkSendPage() {
         });
         const data = await res.json();
         if (res.ok) {
+          // #5: 企業分析が取れず汎用文になった場合の警告を捨てず、生成結果に保持して
+          // 編集パネルで送信前に見せる（送信時は生成済み本文を送るのでサーバ側ゲートは
+          // {{AI:}} が消えていて発火しない。ここで拾わないと無警告のまま汎用文が飛ぶ）。
+          const genWarnings = Array.isArray(data.warnings) ? (data.warnings as string[]) : undefined;
           setGeneratedEmails((prev) => ({
             ...prev,
-            [r.id]: { subject: data.subject, body: data.body },
+            [r.id]: { subject: data.subject, body: data.body, warnings: genWarnings },
           }));
           okCount++;
         } else {
@@ -1185,6 +1214,17 @@ export default function BulkSendPage() {
                       <Buildings size={13} className="shrink-0 text-(--color-primary)" />
                       <span className="truncate text-[12px] font-medium">{previewRecipient.company || previewRecipient.email}</span>
                     </div>
+                    {generatedEmails[previewRecipient.id].warnings?.length ? (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-500/40 dark:bg-amber-500/10">
+                        <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="space-y-0.5">
+                          {generatedEmails[previewRecipient.id].warnings!.map((w, i) => (
+                            <p key={i} className="text-[11px] font-medium leading-snug text-amber-800 dark:text-amber-200">{w}</p>
+                          ))}
+                          <p className="text-[10px] text-amber-700/80 dark:text-amber-300/70">この宛先は会社ごとの個別文面になっていません。送信前にご確認ください。</p>
+                        </div>
+                      </div>
+                    ) : null}
                     <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</label>
                       <input

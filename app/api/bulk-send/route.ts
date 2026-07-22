@@ -8,12 +8,13 @@ import {
   getTemplate,
   getContactByEmail,
   createProspect,
-  createSendLog,
   updateProspectStatus,
   claimProspectForSending,
+  hasSentToEmail,
   updateSenderAuthStatus,
   getSetting,
 } from "@/lib/db";
+import { recordSuccessfulSend } from "@/lib/post-send";
 import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
@@ -151,14 +152,17 @@ export async function POST(request: NextRequest) {
   // {{AI:...}} ゾーンがあれば、宛先企業の分析データを解決してAI生成に使う。
   // DB既存→企業名→ドメイン→公式サイト検索+クロール+Gemini分析の順で探す。
   let companyAnalysis: AnalysisResult | null = null;
-  let analysisFailed = false;
+  // 「AI生成部分を求められたのに、この会社の分析データが得られなかった」状態。
+  // 例外時だけでなく null 返り（企業未特定・クロール空）も含める。ここを取りこぼすと
+  // 個社向けのはずの本文が無警告で汎用文のまま送られてしまう（#5）。
+  let analysisMissing = false;
   if (hasAiZones(mailBody)) {
     try {
       companyAnalysis = await resolveAnalysisForRecipient(company, rawToEmail, service);
     } catch (err) {
       console.error("company analysis resolution failed:", err);
-      analysisFailed = true;
     }
+    if (!companyAnalysis) analysisMissing = true;
   }
 
   let outgoingBody: string;
@@ -248,6 +252,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // #7: 二重送信の最終防衛。一括送信は毎回 prospect を新規作成するため CAS は空回りし、
+  // さらに acknowledgedWarnings(=force) は送信ガードの90日重複チェックを飛ばしてしまう。
+  // 一括のコールドメールに「同一宛先へ90日以内の再送」を意図する運用は無いので、
+  // ここでは force で解除できないハードガードとして送信履歴を直接照合する。
+  // （追撃は個別送信 /api/send の isFollowup 経路を使う想定）
+  if (hasSentToEmail(rawToEmail)) {
+    return NextResponse.json(
+      {
+        error: "このアドレスには過去90日以内に送信済みのため、重複送信を防止しました",
+        reasons: [`${rawToEmail} は送信履歴にあります（一括送信では再送しません）`],
+      },
+      { status: 409 }
+    );
+  }
+
   // Resolve attachments before creating any DB rows: a missing file must fail
   // the request outright, not strand a prospect in "sending".
   let attachments: EmailAttachment[];
@@ -289,8 +308,10 @@ export async function POST(request: NextRequest) {
 
   const unsubscribeEmail = getSetting("sender_email") ?? sender.email;
 
+  // --- 送信本体: ここが失敗した時だけ「まだ送っていない」ので unsent に戻して良い ---
+  let result: Awaited<ReturnType<typeof sendEmail>>;
   try {
-    const result = await sendEmail({
+    result = await sendEmail({
       encryptedRefreshToken: sender.google_refresh_token_encrypted,
       from: sender.email,
       fromName: sender.display_name,
@@ -299,30 +320,6 @@ export async function POST(request: NextRequest) {
       body: outgoingBody,
       unsubscribeEmail,
       attachments,
-    });
-
-    createSendLog({
-      prospect_id: prospect.id,
-      sender_id: senderId,
-      to_email: toEmail,
-      subject: outgoingSubject,
-      gmail_message_id: result.messageId,
-      gmail_thread_id: result.threadId,
-    });
-
-    updateProspectStatus(prospect.id, "sent");
-
-    const responseWarnings: string[] = [];
-    if (analysisFailed) {
-      responseWarnings.push("企業分析に失敗したため、汎用文面で送信しました");
-    }
-
-    return NextResponse.json({
-      success: true,
-      prospectId: prospect.id,
-      messageId: result.messageId,
-      testMode: TEST_MODE,
-      ...(responseWarnings.length > 0 && { warnings: responseWarnings }),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -336,11 +333,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("bulk-send failed:", { prospectId: prospect.id, toEmail, error: err });
+    console.error("bulk-send failed (not sent):", { prospectId: prospect.id, toEmail, error: err });
     updateProspectStatus(prospect.id, "unsent");
     return NextResponse.json(
       { error: "メール送信に失敗しました" },
       { status: 500 }
     );
   }
+
+  // --- ここに到達した時点でメールは実際に送信済み（#9） ---
+  // 以降の記録失敗で prospect を unsent に戻すと次回の一括送信で同じ宛先へ再送してしまうし、
+  // 送信は成功しているので「失敗」を返してもいけない。記録の失敗は警告に降格する（共通処理）。
+  const responseWarnings: string[] = [];
+  if (analysisMissing) {
+    responseWarnings.push("企業分析データが無いため、この会社向けの内容は汎用文で送信しました");
+  }
+
+  const { warnings: recordWarnings } = recordSuccessfulSend({
+    prospectId: prospect.id,
+    senderId,
+    toEmail,
+    realToEmail: rawToEmail,
+    subject: outgoingSubject,
+    messageId: result.messageId,
+    threadId: result.threadId,
+  });
+  responseWarnings.push(...recordWarnings);
+
+  return NextResponse.json({
+    success: true,
+    prospectId: prospect.id,
+    messageId: result.messageId,
+    testMode: TEST_MODE,
+    ...(responseWarnings.length > 0 && { warnings: responseWarnings }),
+  });
 }

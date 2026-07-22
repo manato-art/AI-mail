@@ -104,14 +104,16 @@ export async function POST(request: NextRequest) {
   const template = templateId ? getTemplate(templateId) : undefined;
 
   let companyAnalysis = null;
-  let analysisFailed = false;
+  // 例外時だけでなく null 返り（企業未特定）も「分析が無い」に含める。取りこぼすと
+  // プレビューでは個社向けに見えて、実際は汎用文が送られる齟齬になる（#5）。
+  let analysisMissing = false;
   if (hasAiZones(mailBody)) {
     try {
       companyAnalysis = await resolveAnalysisForRecipient(company, rawEmail, service);
     } catch (err) {
       console.error("preview: company analysis resolution failed:", err);
-      analysisFailed = true;
     }
+    if (!companyAnalysis) analysisMissing = true;
   }
 
   let outgoingBody: string;
@@ -137,8 +139,8 @@ export async function POST(request: NextRequest) {
   }
 
   const warnings: string[] = [];
-  if (analysisFailed) {
-    warnings.push("企業分析に失敗したため、汎用文面で生成しました");
+  if (analysisMissing) {
+    warnings.push("企業分析データが無いため、この会社向けの内容は汎用文で生成しました");
   }
 
   return NextResponse.json({

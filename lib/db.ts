@@ -1527,6 +1527,14 @@ export function findCompanyByName(name: string): Company | undefined {
     .get(name.trim()) as Company | undefined;
 }
 
+/** 同名の企業が何社あるか。同名多数（同名異企業）を検知して分析の取り違えを防ぐのに使う */
+export function countCompaniesByName(name: string): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) as count FROM companies WHERE name = ?")
+    .get(name.trim()) as { count: number };
+  return row.count;
+}
+
 export function getCompanyById(id: number): Company | undefined {
   return getDb()
     .prepare("SELECT * FROM companies WHERE id = ?")
@@ -1550,6 +1558,14 @@ export function findCompanyByDomain(domain: string): Company | undefined {
   return getDb()
     .prepare("SELECT * FROM companies WHERE domain = ? LIMIT 1")
     .get(domain.trim().toLowerCase().replace(/^www\./, "")) as Company | undefined;
+}
+
+/** 同一ドメインに紐づく企業が何社あるか。共有ドメイン（グループ会社・レンタルサーバ等）の検知に使う */
+export function countCompaniesByDomain(domain: string): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) as count FROM companies WHERE domain = ?")
+    .get(domain.trim().toLowerCase().replace(/^www\./, "")) as { count: number };
+  return row.count;
 }
 
 export function setCompanyDomain(id: number, domain: string): void {

@@ -4,11 +4,11 @@ import {
   getSender,
   getService,
   getPersona,
-  createSendLog,
   updateProspectStatus,
   claimProspectForSending,
   updateSenderAuthStatus,
 } from "@/lib/db";
+import { recordSuccessfulSend } from "@/lib/post-send";
 import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { applyBookingLink } from "@/lib/booking";
@@ -175,8 +175,10 @@ export async function POST(request: NextRequest) {
 
   const unsubscribeEmail = getSetting("sender_email") ?? sender.email;
 
+  // --- 送信本体: ここが失敗した時だけ「まだ送っていない」ので unsent に戻して良い（#9） ---
+  let result: Awaited<ReturnType<typeof sendEmail>>;
   try {
-    const result = await sendEmail({
+    result = await sendEmail({
       encryptedRefreshToken: sender.google_refresh_token_encrypted,
       from: sender.email,
       fromName: sender.display_name,
@@ -185,24 +187,6 @@ export async function POST(request: NextRequest) {
       body: outgoingBody,
       unsubscribeEmail,
       attachments,
-    });
-
-    createSendLog({
-      prospect_id: prospectId,
-      sender_id: senderId,
-      to_email: toEmail,
-      subject: outgoingSubject,
-      gmail_message_id: result.messageId,
-      gmail_thread_id: result.threadId,
-    });
-
-    updateProspectStatus(prospectId, "sent");
-
-    return NextResponse.json({
-      success: true,
-      messageId: result.messageId,
-      testMode: TEST_MODE,
-      actualRecipient: TEST_MODE ? toEmail : undefined,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -222,4 +206,23 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // --- 送信成功後の記録は共通処理へ。失敗しても unsent へ戻さず・失敗を返さず警告に降格 ---
+  const { warnings } = recordSuccessfulSend({
+    prospectId,
+    senderId,
+    toEmail,
+    realToEmail: rawToEmail,
+    subject: outgoingSubject,
+    messageId: result.messageId,
+    threadId: result.threadId,
+  });
+
+  return NextResponse.json({
+    success: true,
+    messageId: result.messageId,
+    testMode: TEST_MODE,
+    actualRecipient: TEST_MODE ? toEmail : undefined,
+    ...(warnings.length > 0 && { warnings }),
+  });
 }

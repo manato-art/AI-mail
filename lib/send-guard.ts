@@ -6,37 +6,13 @@ import {
   getAllSenders,
   DUPLICATE_SEND_BLOCK_DAYS,
 } from "@/lib/db";
+import { FREE_EMAIL_DOMAINS } from "@/lib/email-domains";
 import type { SendGuardResult } from "@/lib/types";
 
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
 const AI_ZONE_PREFIX = /^\{\{AI:/;
 
-/**
- * 送信元がフリーメールの場合、そのドメインを自社扱いにすると
- * gmail.com 宛が全てブロックされてしまうため除外する。
- */
-const FREE_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.co.jp",
-  "yahoo.com",
-  "outlook.com",
-  "outlook.jp",
-  "hotmail.com",
-  "hotmail.co.jp",
-  "live.jp",
-  "icloud.com",
-  "me.com",
-  "docomo.ne.jp",
-  "ezweb.ne.jp",
-  "au.com",
-  "softbank.ne.jp",
-  "i.softbank.jp",
-  "nifty.com",
-  "biglobe.ne.jp",
-  "so-net.ne.jp",
-  "ocn.ne.jp",
-]);
+// フリーメールドメイン（自社ドメイン誤ブロック除外に使う）は lib/email-domains に集約。
 
 function parseEnvOwnDomains(): string[] {
   return (process.env.OWN_DOMAINS ?? "")
