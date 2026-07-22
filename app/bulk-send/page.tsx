@@ -937,6 +937,18 @@ export default function BulkSendPage() {
         </button>
       </div>
 
+      {/* 「生成」で作った個別メールを各社へまとめて送る入口。どちらのタブでも常に見える */}
+      {prospects.some((p) => p.generated_subject && p.generated_body && p.input_url) && (
+        <button
+          type="button"
+          onClick={() => { setGeneratedOpen(true); setGeneratedSearch(""); }}
+          className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-(--color-primary)/50 bg-(--color-primary-light)/40 py-2.5 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+        >
+          <EnvelopeOpen size={15} />
+          「生成」で作った個別メールを各社へ送信
+        </button>
+      )}
+
       {/* Template / sender / direct input */}
       <div className="mt-5 flex flex-wrap items-end gap-3">
         {inputMode === "template" && (
@@ -2058,7 +2070,7 @@ export default function BulkSendPage() {
         <Modal open={generatedOpen} onClose={() => setGeneratedOpen(false)} labelledBy="bulk-generated-title">
           <div className="flex w-full max-w-[640px] max-h-[80vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-card) shadow-xl">
             <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-4">
-              <h3 id="bulk-generated-title" className="text-[15px] font-semibold">生成済みメールから引用</h3>
+              <h3 id="bulk-generated-title" className="text-[15px] font-semibold">生成済みメールを各社へ送信</h3>
               <button
                 type="button"
                 onClick={() => setGeneratedOpen(false)}
