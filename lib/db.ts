@@ -355,6 +355,17 @@ function migrateSchema(instance: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_send_log_gmail_message_id
     ON send_log (gmail_message_id) WHERE gmail_message_id IS NOT NULL
   `);
+
+  // #7 並行二重送信対策: 送信直前に宛先メールを原子的にクレームするための一時テーブル。
+  // 送信の「進行中」を横断リクエストに見せて、同一宛先の同時送信を1件に絞る。
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS send_claims (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_send_claims_email ON send_claims (email);
+  `);
 }
 
 function seedSettings(instance: Database.Database): void {
@@ -998,6 +1009,45 @@ export function hasSentToEmail(toEmail: string): boolean {
     )
     .get(normalizeEmailKey(toEmail), `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
   return !!row;
+}
+
+// クレームが「進行中」とみなす上限。これ以上前の claim は死んだリクエストの残骸として無視する。
+export const SEND_CLAIM_STALE_MINUTES = 10;
+
+/**
+ * 送信直前の「宛先メール」単位のアトミックなクレーム（#7 並行二重送信防止）。
+ *
+ * 二重送信ガード hasSentToEmail は「SELECT してから送信・記録」までに await を挟むため、
+ * 同一宛先への同時リクエストが両方 SELECT を通過して二重送信になり得る。
+ * better-sqlite3 は同期実行なので、この関数の transaction は他リクエストと割り込みなく
+ * 原子的に走る。進行中クレームが無ければ1件入れて claimId を返し、あれば null を返す。
+ *
+ * 返った claimId は送信の成否に関わらず releaseEmailClaim で必ず解放すること。
+ * プロセスが落ちても SEND_CLAIM_STALE_MINUTES 経過後は自動的に無効化される。
+ * 90日の重複判定は含めない（それは hasSentToEmail / 送信ガード側の責務。単発送信の
+ * 意図的な再送を殺さないため、ここは「同時実行の抑止」だけに限定する）。
+ */
+export function claimEmailForSend(toEmail: string): number | null {
+  const instance = getDb();
+  const key = normalizeEmailKey(toEmail);
+  const tx = instance.transaction((email: string): number | null => {
+    // 落ちたリクエストが残した古いクレームを掃除（テーブルの無限増加を防ぐ）
+    instance
+      .prepare(`DELETE FROM send_claims WHERE created_at < datetime('now','localtime', ?)`)
+      .run(`-${SEND_CLAIM_STALE_MINUTES} minutes`);
+    const live = instance
+      .prepare("SELECT id FROM send_claims WHERE email = ? LIMIT 1")
+      .get(email);
+    if (live) return null;
+    const res = instance.prepare("INSERT INTO send_claims (email) VALUES (?)").run(email);
+    return Number(res.lastInsertRowid);
+  });
+  return tx(key);
+}
+
+/** 送信処理の完了・失敗時にクレームを解放する（多重解放・存在しないIDでも安全） */
+export function releaseEmailClaim(claimId: number): void {
+  getDb().prepare("DELETE FROM send_claims WHERE id = ?").run(claimId);
 }
 
 // --- Companies / Contacts（F1: 企業リスト） ---

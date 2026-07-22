@@ -6,6 +6,8 @@ import {
   getPersona,
   updateProspectStatus,
   claimProspectForSending,
+  claimEmailForSend,
+  releaseEmailClaim,
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { recordSuccessfulSend } from "@/lib/post-send";
@@ -164,9 +166,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
+  // #7 並行対策: 同一宛先への“同時”送信を1件に絞るアトミックなクレーム（force でも不可・
+  // 90日重複とは別。単発送信の意図的な再送は殺さず、真に同時のリクエストだけを弾く）。
+  // 以降のすべての return の前で releaseEmailClaim して解放する。
+  const claimId = claimEmailForSend(rawToEmail);
+  if (claimId === null) {
+    return NextResponse.json(
+      { error: "このアドレスは現在送信処理中のため、重複送信を防止しました" },
+      { status: 409 }
+    );
+  }
+
   // 二重送信防止: send_status を条件付きで 'sending' にクレームする（CAS）。
   // 既に別リクエストが送信中/送信済みなら claimed=false で、送信APIを呼ばず中断する。
   if (!claimProspectForSending(prospectId)) {
+    releaseEmailClaim(claimId);
     return NextResponse.json(
       { error: "このメールは既に送信処理中または送信済みです" },
       { status: 409 }
@@ -194,6 +208,7 @@ export async function POST(request: NextRequest) {
     if (message === "REAUTH_REQUIRED") {
       updateSenderAuthStatus(senderId, "expired");
       updateProspectStatus(prospectId, "unsent");
+      releaseEmailClaim(claimId);
       return NextResponse.json(
         { error: "Gmail認証が無効です。再認証してください。" },
         { status: 401 }
@@ -201,6 +216,7 @@ export async function POST(request: NextRequest) {
     }
 
     updateProspectStatus(prospectId, "unsent");
+    releaseEmailClaim(claimId);
     return NextResponse.json(
       { error: "メール送信に失敗しました" },
       { status: 500 }
@@ -217,6 +233,9 @@ export async function POST(request: NextRequest) {
     messageId: result.messageId,
     threadId: result.threadId,
   });
+
+  // 送信＋記録が終わったのでクレームを解放
+  releaseEmailClaim(claimId);
 
   return NextResponse.json({
     success: true,

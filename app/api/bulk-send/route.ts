@@ -11,6 +11,8 @@ import {
   updateProspectStatus,
   claimProspectForSending,
   hasSentToEmail,
+  claimEmailForSend,
+  releaseEmailClaim,
   updateSenderAuthStatus,
   getSetting,
 } from "@/lib/db";
@@ -267,6 +269,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // #7 並行対策: 同一宛先への“同時”送信を1件に絞るアトミックなクレーム。
+  // hasSentToEmail は SELECT〜送信の間に await を挟むため、同時リクエストが両方通過し得る。
+  // 送信の成否に関わらず、以降のすべての return の前で releaseEmailClaim して解放する。
+  const claimId = claimEmailForSend(rawToEmail);
+  if (claimId === null) {
+    return NextResponse.json(
+      {
+        error: "このアドレスは現在送信処理中のため、重複送信を防止しました",
+        reasons: [`${rawToEmail} への送信が並行して進行中です`],
+      },
+      { status: 409 }
+    );
+  }
+
   // Resolve attachments before creating any DB rows: a missing file must fail
   // the request outright, not strand a prospect in "sending".
   let attachments: EmailAttachment[];
@@ -274,6 +290,7 @@ export async function POST(request: NextRequest) {
     attachments = loadEmailAttachments(attachmentIds);
   } catch (err) {
     const message = err instanceof Error ? err.message : "添付資料の読み込みに失敗しました";
+    releaseEmailClaim(claimId);
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
@@ -300,6 +317,7 @@ export async function POST(request: NextRequest) {
   // 二重送信防止: send_status を条件付きで 'sending' にクレーム（CAS）。
   // 新規作成直後なので通常は成功するが、同一prospectへの競合送信をDBレベルで1件に絞る。
   if (!claimProspectForSending(prospect.id)) {
+    releaseEmailClaim(claimId);
     return NextResponse.json(
       { error: "このメールは既に送信処理中または送信済みです" },
       { status: 409 }
@@ -327,6 +345,7 @@ export async function POST(request: NextRequest) {
     if (message === "REAUTH_REQUIRED") {
       updateSenderAuthStatus(senderId, "expired");
       updateProspectStatus(prospect.id, "unsent");
+      releaseEmailClaim(claimId);
       return NextResponse.json(
         { error: "Gmail認証が無効です。再認証してください。" },
         { status: 401 }
@@ -335,6 +354,7 @@ export async function POST(request: NextRequest) {
 
     console.error("bulk-send failed (not sent):", { prospectId: prospect.id, toEmail, error: err });
     updateProspectStatus(prospect.id, "unsent");
+    releaseEmailClaim(claimId);
     return NextResponse.json(
       { error: "メール送信に失敗しました" },
       { status: 500 }
@@ -359,6 +379,9 @@ export async function POST(request: NextRequest) {
     threadId: result.threadId,
   });
   responseWarnings.push(...recordWarnings);
+
+  // 送信＋記録が終わったのでクレームを解放（以降の重複は send_log/抑止リストが担保する）
+  releaseEmailClaim(claimId);
 
   return NextResponse.json({
     success: true,
