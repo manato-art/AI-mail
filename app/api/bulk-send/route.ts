@@ -218,34 +218,34 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // F18: 事実誤認の検知。force（チェック入り）なら全スキップ
-  if (!body.acknowledgedWarnings) {
-    const danger = runDangerCheck({
-      subject: outgoingSubject,
-      body: outgoingBody,
-      analysis: analysisForCheck,
-      service,
-      persona,
-      toEmail: rawToEmail,
-    });
+  // F18: 事実誤認・宛先取り違えの検知。
+  // BLOCK級（宛先アドレスと本文の会社が食い違う・数値捏造・社名略記等）は
+  // acknowledgedWarnings では絶対に解除しない。承認で押し切れるのは warn 級のみ。
+  const danger = runDangerCheck({
+    subject: outgoingSubject,
+    body: outgoingBody,
+    analysis: analysisForCheck,
+    service,
+    persona,
+    toEmail: rawToEmail,
+  });
 
-    if (!danger.canSend) {
-      return NextResponse.json(
-        { error: "事実誤認の疑いがあるため送信できません", reasons: danger.blocks },
-        { status: 422 }
-      );
-    }
+  if (!danger.canSend) {
+    return NextResponse.json(
+      { error: "事実誤認の疑いがあるため送信できません", reasons: danger.blocks },
+      { status: 422 }
+    );
+  }
 
-    if (danger.warnings.length > 0) {
-      return NextResponse.json(
-        {
-          error: "送信前に確認が必要な指摘があります",
-          warnings: danger.warnings,
-          requiresAcknowledgement: true,
-        },
-        { status: 409 }
-      );
-    }
+  if (!body.acknowledgedWarnings && danger.warnings.length > 0) {
+    return NextResponse.json(
+      {
+        error: "送信前に確認が必要な指摘があります",
+        warnings: danger.warnings,
+        requiresAcknowledgement: true,
+      },
+      { status: 409 }
+    );
   }
 
   // Resolve attachments before creating any DB rows: a missing file must fail

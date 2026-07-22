@@ -52,5 +52,15 @@ check("refusal_detected・force=true → 送れる(誤検知救済)", guard("ref
 addSuppression({ target: "blocked-domain.jp", target_type: "domain", reason: "optout" });
 check("ドメインoptout・force=true → ブロック", guard("anyone@blocked-domain.jp", true), false);
 
+// 6. 「明確に壊れた送信」は force でも通さない（未解決変数・空件名・空本文）
+function guardCustom(subject: string, bodyText: string, force: boolean): boolean {
+  return runSendGuard({ toEmail: "clean2@target.co.jp", subject, body: bodyText, senderId: sender.id, force }).canSend;
+}
+check("未解決変数あり・forceなし → ブロック", guardCustom(SUBJECT, BODY + "\n{{company_name}}様", false), false);
+check("未解決変数あり・force=true → それでもブロック", guardCustom(SUBJECT, BODY + "\n{{company_name}}様", true), false);
+check("件名が空・force=true → ブロック", guardCustom("   ", BODY, true), false);
+check("本文が空・force=true → ブロック", guardCustom(SUBJECT, "   ", true), false);
+check("AIゾーン{{AI:}}は未解決変数扱いせず force で送れる", guardCustom(SUBJECT, BODY + "\n{{AI:}}", true), true);
+
 console.log(`\n結果: ${pass} pass / ${fail} fail`);
 process.exit(fail === 0 ? 0 : 1);

@@ -22,7 +22,9 @@ export function GET() {
       result[`${key}_configured`] = value ? "true" : "false";
     }
   }
-  result.test_mode = process.env.TEST_MODE_RECIPIENT ? "true" : "false";
+  // 送信側(bulk-send/send)は .trim() 後の空判定でテストモードを決める。ここも揃えないと
+  // 空白のみの誤設定で「UIはテスト中表示なのに実アドレスへ本番配信」になる。
+  result.test_mode = process.env.TEST_MODE_RECIPIENT?.trim() ? "true" : "false";
   result.auth_enabled = isAuthEnabled() ? "true" : "false";
   result.auth_password_weak =
     isAuthEnabled() && getAppPassword().length < MIN_PASSWORD_LENGTH ? "true" : "false";

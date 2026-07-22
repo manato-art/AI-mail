@@ -166,16 +166,23 @@ export function runSendGuard(params: {
     }
   }
 
+  // --- force でも絶対に押し切れない「明確に壊れた送信」を先に弾く ---
+  // {{変数}}が生のまま／件名・本文が空、は「承認して送る」ものではなく単に壊れている。
+  // variables.ts はこのガードが未解決変数を弾く前提なので、force でも必ず適用する。
+  const hardBlocks: string[] = [];
+  const unresolvedVars = checkUnresolvedVariables(params.subject, params.body);
+  if (unresolvedVars.length > 0) {
+    hardBlocks.push(`未解決の変数が残っています: ${unresolvedVars.join(", ")}`);
+  }
+  if (!params.subject.trim()) hardBlocks.push("件名が空です");
+  if (!params.body.trim()) hardBlocks.push("本文が空です");
+  if (hardBlocks.length > 0) {
+    return { canSend: false, reasons: hardBlocks };
+  }
+
   // --- ここから下は force（承知の上で送る）ならスキップ可能な警告 ---
   if (params.force) {
     return { canSend: reasons.length === 0, reasons };
-  }
-
-  const unresolvedVars = checkUnresolvedVariables(params.subject, params.body);
-  if (unresolvedVars.length > 0) {
-    reasons.push(
-      `未解決の変数が残っています: ${unresolvedVars.join(", ")}`
-    );
   }
 
   const matchedDomain = checkOwnDomainBlock(params.toEmail);
@@ -206,14 +213,6 @@ export function runSendGuard(params: {
         );
       }
     }
-  }
-
-  if (!params.subject.trim()) {
-    reasons.push("件名が空です");
-  }
-
-  if (!params.body.trim()) {
-    reasons.push("本文が空です");
   }
 
   return {

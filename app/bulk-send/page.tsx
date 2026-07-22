@@ -284,6 +284,10 @@ export default function BulkSendPage() {
   function handleTemplateChange(nextId: string) {
     setSelectedTemplateId(nextId);
     setSelectedAttachmentIds(new Set());
+    // テンプレを変えたら、旧テンプレで生成した本文キャッシュを破棄する。
+    // 残すと「新テンプレのIDで旧テンプレの本文を送る」取り違えが起きる。
+    setGeneratedEmails({});
+    setRowStatus({});
   }
 
   const checkedRecipients = useMemo(() => recipients.filter((r) => r.checked), [recipients]);

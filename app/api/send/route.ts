@@ -122,8 +122,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // F18: 危険ワード・事実誤認の検知。force（チェック入り）なら全スキップ
-  if (analysis && !body.acknowledgedWarnings) {
+  // F18: 危険ワード・事実誤認の検知。
+  // BLOCK級（宛先と本文の会社が食い違う・数値捏造等）は acknowledgedWarnings では
+  // 解除しない。承認で押し切れるのは warn 級のみ。
+  if (analysis) {
     const danger = runDangerCheck({
       subject: outgoingSubject,
       body: outgoingBody,
@@ -140,7 +142,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (danger.warnings.length > 0) {
+    if (!body.acknowledgedWarnings && danger.warnings.length > 0) {
       return NextResponse.json(
         {
           error: "送信前に確認が必要な指摘があります",
