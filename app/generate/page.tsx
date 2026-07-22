@@ -16,6 +16,7 @@ import {
 import type {
   AnalysisResult,
   CompanyWithTag,
+  Contact,
   Persona,
   Prospect,
   QualityCheckResult,
@@ -122,6 +123,8 @@ function GeneratePageInner() {
   const [fixedText, setFixedText] = useState("");
 
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
+  // 連絡先メールが1件以上ある企業のID。生成側でも「メアド有無」で絞れるようにする
+  const [companyIdsWithEmail, setCompanyIdsWithEmail] = useState<Set<number>>(new Set());
   const [mode, setMode] = useState<"single" | "batch">("batch");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
   const [companySearch, setCompanySearch] = useState("");
@@ -170,13 +173,21 @@ function GeneratePageInner() {
           : [];
         const companiesData = companiesRes.ok
           ? await companiesRes.json()
-          : { companies: [] };
+          : { companies: [], contacts: [] };
         if (!cancelled) {
           setServices(servicesData);
           setPersonas(personasData);
           setTemplates(templatesData);
           setCompanies(
             (companiesData.companies as CompanyWithTag[]).filter((c) => c.hp_url && c.enrichment_status === "done")
+          );
+          const contactsData: Contact[] = Array.isArray(companiesData.contacts) ? companiesData.contacts : [];
+          setCompanyIdsWithEmail(
+            new Set(
+              contactsData
+                .filter((c) => c.company_id != null && c.email)
+                .map((c) => c.company_id as number)
+            )
           );
         }
       } catch {
@@ -610,6 +621,7 @@ function GeneratePageInner() {
           ) : (
             <CompanyPicker
               companies={companies}
+              emailCompanyIds={companyIdsWithEmail}
               selectedIds={selectedCompanyIds}
               onToggle={(id) => {
                 setSelectedCompanyIds((prev) => {
@@ -840,6 +852,7 @@ function GeneratePageInner() {
 
 function CompanyPicker({
   companies,
+  emailCompanyIds,
   selectedIds,
   onToggle,
   onToggleAll,
@@ -848,6 +861,7 @@ function CompanyPicker({
   disabled,
 }: {
   companies: CompanyWithTag[];
+  emailCompanyIds: Set<number>;
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
   onToggleAll: (ids: Set<number>) => void;
@@ -858,6 +872,8 @@ function CompanyPicker({
   // どのキーワード・どの商材向けに集めた企業かで絞り込めるよう、実データから選択肢を作る
   const [keywordFilter, setKeywordFilter] = useState("");
   const [serviceFilter, setServiceFilter] = useState("");
+  // メアド有無で絞る（"" すべて / "has" メアドあり / "none" メアド未取得）
+  const [emailFilter, setEmailFilter] = useState("");
 
   const keywordOptions = useMemo(() => {
     const set = new Set<string>();
@@ -874,6 +890,8 @@ function CompanyPicker({
     let list = companies;
     if (keywordFilter) list = list.filter((c) => c.collection_keyword === keywordFilter);
     if (serviceFilter) list = list.filter((c) => c.collection_service_name === serviceFilter);
+    if (emailFilter === "has") list = list.filter((c) => emailCompanyIds.has(c.id));
+    else if (emailFilter === "none") list = list.filter((c) => !emailCompanyIds.has(c.id));
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -881,7 +899,7 @@ function CompanyPicker({
       );
     }
     return list;
-  }, [companies, keywordFilter, serviceFilter, search]);
+  }, [companies, keywordFilter, serviceFilter, emailFilter, emailCompanyIds, search]);
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
@@ -917,8 +935,19 @@ function CompanyPicker({
             </span>
           )}
         </div>
-        {(keywordOptions.length > 0 || serviceOptions.length > 0) && (
+        {companies.length > 0 && (
           <div className="flex flex-wrap gap-2 border-b border-(--color-border) bg-gray-50/60 px-3 py-2 dark:bg-slate-700/30">
+            <select
+              value={emailFilter}
+              onChange={(e) => setEmailFilter(e.target.value)}
+              disabled={disabled}
+              aria-label="メール有無で絞り込む"
+              className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
+            >
+              <option value="">✉️ メアド有無：すべて</option>
+              <option value="has">✉️ メアドあり</option>
+              <option value="none">⚠️ メアド未取得</option>
+            </select>
             {keywordOptions.length > 0 && (
               <select
                 value={keywordFilter}
@@ -992,6 +1021,15 @@ function CompanyPicker({
                       )}
                     </span>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {emailCompanyIds.has(company.id) ? (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          ✉️ メアドあり
+                        </span>
+                      ) : (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                          ⚠️ メアド未取得
+                        </span>
+                      )}
                       {company.collection_keyword && (
                         <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
                           🔍 {company.collection_keyword}
