@@ -16,6 +16,18 @@ const COMMERCIAL_CLOSE_KEYWORDS = [
 
 const GENERIC_PHRASES = ["貴社のような企業様"];
 
+// ビジネスの初回営業メールに不向きな、カジュアル・過度に情緒的な言い回し。
+// 生成プロンプト側で禁止済みだが、出力が滑った場合にレビュー画面で気づけるよう検知する。
+const CASUAL_PHRASES = [
+  "すごい",
+  "凄い",
+  "感動しました",
+  "感動いたしました",
+  "心を動かされ",
+  "ワクワク",
+  "わくわく",
+];
+
 const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
 
@@ -76,6 +88,13 @@ export function validateEmail(
   for (const phrase of GENERIC_PHRASES) {
     if (body.includes(phrase)) {
       issues.push(`汎用的すぎる表現が含まれています:「${phrase}」`);
+    }
+  }
+
+  // ビジネスメールに不向きなカジュアル・過度な感情表現（テンプレでも実害チェックとして残す）
+  for (const phrase of CASUAL_PHRASES) {
+    if (body.includes(phrase)) {
+      issues.push(`ビジネスメールに不向きなカジュアル・過度な感情表現があります:「${phrase}」`);
     }
   }
 

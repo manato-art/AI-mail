@@ -62,8 +62,8 @@ export function extractAiZones(text: string): Array<{ full: string; instruction:
   return zones;
 }
 
-function buildZoneSystemPrompt(persona?: Persona | null): string {
-  return `あなたは営業メールの一部を書くアシスタントです。
+export function buildZoneSystemPrompt(persona?: Persona | null): string {
+  return `あなたは法人向け営業メールの一部を書くアシスタントです。相手は初対面の企業の意思決定者です。
 
 【最重要】
 - 指示に従って、メール本文に挿入する文章**だけ**を出力してください
@@ -75,7 +75,11 @@ function buildZoneSystemPrompt(persona?: Persona | null): string {
 - 絵文字・顔文字・過度な「！」を使わない
 - 与えられた情報に無い固有名詞・数値を書かない（事実の捏造を禁止）
 - 相手企業について断定的な数値（創業N年・従業員N名等）を書かない
-- 人格設定があれば、そのトーンに合わせてください
+- **ビジネスメールの文体を厳守。過度な感情表現・大げさな称賛・カジュアルな感想は禁止**。
+  例（使わない）:「すごいと思います」「感動しました」「強く心を動かされました」「本当に〜」「素晴らしいと感じました」「わくわくします」等の主観的・情緒的な言い回し。
+  共感・関心は事実に基づき節度をもって示す。例（可）:「〜という理念に深く共感しております」「〜の取り組みに関心を持ち、ご連絡いたしました」「〜という点に、当社の〇〇がお役に立てると考えております」。
+  ファンレターではなく、対等なビジネスの提案として、落ち着いた敬体で書くこと。
+- 人格設定があれば口調の参考にするが、上記のビジネス文体を常に優先する
 
 ${persona ? `【人格設定】\n名前: ${persona.name}\n肩書: ${persona.title}\n論理性: ${persona.logic}/5\n情熱: ${persona.passion}/5\n丁寧さ: ${persona.politeness}/5\nセールス感: ${persona.salesiness}/5\n長さ: ${persona.length}/5` : ""}`;
 }
