@@ -7,7 +7,12 @@
 
 import { getContactByEmail } from "@/lib/db";
 import { checkLegalDisclosures } from "@/lib/send-guard";
-import { companyNamesConsistent, domainsMatch, isFreeEmailDomain } from "@/lib/email-domains";
+import {
+  companyNamesConsistent,
+  companyNameIsExtension,
+  domainsMatch,
+  isFreeEmailDomain,
+} from "@/lib/email-domains";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 export interface DangerFinding {
@@ -284,6 +289,12 @@ function checkRecipientMatchesCompany(
   // 誤って別会社と判定してブロックしてしまうので、正規化して照合する。
   const stripParen = (s: string) => s.replace(/[（(][^）)]*[）)]/g, "");
   if (companyNamesConsistent(stripParen(known), stripParen(name))) return [];
+
+  // 一方が他方に部署・地域・法人形態の後置語を足しただけ（プレフィックス拡張）なら同一企業。
+  // 例:「株式会社ウィルオブ・ワーク」と「…ワーク システムインテグレーション事業部」、
+  //   「BuzzFeed, Inc.」と「BuzzFeed Japan株式会社」。連絡先の登録名に部署名が付く・
+  //   本社/地域法人で表記が違う、といった同一企業の誤ブロックを解消する（別法人格は除外済み）。
+  if (companyNameIsExtension(stripParen(known), stripParen(name))) return [];
 
   // 宛先メールのドメインが、送信対象企業（分析元HP）のドメインと一致するなら同一企業。
   // 社名の表記ゆれ（スタメン↔stmn、A↔A Inc. のようなローマ字↔カナ・略称）は名前照合では
