@@ -1683,6 +1683,14 @@ export function getSendCountsByDomain(): Record<string, number> {
   return map;
 }
 
+/** これまでに生成した prospect のドメイン一覧（重複排除）。生成ページの「生成状態」フィルタに使う */
+export function getDistinctProspectDomains(): string[] {
+  const rows = getDb()
+    .prepare("SELECT DISTINCT domain FROM prospects WHERE domain IS NOT NULL AND domain != ''")
+    .all() as { domain: string }[];
+  return rows.map((r) => r.domain);
+}
+
 /** 重複排除: このドメイン宛に一度でも送信していれば、収集し直さない */
 export function hasSentToDomain(domain: string): boolean {
   const row = getDb()

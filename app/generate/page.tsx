@@ -23,6 +23,7 @@ import type {
   Service,
   Template,
 } from "@/lib/types";
+import { classifyGenStatus, type GenStatus } from "@/lib/gen-status";
 import { BatchProgress, type BatchItem } from "./batch-progress";
 
 /** 収集経路の表示名（企業選択のタグ表示用） */
@@ -102,6 +103,21 @@ const PROGRESS_STEPS = [
 
 const STEP_DELAY_MS = 2000;
 
+const GEN_STATUS_META: Record<GenStatus, { label: string; cls: string }> = {
+  sent: {
+    label: "📨 送信済み",
+    cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  },
+  generated: {
+    label: "📝 生成済み・未送信",
+    cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  },
+  none: {
+    label: "🆕 未生成",
+    cls: "bg-gray-100 text-(--color-muted) dark:bg-slate-700",
+  },
+};
+
 function GeneratePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -125,6 +141,9 @@ function GeneratePageInner() {
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   // 連絡先メールが1件以上ある企業のID。生成側でも「メアド有無」で絞れるようにする
   const [companyIdsWithEmail, setCompanyIdsWithEmail] = useState<Set<number>>(new Set());
+  // 生成/送信状態フィルタ用。ドメイン単位の「送信済み」「生成済み」集合（正規化済み）
+  const [sentDomains, setSentDomains] = useState<Set<string>>(new Set());
+  const [generatedDomains, setGeneratedDomains] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<"single" | "batch">("batch");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
   const [companySearch, setCompanySearch] = useState("");
@@ -156,11 +175,12 @@ function GeneratePageInner() {
 
     async function loadOptions() {
       try {
-        const [servicesRes, personasRes, templatesRes, companiesRes] = await Promise.all([
+        const [servicesRes, personasRes, templatesRes, companiesRes, genStatusRes] = await Promise.all([
           fetch("/api/services"),
           fetch("/api/personas"),
           fetch("/api/templates"),
           fetch("/api/companies"),
+          fetch("/api/companies/gen-status"),
         ]);
         const servicesData: Service[] = servicesRes.ok
           ? await servicesRes.json()
@@ -189,6 +209,11 @@ function GeneratePageInner() {
                 .map((c) => c.company_id as number)
             )
           );
+          const genStatus = genStatusRes.ok
+            ? await genStatusRes.json().catch(() => ({}))
+            : {};
+          setSentDomains(new Set((genStatus.sentDomains as string[] | undefined) ?? []));
+          setGeneratedDomains(new Set((genStatus.generatedDomains as string[] | undefined) ?? []));
         }
       } catch {
         if (!cancelled) {
@@ -622,6 +647,8 @@ function GeneratePageInner() {
             <CompanyPicker
               companies={companies}
               emailCompanyIds={companyIdsWithEmail}
+              sentDomains={sentDomains}
+              generatedDomains={generatedDomains}
               selectedIds={selectedCompanyIds}
               onToggle={(id) => {
                 setSelectedCompanyIds((prev) => {
@@ -853,6 +880,8 @@ function GeneratePageInner() {
 function CompanyPicker({
   companies,
   emailCompanyIds,
+  sentDomains,
+  generatedDomains,
   selectedIds,
   onToggle,
   onToggleAll,
@@ -862,6 +891,8 @@ function CompanyPicker({
 }: {
   companies: CompanyWithTag[];
   emailCompanyIds: Set<number>;
+  sentDomains: Set<string>;
+  generatedDomains: Set<string>;
   selectedIds: Set<number>;
   onToggle: (id: number) => void;
   onToggleAll: (ids: Set<number>) => void;
@@ -874,6 +905,17 @@ function CompanyPicker({
   const [serviceFilter, setServiceFilter] = useState("");
   // メアド有無で絞る（"" すべて / "has" メアドあり / "none" メアド未取得）
   const [emailFilter, setEmailFilter] = useState("");
+  // 生成/送信状態で絞る（"" すべて / "none" 未生成 / "generated" 生成済み・未送信 / "sent" 送信済み）
+  const [statusFilter, setStatusFilter] = useState("");
+
+  // 企業ごとの生成/送信状態を domain 突き合わせで1つに分類（送信済み > 生成済み > 未生成）
+  const statusById = useMemo(() => {
+    const m = new Map<number, GenStatus>();
+    for (const c of companies) {
+      m.set(c.id, classifyGenStatus(c.domain, sentDomains, generatedDomains));
+    }
+    return m;
+  }, [companies, sentDomains, generatedDomains]);
 
   const keywordOptions = useMemo(() => {
     const set = new Set<string>();
@@ -892,6 +934,7 @@ function CompanyPicker({
     if (serviceFilter) list = list.filter((c) => c.collection_service_name === serviceFilter);
     if (emailFilter === "has") list = list.filter((c) => emailCompanyIds.has(c.id));
     else if (emailFilter === "none") list = list.filter((c) => !emailCompanyIds.has(c.id));
+    if (statusFilter) list = list.filter((c) => (statusById.get(c.id) ?? "none") === statusFilter);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -899,7 +942,7 @@ function CompanyPicker({
       );
     }
     return list;
-  }, [companies, keywordFilter, serviceFilter, emailFilter, emailCompanyIds, search]);
+  }, [companies, keywordFilter, serviceFilter, emailFilter, emailCompanyIds, statusFilter, statusById, search]);
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
@@ -947,6 +990,18 @@ function CompanyPicker({
               <option value="">✉️ メアド有無：すべて</option>
               <option value="has">✉️ メアドあり</option>
               <option value="none">⚠️ メアド未取得</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              disabled={disabled}
+              aria-label="生成・送信の状態で絞り込む"
+              className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
+            >
+              <option value="">🗂️ 生成状態：すべて</option>
+              <option value="none">🆕 未生成</option>
+              <option value="generated">📝 生成済み・未送信</option>
+              <option value="sent">📨 送信済み</option>
             </select>
             {keywordOptions.length > 0 && (
               <select
@@ -1021,6 +1076,15 @@ function CompanyPicker({
                       )}
                     </span>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {(() => {
+                        const st = statusById.get(company.id) ?? "none";
+                        const meta = GEN_STATUS_META[st];
+                        return (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+                            {meta.label}
+                          </span>
+                        );
+                      })()}
                       {emailCompanyIds.has(company.id) ? (
                         <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                           ✉️ メアドあり
