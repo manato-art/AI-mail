@@ -227,6 +227,20 @@ function checkWordList(
   return [{ severity, message: `${label}: ${hits.join("、")}` }];
 }
 
+/**
+ * 相手企業の文章の「引用」として本文に取り込んだ誇大表現ワードを、自社の断定と誤検知しないよう除去する。
+ * 「貴社のRecruitページに『…No.1…』と記載されているのを拝見し」のように、相手への帰属
+ * （貴社/御社/…と記載/拝見 等）が近くにある「」引用スパンだけを外す。帰属が無い「」（＝自社の
+ * 主張を括った可能性）は残すので、本当の誇大表現は従来どおり警告される（景表法の保護は維持）。
+ */
+const QUOTE_ATTRIBUTION = /貴社|御社|そちら|と記載|とあり|と拝見|と書|と謳|を掲げ|と明記|ページに|サイトに|に記載|とのこと/;
+function stripTargetQuotes(text: string): string {
+  return text.replace(/「[^」]*」/g, (match, offset: number) => {
+    const around = text.slice(Math.max(0, offset - 40), offset + match.length + 40);
+    return QUOTE_ATTRIBUTION.test(around) ? "" : match;
+  });
+}
+
 function checkCompatibilityContradiction(
   body: string,
   analysis: AnalysisResult
@@ -322,7 +336,7 @@ export function runDangerCheck(params: {
           },
         ]
       : []),
-    ...checkWordList(target, EXAGGERATION_WORDS, "warn", "景品表示法リスクのある断定・誇大表現"),
+    ...checkWordList(stripTargetQuotes(target), EXAGGERATION_WORDS, "warn", "景品表示法リスクのある断定・誇大表現"),
     ...checkWordList(body, DOUBLE_HONORIFICS, "warn", "二重敬語"),
     ...checkCompatibilityContradiction(body, analysis),
   ];
