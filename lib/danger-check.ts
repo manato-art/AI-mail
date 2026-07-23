@@ -7,6 +7,7 @@
 
 import { getContactByEmail } from "@/lib/db";
 import { checkLegalDisclosures } from "@/lib/send-guard";
+import { companyNamesConsistent } from "@/lib/email-domains";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 export interface DangerFinding {
@@ -262,6 +263,12 @@ function checkRecipientMatchesCompany(
 
   const known = registered.company_name?.trim();
   if (!known || known === name) return [];
+
+  // 法人格ゆれ（株式会社↔無印）や読み仮名の（）注記の違いは同一企業。
+  // 完全一致でしか通さないと「株式会社H4」と「株式会社H4（エイチフォー）」等を
+  // 誤って別会社と判定してブロックしてしまうので、正規化して照合する。
+  const stripParen = (s: string) => s.replace(/[（(][^）)]*[）)]/g, "");
+  if (companyNamesConsistent(stripParen(known), stripParen(name))) return [];
 
   return [
     {
