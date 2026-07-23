@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import type { CompanyWithTag, Contact } from "@/lib/types";
+import { normGenDomain } from "@/lib/gen-status";
 import { ActivityLogPanel } from "../activity-log-panel";
 import { Toast } from "@/components/toast";
 
@@ -71,6 +72,8 @@ export default function CompaniesPage() {
   const router = useRouter();
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  // 送信済みドメイン（send_log由来・正規化済み）。企業に「送信済み」を分かりやすく出すために使う
+  const [sentDomains, setSentDomains] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "done" | "pending" | "failed">(
     "all",
@@ -78,6 +81,8 @@ export default function CompaniesPage() {
   // F1 タグ絞り込み: どのキーワード・どの商材で集めた企業かで絞る
   const [keywordFilter, setKeywordFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
+  // 送信済み絞り込み（all / sent 送信済みのみ / unsent 未送信のみ）
+  const [sentFilter, setSentFilter] = useState<"all" | "sent" | "unsent">("all");
   const [reEnriching, setReEnriching] = useState(false);
   const [enrichingPending, setEnrichingPending] = useState(false);
   const [reconciling, setReconciling] = useState(false);
@@ -122,11 +127,18 @@ export default function CompaniesPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/companies");
+      const [res, genRes] = await Promise.all([
+        fetch("/api/companies"),
+        fetch("/api/companies/gen-status"),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setCompanies(data.companies);
         setContacts(data.contacts);
+      }
+      if (genRes.ok) {
+        const gen = await genRes.json().catch(() => ({}));
+        setSentDomains(new Set((gen.sentDomains as string[] | undefined) ?? []));
       }
     } catch {
       /* next refresh will retry */
@@ -233,10 +245,18 @@ export default function CompaniesPage() {
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "ja"));
   }, [companies]);
 
+  // その企業のドメインに一度でも送信済みか（send_log 由来。単送信・一括・生成送信すべて含む）
+  const isSent = (c: CompanyWithTag) => {
+    const d = normGenDomain(c.domain);
+    return !!d && sentDomains.has(d);
+  };
+
   const filtered = companies.filter((c) => {
     if (filter !== "all" && c.enrichment_status !== filter) return false;
     if (keywordFilter !== "all" && c.collection_keyword !== keywordFilter) return false;
     if (serviceFilter !== "all" && String(c.collection_service_id) !== serviceFilter) return false;
+    if (sentFilter === "sent" && !isSent(c)) return false;
+    if (sentFilter === "unsent" && isSent(c)) return false;
     return true;
   });
 
@@ -280,6 +300,7 @@ export default function CompaniesPage() {
     done: companies.filter((c) => c.enrichment_status === "done").length,
     pending: companies.filter((c) => c.enrichment_status === "pending").length,
     failed: companies.filter((c) => c.enrichment_status === "failed").length,
+    sent: companies.filter(isSent).length,
   };
 
   if (loading) {
@@ -374,6 +395,33 @@ export default function CompaniesPage() {
           </button>
         ))}
 
+        {/* 送信済み/未送信の絞り込み。送信済み企業を一目で分けられるようにする */}
+        <span className="mx-1 h-5 w-px bg-(--color-border)" aria-hidden />
+        <button
+          type="button"
+          onClick={() => setSentFilter((v) => (v === "sent" ? "all" : "sent"))}
+          title="一度でも送信したことがある企業だけを表示"
+          className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
+            sentFilter === "sent"
+              ? "bg-blue-600 text-white"
+              : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover)"
+          }`}
+        >
+          📨 送信済み<span className="ml-1.5 tabular-nums">({counts.sent})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSentFilter((v) => (v === "unsent" ? "all" : "unsent"))}
+          title="まだ一度も送信していない企業だけを表示"
+          className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
+            sentFilter === "unsent"
+              ? "bg-(--color-primary) text-white"
+              : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover)"
+          }`}
+        >
+          未送信<span className="ml-1.5 tabular-nums">({counts.all - counts.sent})</span>
+        </button>
+
         {/* F1: キーワード・商材タグでの絞り込み（該当タグが1つでもある時だけ出す） */}
         {keywordOptions.length > 0 && (
           <select
@@ -454,7 +502,14 @@ export default function CompaniesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-medium">{company.name}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="font-medium">{company.name}</p>
+                          {isSent(company) && (
+                            <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                              📨 送信済み
+                            </span>
+                          )}
+                        </div>
                         {company.hp_url ? (
                           <p className="mt-0.5 truncate text-[11px] text-(--color-muted) max-w-[250px]">
                             {company.domain || company.hp_url}
