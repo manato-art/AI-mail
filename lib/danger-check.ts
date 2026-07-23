@@ -7,7 +7,7 @@
 
 import { getContactByEmail } from "@/lib/db";
 import { checkLegalDisclosures } from "@/lib/send-guard";
-import { companyNamesConsistent } from "@/lib/email-domains";
+import { companyNamesConsistent, domainsMatch, isFreeEmailDomain } from "@/lib/email-domains";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
 export interface DangerFinding {
@@ -248,7 +248,8 @@ function checkCompatibilityContradiction(
  */
 function checkRecipientMatchesCompany(
   toEmail: string | undefined,
-  companyName: string | undefined
+  companyName: string | undefined,
+  companyDomain: string | undefined
 ): DangerFinding[] {
   const name = companyName?.trim();
   if (!toEmail || !name) return [];
@@ -270,6 +271,20 @@ function checkRecipientMatchesCompany(
   const stripParen = (s: string) => s.replace(/[（(][^）)]*[）)]/g, "");
   if (companyNamesConsistent(stripParen(known), stripParen(name))) return [];
 
+  // 宛先メールのドメインが、送信対象企業（分析元HP）のドメインと一致するなら同一企業。
+  // 社名の表記ゆれ（スタメン↔stmn、A↔A Inc. のようなローマ字↔カナ・略称）は名前照合では
+  // 吸収できず誤ブロックが多発するため、非フリーメールでドメインが一致するなら
+  // 「同一企業（登録名は表記ゆれ）」とみなして通す。別ドメイン宛（＝本当の取り違え）は従来どおり弾く。
+  const emailDomain = toEmail.split("@")[1] ?? "";
+  if (
+    companyDomain &&
+    emailDomain &&
+    !isFreeEmailDomain(emailDomain) &&
+    domainsMatch(emailDomain, companyDomain)
+  ) {
+    return [];
+  }
+
   return [
     {
       severity: "block",
@@ -286,8 +301,10 @@ export function runDangerCheck(params: {
   persona?: Persona | null;
   /** F4: 誤差し込み検知に使う。テストモードでも実際の宛先を渡すこと */
   toEmail?: string;
+  /** 送信対象企業（分析元HP）のドメイン。宛先ドメインと一致すれば社名の表記ゆれを許容する */
+  companyDomain?: string;
 }): DangerCheckResult {
-  const { subject, body, analysis, service, persona, toEmail } = params;
+  const { subject, body, analysis, service, persona, toEmail, companyDomain } = params;
   const corpus = buildAllowedCorpus(analysis, service, persona);
   const target = `${subject}\n${body}`;
 
@@ -296,7 +313,7 @@ export function runDangerCheck(params: {
   const findings: DangerFinding[] = [
     ...checkHallucinatedNumbers(target, corpus, analysis),
     ...checkCompanyName(body, analysis),
-    ...checkRecipientMatchesCompany(toEmail, analysis.company_name),
+    ...checkRecipientMatchesCompany(toEmail, analysis.company_name, companyDomain),
     ...(legalMissing.length > 0
       ? [
           {

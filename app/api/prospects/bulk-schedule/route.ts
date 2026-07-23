@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
         service,
         persona,
         toEmail,
+        companyDomain: prospect.domain,
       });
       if (!danger.canSend) {
         failed.push({ id, company: label, reason: danger.blocks.join(" / ") });

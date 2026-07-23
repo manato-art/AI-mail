@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
       service,
       persona,
       toEmail: rawToEmail,
+      companyDomain: prospect.domain,
     });
 
     if (!danger.canSend) {
