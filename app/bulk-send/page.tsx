@@ -145,6 +145,7 @@ export default function BulkSendPage() {
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const [historyServiceFilter, setHistoryServiceFilter] = useState("");
   const [historyChecked, setHistoryChecked] = useState<Set<number>>(new Set());
 
   const [companiesOpen, setCompaniesOpen] = useState(false);
@@ -769,22 +770,40 @@ export default function BulkSendPage() {
 
   const hasGenerated = Object.keys(generatedEmails).length > 0;
 
+  const serviceNameOf = useCallback(
+    (id: number) => services.find((s) => s.id === id)?.name ?? "",
+    [services]
+  );
+
   const sentProspects = useMemo(() => {
     const q = historySearch.toLowerCase();
     return sorted
       .filter((p) => p.send_status === "sent" && p.emails_found_json)
+      .filter((p) => !historyServiceFilter || p.service_id === Number(historyServiceFilter))
       .filter((p) =>
         !q ||
         (p.company_name || "").toLowerCase().includes(q) ||
         (p.domain || "").toLowerCase().includes(q) ||
         (p.emails_found_json || "").toLowerCase().includes(q)
       );
-  }, [sorted, historySearch]);
+  }, [sorted, historySearch, historyServiceFilter]);
 
-  const serviceNameOf = useCallback(
-    (id: number) => services.find((s) => s.id === id)?.name ?? "",
-    [services]
-  );
+  /** 送信履歴に含まれる商材の選択肢（service_id → 名前） */
+  const historyServiceOptions = useMemo(() => {
+    const ids = new Set<number>();
+    for (const p of sorted) if (p.send_status === "sent" && p.emails_found_json) ids.add(p.service_id);
+    return [...ids].map((id) => ({ id, name: serviceNameOf(id) || `#${id}` }));
+  }, [sorted, serviceNameOf]);
+
+  const allHistoryChecked = sentProspects.length > 0 && sentProspects.every((p) => historyChecked.has(p.id));
+  function toggleHistoryAll() {
+    setHistoryChecked((prev) => {
+      const n = new Set(prev);
+      if (allHistoryChecked) for (const p of sentProspects) n.delete(p.id);
+      else for (const p of sentProspects) n.add(p.id);
+      return n;
+    });
+  }
 
   /** 生成メールに実際に使われている商材の選択肢（service_id → 名前） */
   const genServiceOptions = useMemo(() => {
@@ -915,6 +934,16 @@ export default function BulkSendPage() {
         (contactsByCompanyId.get(c.id) ?? []).some((ct) => ct.email.toLowerCase().includes(q)),
     );
   }, [companiesList, companiesSearch, contactsByCompanyId, companiesKeywordFilter, companiesServiceFilter]);
+
+  const allCompaniesModalChecked = filteredCompanies.length > 0 && filteredCompanies.every((c) => companiesChecked.has(c.id));
+  function toggleCompaniesModalAll() {
+    setCompaniesChecked((prev) => {
+      const n = new Set(prev);
+      if (allCompaniesModalChecked) for (const c of filteredCompanies) n.delete(c.id);
+      else for (const c of filteredCompanies) n.add(c.id);
+      return n;
+    });
+  }
 
   function handleCompaniesImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
@@ -1749,6 +1778,21 @@ export default function BulkSendPage() {
                   className="h-9 w-full rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
                 />
               </div>
+              {historyServiceOptions.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <select
+                    value={historyServiceFilter}
+                    onChange={(e) => setHistoryServiceFilter(e.target.value)}
+                    aria-label="商材で絞り込む"
+                    className="h-8 rounded-lg border border-(--color-border) bg-gray-50 px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                  >
+                    <option value="">📦 すべての商材</option>
+                    {historyServiceOptions.map((s) => (
+                      <option key={s.id} value={String(s.id)}>📦 {s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-3">
@@ -1760,6 +1804,15 @@ export default function BulkSendPage() {
                 </div>
               ) : (
                 <div className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-(--color-border) bg-(--color-card) px-4 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allHistoryChecked}
+                      onChange={toggleHistoryAll}
+                      className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+                    />
+                    <span className="text-[12px] font-medium text-(--color-muted)">すべて選択（{sentProspects.length}件）</span>
+                  </label>
                   {sentProspects.map((p) => {
                     const emails: string[] = p.emails_found_json ? JSON.parse(p.emails_found_json) : [];
                     const checked = historyChecked.has(p.id);
@@ -1887,6 +1940,15 @@ export default function BulkSendPage() {
                 </div>
               ) : (
                 <div className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-(--color-border) bg-(--color-card) px-4 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allCompaniesModalChecked}
+                      onChange={toggleCompaniesModalAll}
+                      className="h-4 w-4 cursor-pointer accent-(--color-primary)"
+                    />
+                    <span className="text-[12px] font-medium text-(--color-muted)">すべて選択（{filteredCompanies.length}社）</span>
+                  </label>
                   {filteredCompanies.map((company) => {
                     const contacts = contactsByCompanyId.get(company.id) ?? [];
                     const checked = companiesChecked.has(company.id);
