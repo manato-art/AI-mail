@@ -148,6 +148,11 @@ export default function HistoryPage() {
   }, [prospects, search, filterCompat, filterStatus, filterService]);
 
   const hasActiveFilters = Boolean(filterCompat || filterStatus || filterService);
+  // 送信予約したメールの件数。ワンタップで絞り込める入口に出す
+  const scheduledCount = useMemo(
+    () => prospects.filter((p) => p.send_status === "scheduled").length,
+    [prospects],
+  );
 
   function clearFilters() {
     setFilterCompat("");
@@ -238,6 +243,20 @@ export default function HistoryPage() {
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
               {filtered.length}
             </span>
+          )}
+          {!loading && scheduledCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterStatus(filterStatus === "scheduled" ? "" : "scheduled")}
+              title="送信予約したメールだけを表示（もう一度押すと解除）"
+              className={`inline-flex h-7 items-center gap-1 rounded-full px-3 text-xs font-semibold transition-colors cursor-pointer ${
+                filterStatus === "scheduled"
+                  ? "bg-(--color-primary) text-white"
+                  : "bg-(--color-primary-light) text-(--color-primary) hover:opacity-80"
+              }`}
+            >
+              📅 予約 {scheduledCount}件{filterStatus === "scheduled" ? "（表示中）" : ""}
+            </button>
           )}
         </div>
         <button
