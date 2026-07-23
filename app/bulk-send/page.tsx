@@ -213,9 +213,18 @@ export default function BulkSendPage() {
       showToast("送信者（人格）を選択してください");
       return;
     }
-    const targets = generatedProspects.filter(
-      (p) => generatedChecked.has(p.id) && firstEmailOf(p) && p.send_status !== "sent"
-    );
+    // 同一宛先へは1通だけ（最新）。チェックに古い重複が混じっていても宛先ごとに最新へ絞る
+    const seenSend = new Set<string>();
+    const targets: Prospect[] = [];
+    for (const p of generatedProspects) {
+      if (!generatedChecked.has(p.id) || p.send_status === "sent") continue;
+      const email = firstEmailOf(p);
+      if (!email) continue;
+      const key = email.toLowerCase();
+      if (seenSend.has(key)) continue;
+      seenSend.add(key);
+      targets.push(p);
+    }
     if (targets.length === 0) {
       showToast("送信できる選択がありません（メアドあり・未送信のみ対象）");
       return;
@@ -869,24 +878,38 @@ export default function BulkSendPage() {
   }, [sorted, generatedSearch, genEmailFilter, genServiceFilter]);
 
   /** 表示中の生成メールのうち、送信できる対象（メアドあり・未送信）。全選択の対象 */
-  const genSelectable = useMemo(
-    () => generatedProspects.filter((p) => firstEmailOf(p) && p.send_status !== "sent"),
-    [generatedProspects]
-  );
+  // 同じ宛先メールに複数の生成メールがある場合は「最新の1件」だけを送信対象にする
+  // （generatedProspects は作成日時の降順なので、各メールの先頭＝最新）。
+  const genSelectable = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Prospect[] = [];
+    for (const p of generatedProspects) {
+      const email = firstEmailOf(p);
+      if (!email || p.send_status === "sent") continue;
+      const key = email.toLowerCase();
+      if (seen.has(key)) continue; // 同一宛先は最新だけ残す
+      seen.add(key);
+      result.push(p);
+    }
+    return result;
+  }, [generatedProspects]);
+  /** 各宛先で「最新＝送信対象」に選ばれた生成メールのID。これ以外の同一宛先は重複扱い */
+  const genSelectableIds = useMemo(() => new Set(genSelectable.map((p) => p.id)), [genSelectable]);
   const allGenSelected =
     genSelectable.length > 0 && genSelectable.every((p) => generatedChecked.has(p.id));
 
   function toggleGenSelectAll() {
-    setGeneratedChecked((prev) => {
-      const n = new Set(prev);
-      if (allGenSelected) {
-        for (const p of genSelectable) n.delete(p.id);
-      } else {
-        for (const p of genSelectable) n.add(p.id);
-      }
-      return n;
-    });
+    // 全選択は「各宛先の最新1件」だけ。古い重複は選ばない
+    if (allGenSelected) setGeneratedChecked(new Set());
+    else setGeneratedChecked(new Set(genSelectable.map((p) => p.id)));
   }
+
+  // モーダルを開いた時、各宛先の最新1件をデフォルトで選択済みにする
+  useEffect(() => {
+    if (generatedOpen) setGeneratedChecked(new Set(genSelectable.map((p) => p.id)));
+    // 開いた瞬間だけ既定選択する（絞り込み変更では選択をリセットしない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedOpen]);
 
   function handleHistoryImport() {
     const toAdd: Omit<Recipient, "id" | "checked">[] = [];
@@ -2366,6 +2389,8 @@ export default function BulkSendPage() {
                     const selectable = !!email && !already;
                     const editing = genEditingId === p.id;
                     const svcName = serviceNameOf(p.service_id);
+                    // 同一宛先に、より新しい生成メールがある＝この行は古い重複（既定では選ばれない）
+                    const isOlderDup = !!email && !already && !genSelectableIds.has(p.id);
                     return (
                       <div key={p.id} className="rounded-lg border border-(--color-border)">
                         <div className="flex items-center gap-3 px-3 py-2.5">
@@ -2391,6 +2416,11 @@ export default function BulkSendPage() {
                                 <span className="truncate text-(--color-muted)">{email}</span>
                               ) : (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⚠️ メアド無し</span>
+                              )}
+                              {isOlderDup && (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="同じ宛先に新しい生成メールがあります。既定では最新の1件だけ送ります">
+                                  重複（最新を選択中）
+                                </span>
                               )}
                               {svcName && (
                                 <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">📦 {svcName}</span>
