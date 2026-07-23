@@ -13,6 +13,7 @@ import {
   hasSentToEmail,
   claimEmailForSend,
   releaseEmailClaim,
+  scheduleProspect,
   updateSenderAuthStatus,
   getSetting,
 } from "@/lib/db";
@@ -58,6 +59,8 @@ export async function POST(request: NextRequest) {
     attachmentIds?: number[];
     /** F18の警告を画面で確認済み。ブロック指摘はこのフラグでは解除されない */
     acknowledgedWarnings?: boolean;
+    /** 予約送信の予定時刻（ISO文字列）。指定時は即時送信せず予約する */
+    scheduledAt?: string;
   };
   try {
     body = await request.json();
@@ -267,6 +270,46 @@ export async function POST(request: NextRequest) {
       },
       { status: 409 }
     );
+  }
+
+  // 予約送信: 時刻指定があれば、この宛先分の最終内容で prospect を作って予約状態にし、送らない。
+  // 時刻到来時に常駐スケジューラが送る（並行クレームは不要なのでここで分岐）。
+  if (typeof body.scheduledAt === "string" && body.scheduledAt.trim()) {
+    const when = new Date(body.scheduledAt);
+    if (Number.isNaN(when.getTime())) {
+      return NextResponse.json({ error: "予約日時の形式が不正です" }, { status: 400 });
+    }
+    if (when.getTime() <= Date.now() + 30_000) {
+      return NextResponse.json({ error: "予約日時は現在より先の時刻を指定してください" }, { status: 400 });
+    }
+    const scheduledAtUtc = when.toISOString().slice(0, 19).replace("T", " ");
+    const scheduledProspect = createProspect({
+      input_url: "",
+      domain: rawToEmail.split("@")[1] ?? "",
+      company_name: company,
+      analysis_json: "{}",
+      service_id: service.id,
+      persona_id: persona.id,
+      subject: outgoingSubject,
+      body: outgoingBody,
+      generated_subject: outgoingSubject,
+      generated_body: outgoingBody,
+      emails_found_json: JSON.stringify([rawToEmail]),
+      form_url: null,
+      is_form_only: 0,
+      compatibility_score: "medium",
+      has_refusal: 0,
+      refusal_text: null,
+      send_status: "unsent",
+    });
+    scheduleProspect(scheduledProspect.id, {
+      scheduledAt: scheduledAtUtc,
+      senderId,
+      toEmail: rawToEmail,
+      subject: outgoingSubject,
+      body: outgoingBody,
+    });
+    return NextResponse.json({ scheduled: true, scheduledAt: scheduledAtUtc, prospectId: scheduledProspect.id });
   }
 
   // #7 並行対策: 同一宛先への“同時”送信を1件に絞るアトミックなクレーム。

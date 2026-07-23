@@ -319,6 +319,11 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "prospects", "refusal_text", "TEXT");
   // 生成元テンプレートの記録。テンプレ由来のメールは品質チェックの文字数・構成チェックを外す
   addColumnIfMissing(instance, "prospects", "template_id", "INTEGER");
+
+  // 予約送信: 予定時刻・送信者・宛先を持たせ、時刻到来でスケジューラが送る
+  addColumnIfMissing(instance, "prospects", "scheduled_at", "TEXT");
+  addColumnIfMissing(instance, "prospects", "scheduled_sender_id", "INTEGER");
+  addColumnIfMissing(instance, "prospects", "scheduled_to_email", "TEXT");
   // F14: 日程調整リンク
   addColumnIfMissing(instance, "senders", "booking_tool", "TEXT NOT NULL DEFAULT 'calendly'");
   addColumnIfMissing(instance, "senders", "booking_url", "TEXT NOT NULL DEFAULT ''");
@@ -602,7 +607,10 @@ export function getProspect(id: number): Prospect | undefined {
 }
 
 export function createProspect(
-  data: Omit<Prospect, "id" | "created_at" | "template_id"> & { template_id?: number | null }
+  data: Omit<
+    Prospect,
+    "id" | "created_at" | "template_id" | "scheduled_at" | "scheduled_sender_id" | "scheduled_to_email"
+  > & { template_id?: number | null }
 ): Prospect {
   const instance = getDb();
   const result = instance
@@ -729,6 +737,70 @@ export function updateProspectStatus(id: number, status: string): Prospect | und
   const instance = getDb();
   instance.prepare("UPDATE prospects SET send_status = ? WHERE id = ?").run(status, id);
   return getProspect(id);
+}
+
+/**
+ * prospect を予約送信状態にする。最終的な送信本文(subject/body)・送信者・宛先・予定時刻を
+ * 併せて確定させ、時刻到来時にスケジューラがこの内容でそのまま送る。
+ */
+export function scheduleProspect(
+  id: number,
+  data: { scheduledAt: string; senderId: number; toEmail: string; subject: string; body: string }
+): Prospect | undefined {
+  getDb()
+    .prepare(
+      `UPDATE prospects
+       SET send_status = 'scheduled',
+           scheduled_at = @scheduledAt,
+           scheduled_sender_id = @senderId,
+           scheduled_to_email = @toEmail,
+           subject = @subject,
+           body = @body
+       WHERE id = @id`
+    )
+    .run({ id, scheduledAt: data.scheduledAt, senderId: data.senderId, toEmail: data.toEmail, subject: data.subject, body: data.body });
+  return getProspect(id);
+}
+
+/**
+ * 予定時刻が到来した予約prospectを取り出す（古い予約から順に）。
+ * scheduled_at は UTC の 'YYYY-MM-DD HH:MM:SS' で保存されるので UTC の now と比較する
+ * （サーバのタイムゾーンに依存させない）。
+ */
+export function getDueScheduledProspects(limit: number): Prospect[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM prospects
+       WHERE send_status = 'scheduled'
+         AND scheduled_at IS NOT NULL
+         AND scheduled_at <= datetime('now')
+       ORDER BY scheduled_at ASC, id ASC
+       LIMIT ?`
+    )
+    .all(limit) as Prospect[];
+}
+
+/** 予約中（未送信の予約）の一覧。予約一覧UI用に予定の近い順で返す */
+export function getScheduledProspects(): Prospect[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM prospects
+       WHERE send_status = 'scheduled'
+       ORDER BY scheduled_at ASC, id ASC`
+    )
+    .all() as Prospect[];
+}
+
+/** 予約を取り消す（未送信に戻し、予約情報をクリア）。既に送信/送信中でなければ true */
+export function cancelScheduledProspect(id: number): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE prospects
+       SET send_status = 'unsent', scheduled_at = NULL, scheduled_sender_id = NULL, scheduled_to_email = NULL
+       WHERE id = ? AND send_status = 'scheduled'`
+    )
+    .run(id);
+  return result.changes > 0;
 }
 
 /**

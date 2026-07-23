@@ -50,7 +50,7 @@ export interface PersonaInput {
   length: number;
 }
 
-export type SendStatus = "unsent" | "sent" | "replied" | "meeting" | "rejected";
+export type SendStatus = "unsent" | "scheduled" | "sent" | "failed" | "replied" | "meeting" | "rejected";
 
 export interface Prospect {
   id: number;
@@ -73,6 +73,11 @@ export interface Prospect {
   /** このprospectをどのテンプレートから生成したか（自由生成はnull）。品質チェックの構成判定に使う */
   template_id: number | null;
   send_status: SendStatus;
+  /** 予約送信の予定時刻（'YYYY-MM-DD HH:MM:SS' localtime）。予約でなければ null */
+  scheduled_at: string | null;
+  /** 予約送信で使う送信者ID・宛先メール（時刻到来時にこの内容で送る）。予約でなければ null */
+  scheduled_sender_id: number | null;
+  scheduled_to_email: string | null;
   created_at: string;
 }
 

@@ -58,7 +58,7 @@ interface SenderInfo {
   auth_status: string;
 }
 
-type RowSendState = "sending" | "sent" | "failed";
+type RowSendState = "sending" | "sent" | "scheduled" | "failed";
 
 interface RowStatus {
   state: RowSendState;
@@ -113,7 +113,8 @@ export default function BulkSendPage() {
   const [generatedSearch, setGeneratedSearch] = useState("");
   const [generatedChecked, setGeneratedChecked] = useState<Set<number>>(new Set());
   const [sendingGenerated, setSendingGenerated] = useState(false);
-  const [genRowStatus, setGenRowStatus] = useState<Record<number, { state: "sending" | "sent" | "failed"; error?: string }>>({});
+  const [genRowStatus, setGenRowStatus] = useState<Record<number, { state: "sending" | "sent" | "scheduled" | "failed"; error?: string }>>({});
+  const [genScheduledAt, setGenScheduledAt] = useState("");
   const [genEmailFilter, setGenEmailFilter] = useState("");
   const [genServiceFilter, setGenServiceFilter] = useState("");
   const [services, setServices] = useState<Service[]>([]);
@@ -139,6 +140,7 @@ export default function BulkSendPage() {
   const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
   const [isSending, setIsSending] = useState(false);
   const [allowWarnings, setAllowWarnings] = useState(false);
+  const [bulkScheduledAt, setBulkScheduledAt] = useState("");
   /** 送信ループの中断フラグ。現在の1件を送り終えてから止まる */
   const cancelRef = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -218,10 +220,21 @@ export default function BulkSendPage() {
       showToast("送信できる選択がありません（メアドあり・未送信のみ対象）");
       return;
     }
+    // 予約日時が入っていれば送信ではなく予約にする
+    const scheduledIso = genScheduledAt ? new Date(genScheduledAt).toISOString() : "";
+    if (scheduledIso && new Date(genScheduledAt).getTime() <= Date.now()) {
+      showToast("予約日時は現在より先の時刻を指定してください");
+      return;
+    }
+    const isSchedule = !!scheduledIso;
+    const whenLabel = isSchedule ? new Date(genScheduledAt).toLocaleString("ja-JP") : "";
+
     const sender = senders.find((s) => s.id === selectedSenderId);
-    const confirmMsg = testMode
-      ? `テストモード: 生成メール${targets.length}件をテストアドレス宛に送信します。よろしいですか？`
-      : `生成した個別メール${targets.length}件を、それぞれの会社（${sender?.email ?? ""} から）へ送信します。よろしいですか？`;
+    const confirmMsg = isSchedule
+      ? `生成メール${targets.length}件を ${whenLabel} に送信予約します。よろしいですか？`
+      : testMode
+        ? `テストモード: 生成メール${targets.length}件をテストアドレス宛に送信します。よろしいですか？`
+        : `生成した個別メール${targets.length}件を、それぞれの会社（${sender?.email ?? ""} から）へ送信します。よろしいですか？`;
     if (!confirm(confirmMsg)) return;
 
     setSendingGenerated(true);
@@ -240,6 +253,7 @@ export default function BulkSendPage() {
             senderId: selectedSenderId,
             toEmail: email,
             acknowledgedWarnings: allowWarnings,
+            ...(scheduledIso && { scheduledAt: scheduledIso }),
           }),
         });
         const data = await res.json();
@@ -249,6 +263,10 @@ export default function BulkSendPage() {
             : data.error || "送信に失敗しました";
           setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "failed", error: msg } }));
           fail++;
+        } else if (data.scheduled) {
+          setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "scheduled" } }));
+          setProspects((prev) => prev.map((x) => (x.id === p.id ? { ...x, send_status: "scheduled" } : x)));
+          ok++;
         } else {
           setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "sent" } }));
           setProspects((prev) => prev.map((x) => (x.id === p.id ? { ...x, send_status: "sent" } : x)));
@@ -262,7 +280,11 @@ export default function BulkSendPage() {
     }
     setSendingGenerated(false);
     setGeneratedChecked(new Set());
-    showToast(fail === 0 ? `${ok}件を送信しました` : `送信完了: 成功${ok}件 / 失敗${fail}件`);
+    showToast(
+      isSchedule
+        ? (fail === 0 ? `${ok}件を予約しました` : `予約完了: 成功${ok}件 / 失敗${fail}件`)
+        : (fail === 0 ? `${ok}件を送信しました` : `送信完了: 成功${ok}件 / 失敗${fail}件`)
+    );
   }
 
   /** 生成メールの内容プレビュー/編集の開閉。開くとき現在の送信本文(subject/body)を下書きに読み込む */
@@ -604,11 +626,22 @@ export default function BulkSendPage() {
       });
     }
 
+    // 予約日時が入っていれば送信ではなく予約にする
+    const scheduledIso = bulkScheduledAt ? new Date(bulkScheduledAt).toISOString() : "";
+    if (scheduledIso && new Date(bulkScheduledAt).getTime() <= Date.now()) {
+      showToast("予約日時は現在より先の時刻を指定してください");
+      return;
+    }
+    const isSchedule = !!scheduledIso;
+    const whenLabel = isSchedule ? new Date(bulkScheduledAt).toLocaleString("ja-JP") : "";
+
     const sender = senders.find((s) => s.id === selectedSenderId);
     const dupNote = duplicateRows.length > 0 ? `（重複 ${duplicateRows.length}件は除外）` : "";
-    const confirmMsg = testMode
-      ? `テストモード: ${toSend.length}件分をテストアドレス宛に送信します${dupNote}。よろしいですか？`
-      : `${toSend.length}件のメールを ${sender?.email ?? ""} から送信します${dupNote}。よろしいですか？`;
+    const confirmMsg = isSchedule
+      ? `${toSend.length}件のメールを ${whenLabel} に送信予約します${dupNote}。よろしいですか？`
+      : testMode
+        ? `テストモード: ${toSend.length}件分をテストアドレス宛に送信します${dupNote}。よろしいですか？`
+        : `${toSend.length}件のメールを ${sender?.email ?? ""} から送信します${dupNote}。よろしいですか？`;
     if (!confirm(confirmMsg)) return;
 
     setIsSending(true);
@@ -639,6 +672,7 @@ export default function BulkSendPage() {
             body: emailBody,
             attachmentIds: [...selectedAttachmentIds],
             acknowledgedWarnings: allowWarnings,
+            ...(scheduledIso && { scheduledAt: scheduledIso }),
           }),
         });
         const data = await res.json();
@@ -650,6 +684,9 @@ export default function BulkSendPage() {
               : data.error || "送信に失敗しました";
           setRowStatus((prev) => ({ ...prev, [r.id]: { state: "failed", error: msg } }));
           failCount++;
+        } else if (data.scheduled) {
+          setRowStatus((prev) => ({ ...prev, [r.id]: { state: "scheduled" } }));
+          okCount++;
         } else {
           const warning = Array.isArray(data.warnings) ? data.warnings.join(" / ") : undefined;
           setRowStatus((prev) => ({ ...prev, [r.id]: { state: "sent", warning } }));
@@ -671,9 +708,9 @@ export default function BulkSendPage() {
       return;
     }
     showToast(
-      failCount === 0
-        ? `${okCount}件を送信しました`
-        : `送信完了: 成功${okCount}件 / 失敗${failCount}件`
+      isSchedule
+        ? (failCount === 0 ? `${okCount}件を予約しました` : `予約完了: 成功${okCount}件 / 失敗${failCount}件`)
+        : (failCount === 0 ? `${okCount}件を送信しました` : `送信完了: 成功${okCount}件 / 失敗${failCount}件`)
     );
   }
 
@@ -1279,6 +1316,9 @@ export default function BulkSendPage() {
                         {rowStatus[r.id]?.state === "sent" && (
                           <Check size={15} weight="bold" className="inline-block" style={{ color: "var(--color-success)" }} />
                         )}
+                        {rowStatus[r.id]?.state === "scheduled" && (
+                          <span className="text-[11px] font-medium text-(--color-primary)">⏰予約</span>
+                        )}
                         {rowStatus[r.id]?.state === "failed" && (
                           <X size={15} weight="bold" className="inline-block" style={{ color: "var(--color-danger)" }} />
                         )}
@@ -1733,19 +1773,40 @@ export default function BulkSendPage() {
                 )}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={handleSendAll}
-                disabled={!selectedSenderId || checkedRecipients.length === 0 || isSending}
-                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isSending ? (
-                  <SpinnerGap size={16} className="animate-spin" />
-                ) : (
-                  <PaperPlaneTilt size={16} weight="fill" />
-                )}
-                {isSending ? "送信中..." : `選択した${checkedRecipients.length}件を送信`}
-              </button>
+              <>
+                <label className="flex items-center gap-1.5 text-[11px] text-(--color-muted)">
+                  <span className="whitespace-nowrap">予約（任意）</span>
+                  <input
+                    type="datetime-local"
+                    value={bulkScheduledAt}
+                    onChange={(e) => setBulkScheduledAt(e.target.value)}
+                    disabled={isSending}
+                    className="h-11 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50"
+                  />
+                  {bulkScheduledAt && (
+                    <button type="button" onClick={() => setBulkScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger)" aria-label="予約日時をクリア">
+                      <X size={14} />
+                    </button>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSendAll}
+                  disabled={!selectedSenderId || checkedRecipients.length === 0 || isSending}
+                  className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isSending ? (
+                    <SpinnerGap size={16} className="animate-spin" />
+                  ) : (
+                    <PaperPlaneTilt size={16} weight="fill" />
+                  )}
+                  {isSending
+                    ? "処理中..."
+                    : bulkScheduledAt
+                      ? `選択した${checkedRecipients.length}件を予約`
+                      : `選択した${checkedRecipients.length}件を送信`}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -2337,8 +2398,9 @@ export default function BulkSendPage() {
                               {already && (
                                 <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-(--color-muted) dark:bg-slate-700">送信済</span>
                               )}
-                              {st?.state === "sending" && <span className="text-(--color-primary)">送信中…</span>}
+                              {st?.state === "sending" && <span className="text-(--color-primary)">処理中…</span>}
                               {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
+                              {st?.state === "scheduled" && <span className="font-medium text-(--color-primary)">⏰ 予約しました</span>}
                               {st?.state === "failed" && <span className="text-(--color-danger)">✕ {st.error}</span>}
                             </div>
                           </div>
@@ -2409,7 +2471,7 @@ export default function BulkSendPage() {
             </div>
 
             {generatedProspects.length > 0 && (
-              <div className="flex items-center justify-between gap-3 border-t border-(--color-border) px-5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-5 py-3">
                 <span className="text-[12px] text-(--color-muted)">
                   {!selectedSenderId
                     ? "先に送信者（人格）を選択してください"
@@ -2417,19 +2479,35 @@ export default function BulkSendPage() {
                       ? `${generatedChecked.size}件を選択中`
                       : "送信するメールにチェック"}
                 </span>
-                <button
-                  type="button"
-                  onClick={handleSendGenerated}
-                  disabled={sendingGenerated || generatedChecked.size === 0 || !selectedSenderId}
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                >
-                  {sendingGenerated ? (
-                    <SpinnerGap size={15} className="animate-spin" />
-                  ) : (
-                    <PaperPlaneTilt size={15} weight="fill" />
-                  )}
-                  {testMode ? "テスト送信" : "選択を各社へ送信"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-[11px] text-(--color-muted)">
+                    <span className="whitespace-nowrap">予約（任意）</span>
+                    <input
+                      type="datetime-local"
+                      value={genScheduledAt}
+                      onChange={(e) => setGenScheduledAt(e.target.value)}
+                      className="h-9 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10"
+                    />
+                    {genScheduledAt && (
+                      <button type="button" onClick={() => setGenScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger)" aria-label="予約日時をクリア">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSendGenerated}
+                    disabled={sendingGenerated || generatedChecked.size === 0 || !selectedSenderId}
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-(--color-primary) px-4 text-[13px] font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                  >
+                    {sendingGenerated ? (
+                      <SpinnerGap size={15} className="animate-spin" />
+                    ) : (
+                      <PaperPlaneTilt size={15} weight="fill" />
+                    )}
+                    {genScheduledAt ? "予約送信" : testMode ? "テスト送信" : "選択を各社へ送信"}
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -38,7 +38,9 @@ const COMPATIBILITY_BG: Record<string, string> = {
 
 const STATUS_LABELS: Record<SendStatus, string> = {
   unsent: "未送信",
+  scheduled: "予約済",
   sent: "送信済",
+  failed: "送信失敗",
   replied: "返信あり",
   meeting: "商談中",
   rejected: "見送り",
@@ -46,7 +48,9 @@ const STATUS_LABELS: Record<SendStatus, string> = {
 
 const STATUS_STYLES: Record<SendStatus, string> = {
   unsent: "border-gray-300 text-gray-500 dark:border-gray-600 dark:text-gray-400",
+  scheduled: "border-(--color-primary) text-(--color-primary)",
   sent: "border-(--color-primary) text-(--color-primary)",
+  failed: "border-(--color-danger) text-(--color-danger)",
   replied: "border-(--color-success) text-(--color-success)",
   meeting: "border-(--color-warning) text-(--color-warning)",
   rejected: "border-(--color-danger) text-(--color-danger)",

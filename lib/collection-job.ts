@@ -10,6 +10,7 @@ import {
 import { logActivity } from "@/lib/activity-log";
 import { runCollectionCycle, type CollectionCycleResult } from "@/lib/collection";
 import { runEnrichmentBatch, type EnrichmentBatchResult } from "@/lib/enrichment";
+import { runScheduledSendBatch } from "@/lib/send-scheduler";
 
 /** 収集は1日1回で足りる。叩く回数を増やすほど検知・ブロックのリスクが上がる */
 const RUN_INTERVAL_HOURS = 24;
@@ -29,6 +30,9 @@ const LOCK_TTL_MINUTES = 90;
 const ENRICH_TICK_INTERVAL_MS = 5 * 60 * 1000;
 const ENRICH_TICK_BATCH = 20;
 const ENRICH_LOCK_TTL_MINUTES = 30;
+
+/** 予約送信の見回り間隔。予約時刻の精度に効くので短め（1分） */
+const SCHEDULE_TICK_INTERVAL_MS = 60 * 1000;
 
 /**
  * 収集ジョブ + 裏処理(enrichment)の共有ロックキー。
@@ -105,7 +109,30 @@ export function getLastCollectionRunAt(): string | null {
 type ScheduleHolder = typeof globalThis & {
   __collectionSchedule?: NodeJS.Timeout;
   __enrichSchedule?: NodeJS.Timeout;
+  __scheduleSendSchedule?: NodeJS.Timeout;
 };
+
+// 予約送信ティックの再入防止（1バッチが1分を超えても多重起動しない）
+let scheduledSendRunning = false;
+
+/**
+ * 予定時刻が到来した予約メールを送る見回り。収集ロックとは独立（送信は別リソース）。
+ * per-email のクレームと送信ガードで安全性は担保される。
+ */
+async function scheduledSendTick(): Promise<void> {
+  if (scheduledSendRunning) return;
+  scheduledSendRunning = true;
+  try {
+    const result = await runScheduledSendBatch();
+    if (result.sent > 0 || result.failed > 0) {
+      console.info(`scheduled send: ${result.sent} sent / ${result.failed} failed`);
+    }
+  } catch (error) {
+    console.error("scheduled send tick failed:", error);
+  } finally {
+    scheduledSendRunning = false;
+  }
+}
 
 async function tick(): Promise<void> {
   try {
@@ -168,10 +195,18 @@ export function startCollectionSchedule(): void {
   enrichTimer.unref?.();
   holder.__enrichSchedule = enrichTimer;
 
+  // 予約送信の見回り（1分ごと。予約時刻が来たものだけ送る）
+  const scheduleSendTimer = setInterval(scheduledSendTick, SCHEDULE_TICK_INTERVAL_MS);
+  scheduleSendTimer.unref?.();
+  holder.__scheduleSendSchedule = scheduleSendTimer;
+
   // 起動直後は他の初期化と競合させたくないので、少し置いてから1回目を見る
   const firstTick = setTimeout(tick, 60 * 1000);
   firstTick.unref?.();
   // 起動直後にバックログがあれば早めに1回消化を始める
   const firstEnrich = setTimeout(enrichTick, 90 * 1000);
   firstEnrich.unref?.();
+  // 起動直後に期日到来済みの予約があれば早めに送る
+  const firstScheduleSend = setTimeout(scheduledSendTick, 45 * 1000);
+  firstScheduleSend.unref?.();
 }

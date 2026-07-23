@@ -8,6 +8,7 @@ import {
   claimProspectForSending,
   claimEmailForSend,
   releaseEmailClaim,
+  scheduleProspect,
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { recordSuccessfulSend } from "@/lib/post-send";
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
     acknowledgedWarnings?: boolean;
     /** F14: 日程調整リンクを本文に添える。仕様書どおり既定はOFF（1通目には入れない） */
     includeBookingLink?: boolean;
+    /** 予約送信の予定時刻（ISO文字列）。指定時は即時送信せず予約する */
+    scheduledAt?: string;
   };
   try {
     body = await request.json();
@@ -154,6 +157,28 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
+  }
+
+  // 予約送信: 時刻指定があれば、ここまでのガードを通過した最終内容で予約状態にして
+  // 即時送信しない。時刻到来時に常駐スケジューラがこの内容をそのまま送る。
+  if (typeof body.scheduledAt === "string" && body.scheduledAt.trim()) {
+    const when = new Date(body.scheduledAt);
+    if (Number.isNaN(when.getTime())) {
+      return NextResponse.json({ error: "予約日時の形式が不正です" }, { status: 400 });
+    }
+    if (when.getTime() <= Date.now() + 30_000) {
+      return NextResponse.json({ error: "予約日時は現在より先の時刻を指定してください" }, { status: 400 });
+    }
+    // UTCの 'YYYY-MM-DD HH:MM:SS' で保存（getDueScheduledProspectsのUTC比較と揃える）
+    const scheduledAtUtc = when.toISOString().slice(0, 19).replace("T", " ");
+    scheduleProspect(prospectId, {
+      scheduledAt: scheduledAtUtc,
+      senderId,
+      toEmail: rawToEmail,
+      subject: outgoingSubject,
+      body: outgoingBody,
+    });
+    return NextResponse.json({ scheduled: true, scheduledAt: scheduledAtUtc, prospectId });
   }
 
   // Resolve attachments before flipping status: a missing file must fail the

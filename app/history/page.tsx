@@ -29,7 +29,9 @@ const COMPATIBILITY_STYLES: Record<string, string> = {
 
 const STATUS_LABELS: Record<SendStatus, string> = {
   unsent: "未送信",
+  scheduled: "予約済",
   sent: "送信済",
+  failed: "送信失敗",
   replied: "返信あり",
   meeting: "商談中",
   rejected: "見送り",
@@ -37,11 +39,21 @@ const STATUS_LABELS: Record<SendStatus, string> = {
 
 const STATUS_STYLES: Record<SendStatus, string> = {
   unsent: "bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400",
+  scheduled: "bg-(--color-primary-light) text-(--color-primary)",
   sent: "bg-(--color-primary-light) text-(--color-primary)",
+  failed: "bg-(--color-danger-light) text-(--color-danger)",
   replied: "bg-(--color-success-light) text-(--color-success)",
   meeting: "bg-(--color-warning-light) text-(--color-warning)",
   rejected: "bg-(--color-danger-light) text-(--color-danger)",
 };
+
+/** UTC保存の scheduled_at をローカル表記にする */
+function formatScheduledAt(s: string | null): string {
+  if (!s) return "";
+  const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -166,6 +178,23 @@ export default function HistoryPage() {
       alert("通信エラーが発生しました");
     } finally {
       setUpdatingStatusId(null);
+    }
+  }
+
+  async function handleCancelSchedule(prospect: Prospect) {
+    if (!confirm(`${prospect.company_name || prospect.domain} への予約送信を取り消しますか？（未送信に戻ります）`)) return;
+    try {
+      const res = await fetch(`/api/prospects/${prospect.id}/cancel-schedule`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "予約の取消に失敗しました");
+        return;
+      }
+      setProspects((prev) =>
+        prev.map((p) => (p.id === prospect.id ? { ...p, send_status: "unsent", scheduled_at: null } : p))
+      );
+    } catch {
+      alert("予約の取消に失敗しました（通信エラー）");
     }
   }
 
@@ -415,10 +444,25 @@ export default function HistoryPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                          {prospect.send_status === "scheduled" && prospect.scheduled_at && (
+                            <span className="mr-1.5 whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                              ⏰ {formatScheduledAt(prospect.scheduled_at)}
+                            </span>
+                          )}
                           {truncate(prospect.subject, 40)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1.5">
+                            {prospect.send_status === "scheduled" && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); handleCancelSchedule(prospect); }}
+                                title="予約を取り消す"
+                                className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-(--color-border) px-2.5 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger)"
+                              >
+                                予約取消
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => { e.preventDefault(); handleSuppress(prospect); }}
