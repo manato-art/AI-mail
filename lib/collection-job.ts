@@ -14,12 +14,13 @@ import { runEnrichmentBatch, type EnrichmentBatchResult } from "@/lib/enrichment
 import { runIntegrityCheckBatch } from "@/lib/data-integrity";
 import { runScheduledSendBatch } from "@/lib/send-scheduler";
 
-/** 正の整数の環境変数を読む。未設定・不正値はデフォルトに倒す（運用でノブを回せるように） */
+/** 正の整数の環境変数を読む。未設定・不正値・0以下・小数(0.5等)はデフォルトに倒す（運用でノブを回せるように） */
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  // floor を先に取ってから正値判定する。逆順だと 0.5 が「>0」を通過して floor で 0 になり fallback を素通りする
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /**
@@ -86,7 +87,7 @@ export interface CollectionJobResult {
 export async function runCollectionJob(trigger: JobTrigger): Promise<CollectionJobResult> {
   // 自動実行だけ間隔を見る。手動実行は人が意図して押しているので即座に走らせる
   if (trigger === "schedule" && !hasIntervalElapsed(LAST_RUN_KEY, RUN_INTERVAL_HOURS)) {
-    return { ran: false, skipReason: "前回の実行から24時間が経過していません" };
+    return { ran: false, skipReason: `前回の実行から${RUN_INTERVAL_HOURS}時間が経過していません` };
   }
 
   if (!tryAcquireJobLock(LOCK_KEY, LOCK_TTL_MINUTES)) {
@@ -117,7 +118,7 @@ export async function runCollectionJob(trigger: JobTrigger): Promise<CollectionJ
  */
 export function findJobBlockReason(trigger: JobTrigger): string | null {
   if (trigger === "schedule" && !hasIntervalElapsed(LAST_RUN_KEY, RUN_INTERVAL_HOURS)) {
-    return "前回の実行から24時間が経過していません";
+    return `前回の実行から${RUN_INTERVAL_HOURS}時間が経過していません`;
   }
   if (isJobLocked(LOCK_KEY)) {
     return "別の収集処理が実行中です";
@@ -212,9 +213,9 @@ async function reconcileTick(): Promise<void> {
     if (!tryAcquireJobLock(LOCK_KEY, ENRICH_LOCK_TTL_MINUTES)) return;
     try {
       const result = await runIntegrityCheckBatch(INTEGRITY_TICK_BATCH);
-      if (result.reverted > 0 || result.checked > 0) {
+      if (result.excluded > 0 || result.checked > 0) {
         console.info(
-          `integrity tick: ${result.checked} checked / ${result.reverted} reverted / ${result.skipped} skipped`
+          `integrity tick: ${result.checked} checked / ${result.excluded} excluded / ${result.skipped} skipped`
         );
       }
     } finally {
@@ -230,7 +231,7 @@ async function reconcileTick(): Promise<void> {
  * 常時収集のスケジューラ。instrumentation.ts の register() から呼ぶ。
  *
  * 前回実行時刻はDBに持っているので、再起動でタイマーが巻き戻っても
- * 1日1回より多く走ることはない。
+ * RUN_INTERVAL_HOURS（既定8h＝1日3回）より多く走ることはない。
  */
 export function startCollectionSchedule(): void {
   const holder = globalThis as ScheduleHolder;

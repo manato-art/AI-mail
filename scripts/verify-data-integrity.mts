@@ -1,18 +1,19 @@
 /**
  * データ整合チェックの検証。
- * (1) companyNameAppearsOnSite: 登録社名がHP本文に現れるかの判定（誤爆回避の分岐込み）。
- * (2) 誤紐付け企業を revert すると連絡先が消え・ドメインnull・再調査(pending)へ戻ることを確認。
+ * (1) companyNameAppearsOnSite: 登録社名がHP本文に現れるかの判定
+ *     （NFKC全角半角ゆれ吸収・拠点後置語の救済・誤爆回避の分岐込み）。
+ * (2) 誤紐付け企業は「除外（非破壊）」で送信対象から外れ、連絡先は消えない・対象抽出から外れる。
  */
 import { companyNameAppearsOnSite } from "@/lib/data-integrity";
 import {
   upsertCompany,
   upsertContact,
   markCompanyEnriched,
+  markCompanyExcluded,
   setCompanyDomain,
   getCompanyById,
   getContactByEmail,
   getCompaniesForIntegrityCheck,
-  revertCompanyForReinvestigation,
 } from "@/lib/db";
 import type { CrawlPage } from "@/lib/types";
 
@@ -37,8 +38,18 @@ check("短すぎる社名(H4)は判定対象外 → true（消さない）",
   companyNameAppearsOnSite("H4", [page("別会社", "まったく無関係の内容")]) === true);
 check("ページ無し → 判定不能 → true（消さない）",
   companyNameAppearsOnSite("株式会社インスパイア", []) === true);
+// NFKC 全角半角ゆれ吸収（誤削除の主因を潰す）
+check("全角ラテン ＡＢＣ株式会社 vs 本文 ABC Inc. → 一致(true)",
+  companyNameAppearsOnSite("ＡＢＣ株式会社", [page("", "ABC Inc. へようこそ")]) === true);
+check("半角カナ ｶﾌﾞｼｷ商会 vs 本文 カブシキ商会 → 一致(true)",
+  companyNameAppearsOnSite("ｶﾌﾞｼｷ商会", [page("", "カブシキ商会です")]) === true);
+check("全角数字 システム１２３ vs 本文 システム123 → 一致(true)",
+  companyNameAppearsOnSite("システム１２３", [page("", "システム123の紹介")]) === true);
+// 収集時に付いた拠点後置語の救済
+check("登録名の拠点後置語(東京本社)を剥がせば一致 → true",
+  companyNameAppearsOnSite("株式会社テストワークス 東京本社", [page("", "株式会社テストワークスの公式")]) === true);
 
-// --- (2) revert 統合（誤紐付け企業の是正） ---
+// --- (2) 除外（非破壊）統合 ---
 const company = upsertCompany({
   name: `整合テスト商事${getCompaniesForIntegrityCheck(9999).length}`,
   domain: "integrity-test-example.net",
@@ -53,13 +64,13 @@ upsertContact({ company_id: company.id, company_name: company.name, email, sourc
 check("対象抽出に含まれる（done・HP有・連絡先有）",
   getCompaniesForIntegrityCheck(9999).some((c) => c.id === company.id));
 
-revertCompanyForReinvestigation(company.id, "テスト是正");
+markCompanyExcluded(company.id, "社名不一致（テスト）");
 
-check("revert後: 連絡先が削除されている", getContactByEmail(email) === undefined);
+check("除外後: 連絡先は削除されず保持される（非破壊）", getContactByEmail(email) !== undefined);
 const after = getCompanyById(company.id);
-check("revert後: enrichment_status が pending に戻る", after?.enrichment_status === "pending");
-check("revert後: domain が null にクリアされる", after?.domain === null);
-check("revert後: 対象抽出から外れる（pendingなので）",
+check("除外後: enrichment_status が excluded になる", after?.enrichment_status === "excluded");
+check("除外後: ドメインは保持される（非破壊・復旧可能）", after?.domain === "integrity-test-example.net");
+check("除外後: 対象抽出から外れる（doneでないので）",
   !getCompaniesForIntegrityCheck(9999).some((c) => c.id === company.id));
 
 console.log(`\n結果: ${pass} pass / ${fail} fail`);

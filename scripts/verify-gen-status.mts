@@ -78,6 +78,13 @@ check("送信済みかつ生成済みなら送信済みを優先",
   classifyGenStatus(sentDomain, sentSet, new Set([...genSet, sentDomain])) === "sent");
 check("normGenDomain は www を除去し小文字化する",
   normGenDomain("WWW.Example.COM") === "example.com");
+// サブドメイン揃え: hp_url が recruit.example.com でも apex 送信/生成と一致させる
+check("normGenDomain は既知サブドメイン接頭辞(recruit)を剥がす",
+  normGenDomain("recruit.example.com") === "example.com");
+check("recruit.example.com の company が apex 送信済みと一致 → sent",
+  classifyGenStatus("recruit.example.com", new Set(["example.com"]), new Set()) === "sent");
+check("eTLD(example.co.jp)は誤って削らない",
+  normGenDomain("example.co.jp") === "example.co.jp");
 
 console.log(`\n結果: ${pass} pass / ${fail} fail`);
 process.exit(fail === 0 ? 0 : 1);

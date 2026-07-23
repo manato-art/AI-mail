@@ -491,6 +491,19 @@ function GeneratePageInner() {
     }
   }
 
+  // 生成状態の集合を取り直す。生成後にバッジ・フィルタが古いまま残らないよう再取得に使う。
+  const refreshGenStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/companies/gen-status");
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      setSentDomains(new Set((data.sentDomains as string[] | undefined) ?? []));
+      setGeneratedDomains(new Set((data.generatedDomains as string[] | undefined) ?? []));
+    } catch {
+      // 取得失敗時はバッジが古いままになるだけなので無視（次のマウントで復旧）
+    }
+  }, []);
+
   async function handleBatchGenerate() {
     if (!selectedServiceId || !selectedPersonaId || batchTargetUrls.length === 0) return;
 
@@ -517,6 +530,8 @@ function GeneratePageInner() {
     await Promise.all(workers);
 
     setBatchRunning(false);
+    // 生成が終わったので状態集合を取り直し、バッジ・「生成状態」フィルタを最新化する
+    void refreshGenStatus();
   }
 
   const missingServices = !loadingOptions && services.length === 0;

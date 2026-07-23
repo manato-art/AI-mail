@@ -24,12 +24,13 @@ import {
 } from "@/lib/wantedly-scraper";
 import type { CollectionRunStatus, CollectionSource } from "@/lib/types";
 
-/** 正の整数の環境変数を読む。未設定・不正値はデフォルトに倒す（運用でノブを回せるように） */
+/** 正の整数の環境変数を読む。未設定・不正値・0以下・小数(0.5等)はデフォルトに倒す（運用でノブを回せるように） */
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  // floor を先に取ってから正値判定する。逆順だと 0.5 が「>0」を通過して floor で 0 になり fallback を素通りする
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /**

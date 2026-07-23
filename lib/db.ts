@@ -1898,7 +1898,7 @@ export function getCompaniesForIntegrityCheck(limit: number): Company[] {
          )
          AND (
            c.integrity_checked_at IS NULL
-           OR c.integrity_checked_at < datetime('now', '-${INTEGRITY_RECHECK_DAYS} days')
+           OR c.integrity_checked_at < datetime('now', 'localtime', '-${INTEGRITY_RECHECK_DAYS} days')
          )
        ORDER BY (c.integrity_checked_at IS NOT NULL), c.integrity_checked_at ASC, c.id ASC
        LIMIT ?`
@@ -1919,7 +1919,7 @@ export function countCompaniesForIntegrityCheck(): number {
          )
          AND (
            c.integrity_checked_at IS NULL
-           OR c.integrity_checked_at < datetime('now', '-${INTEGRITY_RECHECK_DAYS} days')
+           OR c.integrity_checked_at < datetime('now', 'localtime', '-${INTEGRITY_RECHECK_DAYS} days')
          )`
     )
     .get() as { count: number };
@@ -1933,28 +1933,6 @@ export function stampCompanyIntegrityChecked(id: number): void {
       "UPDATE companies SET integrity_checked_at = datetime('now','localtime') WHERE id = ?"
     )
     .run(id);
-}
-
-/**
- * 誤紐付け（登録社名がHPに存在しない）と判明した企業を、連絡先を無効化して
- * 再調査キューに戻す。誤った連絡先で送ってしまう事故を止めるのが目的。
- * ドメインもクリアするので、正しい別企業が同ドメインで再登録できるようになる。
- * 1つのトランザクションで行い、途中失敗で連絡先だけ消えて宙ぶらりんになるのを防ぐ。
- */
-export function revertCompanyForReinvestigation(id: number, reason: string): void {
-  const instance = getDb();
-  const tx = instance.transaction((cid: number, r: string) => {
-    instance.prepare("DELETE FROM contacts WHERE company_id = ?").run(cid);
-    instance
-      .prepare(
-        `UPDATE companies
-         SET domain = NULL, enrichment_status = 'pending', enrichment_error = ?,
-             integrity_checked_at = datetime('now','localtime')
-         WHERE id = ?`
-      )
-      .run(r.slice(0, 500), cid);
-  });
-  tx(id, reason);
 }
 
 export interface InventoryStats {

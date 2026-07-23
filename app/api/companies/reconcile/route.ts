@@ -10,8 +10,12 @@ import { COLLECTION_JOB_LOCK_KEY } from "@/lib/collection-job";
 // 定期収集ジョブ・手動再調査・整合チェックはすべて同じロックキーで相互排他（二重クロール防止）
 const LOCK_KEY = COLLECTION_JOB_LOCK_KEY;
 const LOCK_TTL_MINUTES = 60;
-/** 1回の押下で照合する上限。ロックTTL内に収まる範囲に抑え、多い時は複数回に分ける */
-const MAX_PER_PRESS = 100;
+/**
+ * 1回の押下で照合する上限。1社あたり最悪 ~46s（5ページ×8sタイムアウト＋間隔）かかるため、
+ * バッチ全体が LOCK_TTL（60分）を超えないよう 40社に抑える（40×46s≈31分 < 60分）。
+ * ロックが途中失効すると別ジョブと二重クロールになりうるので、TTL内に収める。多い時は複数回押す。
+ */
+const MAX_PER_PRESS = 40;
 
 /**
  * 調査済み・連絡先あり企業のHPを再クロールし、「登録社名がそのHPに現れるか」を照合する。
