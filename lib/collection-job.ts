@@ -237,6 +237,11 @@ export function startCollectionSchedule(): void {
   const holder = globalThis as ScheduleHolder;
   if (holder.__collectionSchedule) return;
 
+  // 新しいプロセスでは実際に走っている収集ジョブは無い。前回プロセスがクラッシュ/ハングして
+  // 残したロックをここで解放し、「収集を実行中」が張り付いて次の収集が始まらない状態を自己回復する。
+  // （このアプリは SQLite=単一インスタンス前提なので、起動時に他インスタンスの実行中ジョブは無い）
+  releaseJobLock(LOCK_KEY);
+
   const timer = setInterval(tick, TICK_INTERVAL_MS);
   timer.unref?.();
   holder.__collectionSchedule = timer;

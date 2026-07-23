@@ -10,6 +10,13 @@ const MODEL = process.env.KEYWORD_SEARCH_MODEL || "claude-sonnet-4-6";
 const SERPER_ENDPOINT = "https://google.serper.dev/search";
 const RESULTS_PER_PAGE = 10;
 
+/**
+ * 検索リクエストのタイムアウト。これが無いと、検索API/検索元が応答しない時に
+ * fetch が無限に待ち続け、収集ジョブがロックを握ったまま固まる（「収集を実行中」が張り付く）。
+ * crawl.ts / wantedly-scraper.ts と同様に必ず打ち切る。env SEARCH_TIMEOUT_MS で調整可（既定15秒）。
+ */
+export const SEARCH_TIMEOUT_MS = Number(process.env.SEARCH_TIMEOUT_MS) || 15000;
+
 export interface SearchResultItem {
   title: string;
   link: string;
@@ -40,52 +47,65 @@ export async function webSearch(
   query: string,
   page: number = 0
 ): Promise<SearchResultItem[]> {
-  const res = await fetch(SERPER_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "X-API-KEY": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      q: query,
-      gl: "jp",
-      hl: "ja",
-      num: RESULTS_PER_PAGE,
-      page: page + 1,
-    }),
-  });
+  // タイムアウトを付けて、応答が来ない時に収集ジョブが固まらないようにする
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(SERPER_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        q: query,
+        gl: "jp",
+        hl: "ja",
+        num: RESULTS_PER_PAGE,
+        page: page + 1,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    // 上流のレスポンス本文はキーの断片や内部情報を含み得るので、
-    // サーバログにだけ出してUIには status しか返さない（CLAUDE.md 制約6）
-    const body = await res.text().catch(() => "");
-    console.error("Serper API error:", res.status, body.slice(0, 500));
+    if (!res.ok) {
+      // 上流のレスポンス本文はキーの断片や内部情報を含み得るので、
+      // サーバログにだけ出してUIには status しか返さない（CLAUDE.md 制約6）
+      const body = await res.text().catch(() => "");
+      console.error("Serper API error:", res.status, body.slice(0, 500));
 
-    if (res.status === 429) {
-      throw new SearchBlockedError("検索APIの利用上限に達しました", res.status);
+      if (res.status === 429) {
+        throw new SearchBlockedError("検索APIの利用上限に達しました", res.status);
+      }
+      if (res.status === 503) {
+        throw new SearchBlockedError("検索APIが一時的に利用できません", res.status);
+      }
+      if (res.status === 401) {
+        throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");
+      }
+      if (res.status === 403) {
+        throw new SearchBlockedError("検索APIへのアクセスが拒否されました", res.status);
+      }
+      throw new Error(`検索APIエラーが発生しました（コード: ${res.status}）`);
     }
-    if (res.status === 503) {
-      throw new SearchBlockedError("検索APIが一時的に利用できません", res.status);
+
+    const data = await res.json();
+    const organic = Array.isArray(data.organic) ? data.organic : [];
+    return organic.map(
+      (item: { title?: string; link?: string; snippet?: string; domain?: string }) => ({
+        title: item.title ?? "",
+        link: item.link ?? "",
+        snippet: item.snippet ?? "",
+        displayLink: item.domain ?? "",
+      })
+    );
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`検索APIが${SEARCH_TIMEOUT_MS / 1000}秒以内に応答しませんでした（タイムアウト）`);
     }
-    if (res.status === 401) {
-      throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");
-    }
-    if (res.status === 403) {
-      throw new SearchBlockedError("検索APIへのアクセスが拒否されました", res.status);
-    }
-    throw new Error(`検索APIエラーが発生しました（コード: ${res.status}）`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = await res.json();
-  const organic = Array.isArray(data.organic) ? data.organic : [];
-  return organic.map(
-    (item: { title?: string; link?: string; snippet?: string; domain?: string }) => ({
-      title: item.title ?? "",
-      link: item.link ?? "",
-      snippet: item.snippet ?? "",
-      displayLink: item.domain ?? "",
-    })
-  );
 }
 
 function extractJsonFromText(text: string): string {

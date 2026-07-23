@@ -33,6 +33,29 @@ const RUN_STATUS_STYLES: Record<string, string> = {
   error: "bg-(--color-danger-light) text-(--color-danger)",
 };
 
+/** 収集元の「集め方（方式）」を一目で分かるバッジにする。今どの方式で回っているかの混乱を防ぐ */
+function sourceMethod(sourceType: string): { label: string; hint: string; cls: string } {
+  if (sourceType === "wantedly_direct") {
+    return {
+      label: "🆕 Wantedly新着",
+      hint: "Wantedlyの新着を毎回取得",
+      cls: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+    };
+  }
+  if (sourceType === "wantedly_url") {
+    return {
+      label: "🔗 URL巡回",
+      hint: "貼り付けたページを毎回巡回",
+      cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+    };
+  }
+  return {
+    label: "🔑 キーワード常時",
+    hint: "検索エンジンで毎回この条件を検索",
+    cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  };
+}
+
 function CompactStat({
   label,
   value,
@@ -139,6 +162,15 @@ export default function CollectionPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (saving || !keyword.trim()) return;
+
+    // URLをキーワード欄に入れる誤用を防ぐ（`site:東京 https://…` のような無効検索になり永久に0件になる）
+    const kw = keyword.trim();
+    if (/^https?:\/\//i.test(kw) || /\b[\w-]+\.[a-z]{2,}\/\S/i.test(kw)) {
+      showToast(
+        "キーワード欄にURLは入れないでください。特定サイトを対象にするなら『検索元サイト』欄にドメイン（例: 01intern.com）を、WantedlyのページURLなら上の貼り付け欄をお使いください。"
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -390,7 +422,11 @@ export default function CollectionPage() {
           </button>
         )}
 
-        <form onSubmit={handleAddUrl} className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <p className="mt-4 flex items-center gap-1.5 text-[12px] font-semibold text-(--color-fg)">
+          <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">🔗 URL巡回</span>
+          特定ページを巡回して集める（現在 Wantedly のみ対応）
+        </p>
+        <form onSubmit={handleAddUrl} className="mt-2 flex flex-col gap-2 sm:flex-row">
           <input
             value={wantedlyUrl}
             onChange={(e) => setWantedlyUrl(e.target.value)}
@@ -411,11 +447,15 @@ export default function CollectionPage() {
           Wantedlyの検索結果や一覧ページのURLを貼ると、そのページ（と続きのページ）を巡回して企業を集めます。上の商材タグも一緒に付きます。
         </p>
 
-        <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <p className="mt-5 flex items-center gap-1.5 text-[12px] font-semibold text-(--color-fg)">
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">🔑 キーワード常時</span>
+          キーワードで常時集める（毎回この条件を検索。URLは入れない）
+        </p>
+        <form onSubmit={handleAdd} className="mt-2 flex flex-col gap-2 sm:flex-row">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="例: 長期インターン 募集 エンジニア"
+            placeholder="例: 長期インターン 募集 エンジニア（URLは不可）"
             className="h-10 flex-1 rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
           />
           <input
@@ -469,6 +509,12 @@ export default function CollectionPage() {
                       isActive ? "bg-(--color-success)" : "bg-(--color-muted)"
                     }`}
                   />
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${sourceMethod(source.source_type).cls}`}
+                    title={sourceMethod(source.source_type).hint}
+                  >
+                    {sourceMethod(source.source_type).label}
+                  </span>
                   <p className="truncate text-sm font-medium">
                     {source.source_type === "wantedly_url" ? (source.url ?? source.keyword) : source.keyword}
                   </p>
@@ -480,10 +526,10 @@ export default function CollectionPage() {
                 </div>
                 <p className="mt-0.5 pl-4 text-[11px] text-(--color-muted)">
                   {source.source_type === "wantedly_direct"
-                    ? "Wantedly直接取得"
+                    ? sourceMethod(source.source_type).hint
                     : source.source_type === "wantedly_url"
-                      ? "Wantedly URL収集"
-                      : source.site || "検索元サイト未定"}
+                      ? sourceMethod(source.source_type).hint
+                      : `検索元: ${source.site || "自動判定"}`}
                   {" "}・ 最終実行 {formatDateTime(source.last_run_at)}
                 </p>
                 {source.paused_kind && (
