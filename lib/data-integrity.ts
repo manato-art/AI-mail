@@ -19,6 +19,13 @@ const DELAY_JITTER_MS = 3000;
 const MIN_DISTINCTIVE_NAME_LEN = 3;
 
 /**
+ * 正規化後の本文がこの長さ未満なら「判定材料が乏しい」とみなして不一致判定しない。
+ * 画像で文字を焼き込んだサイト等は抽出テキストが極端に少なく、社名が載っていても
+ * テキストに出てこないため、薄い本文で誤って別会社と判定して除外するのを防ぐ（消さない側に倒す）。
+ */
+const MIN_HAYSTACK_LEN = 40;
+
+/**
  * 収集時に社名へ付きがちな拠点・部署などの後置語。
  * 「株式会社ABC 東京本社」のように登録名だけに拠点名が付いていると、HP側（「株式会社ABC」）と
  * 完全一致せず正しい企業を誤って不一致判定してしまう。剥がして再照合するための一覧。
@@ -54,7 +61,7 @@ function foldName(s: string): string {
 export function companyNameAppearsOnSite(companyName: string, pages: CrawlPage[]): boolean {
   if (pages.length === 0) return true; // 取得できず → 判定不能
   const haystack = foldName(pages.map((p) => `${p.title} ${p.text}`).join(" "));
-  if (!haystack) return true; // 本文が空 → 判定不能
+  if (haystack.length < MIN_HAYSTACK_LEN) return true; // 本文が薄すぎ（画像主体等）→ 判定不能で消さない
 
   const target = foldName(companyName);
   if (target.length < MIN_DISTINCTIVE_NAME_LEN) return true; // 短すぎ → 誤爆回避

@@ -25,29 +25,37 @@ const check = (label: string, cond: boolean) => {
 
 const page = (title: string, text: string): CrawlPage => ({ url: "https://x", title, text });
 
-// --- (1) companyNameAppearsOnSite ---
+// --- (1) companyNameAppearsOnSite（本文は判定不能回避のため十分な長さで） ---
+const LONG = "の公式サイトです。私たちは地域に根ざした事業を長年にわたり展開しており、お客様に高品質なサービスをお届けしています。採用情報やお問い合わせはこちらから。";
 check("本文に社名あり → 一致(true)",
-  companyNameAppearsOnSite("株式会社岐阜武", [page("トップ", "株式会社岐阜武の公式サイトです")]) === true);
+  companyNameAppearsOnSite("株式会社岐阜武", [page("トップ", `株式会社岐阜武${LONG}`)]) === true);
 check("タイトルだけに社名あり → 一致(true)",
-  companyNameAppearsOnSite("岐阜武商店", [page("岐阜武商店 | 公式", "本文にはロゴのみ")]) === true);
+  companyNameAppearsOnSite("岐阜武商店", [page("岐阜武商店 | 公式", `弊社${LONG}`)]) === true);
 check("法人格ゆれでも一致（登録=株式会社岐阜武 / HP=岐阜武 商店）",
-  companyNameAppearsOnSite("株式会社岐阜武", [page("", "ようこそ岐阜武 商店へ")]) === true);
-check("社名がHPに全く無い → 不一致(false)＝誤紐付け疑い",
-  companyNameAppearsOnSite("株式会社インスパイア", [page("岐阜武 商店", "岐阜武の通販サイトです。お問い合わせはこちら")]) === false);
+  companyNameAppearsOnSite("株式会社岐阜武", [page("", `ようこそ岐阜武 商店へ。${LONG}`)]) === true);
+check("社名がHPに全く無い（十分な本文あり）→ 不一致(false)＝誤紐付け疑い",
+  companyNameAppearsOnSite("株式会社インスパイア", [
+    page("岐阜武 商店", "岐阜武の通販サイトです。地元で愛される老舗として、和菓子やお茶、季節の贈答品を取り揃えております。オンラインでのご注文も承っております。お問い合わせはこちらまで。"),
+  ]) === false);
 check("短すぎる社名(H4)は判定対象外 → true（消さない）",
-  companyNameAppearsOnSite("H4", [page("別会社", "まったく無関係の内容")]) === true);
+  companyNameAppearsOnSite("H4", [page("別会社", "まったく無関係の内容がここに長々と書かれているとしても社名が短いので判定しない")]) === true);
+check("本文が薄すぎる（画像主体等）→ 判定不能 → true（消さない）",
+  companyNameAppearsOnSite("株式会社インスパイア", [page("トップ", "ようこそ")]) === true);
 check("ページ無し → 判定不能 → true（消さない）",
   companyNameAppearsOnSite("株式会社インスパイア", []) === true);
 // NFKC 全角半角ゆれ吸収（誤削除の主因を潰す）
 check("全角ラテン ＡＢＣ株式会社 vs 本文 ABC Inc. → 一致(true)",
-  companyNameAppearsOnSite("ＡＢＣ株式会社", [page("", "ABC Inc. へようこそ")]) === true);
+  companyNameAppearsOnSite("ＡＢＣ株式会社", [page("", `ABC Inc. へようこそ。${LONG}`)]) === true);
 check("半角カナ ｶﾌﾞｼｷ商会 vs 本文 カブシキ商会 → 一致(true)",
-  companyNameAppearsOnSite("ｶﾌﾞｼｷ商会", [page("", "カブシキ商会です")]) === true);
+  companyNameAppearsOnSite("ｶﾌﾞｼｷ商会", [page("", `カブシキ商会です。${LONG}`)]) === true);
 check("全角数字 システム１２３ vs 本文 システム123 → 一致(true)",
-  companyNameAppearsOnSite("システム１２３", [page("", "システム123の紹介")]) === true);
+  companyNameAppearsOnSite("システム１２３", [page("", `システム123の紹介。${LONG}`)]) === true);
 // 収集時に付いた拠点後置語の救済
 check("登録名の拠点後置語(東京本社)を剥がせば一致 → true",
-  companyNameAppearsOnSite("株式会社テストワークス 東京本社", [page("", "株式会社テストワークスの公式")]) === true);
+  companyNameAppearsOnSite("株式会社テストワークス 東京本社", [page("", `株式会社テストワークス${LONG}`)]) === true);
+// NFKC が効かないと誤爆する対照: 別会社名は十分な本文でも不一致(false)のまま
+check("NFKC後も別会社は不一致(false)＝保護は維持",
+  companyNameAppearsOnSite("ＡＢＣ株式会社", [page("別会社", `XYZ商事${LONG}`)]) === false);
 
 // --- (2) 除外（非破壊）統合 ---
 const company = upsertCompany({

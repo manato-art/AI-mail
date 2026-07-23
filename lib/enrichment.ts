@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { logActivity } from "@/lib/activity-log";
 import { analyzeCompany } from "@/lib/analyze";
+import { companyNameAppearsOnSite } from "@/lib/data-integrity";
 import { resolveCompanyHomepage } from "@/lib/company-resolve";
 import { extractContactName } from "@/lib/keyword-search";
 import type { Company, FitScore, Service } from "@/lib/types";
@@ -96,6 +97,20 @@ async function enrichCompany(
   }
 
   logActivity(`📄 ${company.name}: ${resolved.crawl.pages.length}ページをクロール済み`);
+
+  // リストアップ時点の整合チェック（最初から誤紐付けを入れない）。
+  // 収集時の社名検索が別会社の公式を上位に返すことがあるため、自社名がHPのどこにも現れなければ
+  // 誤紐付けの疑いとして連絡先を保存せず failed にする（誤メアドを在庫に入れない）。
+  // 判定は保守的（NFKC吸収・拠点後置語救済・本文が薄い/短い社名は"消さない側")なので、
+  // 正常企業を過剰に弾かない。弾かれた企業は failed で残り、再調査で戻せる。
+  if (!companyNameAppearsOnSite(company.name, resolved.crawl.pages)) {
+    logActivity(`❌ ${company.name}: HPに社名が見当たらず別会社の疑い（${resolved.domain}）`, "error");
+    markCompanyEnrichmentFailed(
+      company.id,
+      `社名「${company.name}」がHP（${resolved.domain}）に見当たりません（別会社サイトの誤検出の疑い・要確認）`
+    );
+    return "failed";
+  }
 
   const email = resolved.crawl.contactEmails[0] ?? null;
   if (email && !isEmailSuppressed(email)) {
