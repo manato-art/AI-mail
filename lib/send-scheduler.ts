@@ -82,16 +82,25 @@ export async function runScheduledSendBatch(limit: number = SCHEDULE_BATCH): Pro
         attachments: [],
       });
       // 送信成功後の記録は共通処理へ（失敗しても sent を巻き戻さない・#9）
-      recordSuccessfulSend({
-        prospectId: p.id,
-        senderId,
-        toEmail,
-        realToEmail: rawToEmail,
-        subject: p.subject,
-        messageId: result.messageId,
-        threadId: result.threadId,
-      });
-      logActivity(`⏰ 予約送信: ${p.company_name || rawToEmail} へ送信しました`, "success");
+      // テストモードは実績にしない（未送信のまま・履歴/バッジに載せない）
+      recordSuccessfulSend(
+        {
+          prospectId: p.id,
+          senderId,
+          toEmail,
+          realToEmail: rawToEmail,
+          subject: p.subject,
+          messageId: result.messageId,
+          threadId: result.threadId,
+        },
+        testMode
+      );
+      logActivity(
+        testMode
+          ? `⏰ 予約送信(テスト): ${p.company_name || rawToEmail} をテスト宛に送信（未送信のまま）`
+          : `⏰ 予約送信: ${p.company_name || rawToEmail} へ送信しました`,
+        "success"
+      );
       sent++;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

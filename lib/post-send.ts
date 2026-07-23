@@ -26,7 +26,22 @@ export interface RecordSendParams {
  *   実宛先を抑止リストに登録して次回以降の送信を確実にブロックし、警告を返す。
  * - prospect の 'sent' 確定も2回試行し、失敗しても 'unsent' には戻さず警告に留める。
  */
-export function recordSuccessfulSend(p: RecordSendParams): { warnings: string[] } {
+export function recordSuccessfulSend(
+  p: RecordSendParams,
+  testMode = false
+): { warnings: string[] } {
+  // テストモードはテストアドレス宛の動作確認であり、実企業への送信実績ではない。
+  // 送信履歴(send_log)を残さず、prospect も 'unsent' に戻して「未送信」として扱う
+  // （企業一覧の送信済みバッジ・履歴の状態ともに未送信のままにする）。
+  if (testMode) {
+    try {
+      updateProspectStatus(p.prospectId, "unsent");
+    } catch (err) {
+      console.error("テスト送信後の status リセットに失敗:", { prospectId: p.prospectId, error: err });
+    }
+    return { warnings: [] };
+  }
+
   const warnings: string[] = [];
 
   let logged = false;

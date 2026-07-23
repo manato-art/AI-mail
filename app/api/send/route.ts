@@ -249,15 +249,18 @@ export async function POST(request: NextRequest) {
   }
 
   // --- 送信成功後の記録は共通処理へ。失敗しても unsent へ戻さず・失敗を返さず警告に降格 ---
-  const { warnings } = recordSuccessfulSend({
-    prospectId,
-    senderId,
-    toEmail,
-    realToEmail: rawToEmail,
-    subject: outgoingSubject,
-    messageId: result.messageId,
-    threadId: result.threadId,
-  });
+  const { warnings } = recordSuccessfulSend(
+    {
+      prospectId,
+      senderId,
+      toEmail,
+      realToEmail: rawToEmail,
+      subject: outgoingSubject,
+      messageId: result.messageId,
+      threadId: result.threadId,
+    },
+    TEST_MODE
+  );
 
   // 送信＋記録が終わったのでクレームを解放
   releaseEmailClaim(claimId);

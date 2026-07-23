@@ -412,15 +412,18 @@ export async function POST(request: NextRequest) {
     responseWarnings.push("企業分析データが無いため、この会社向けの内容は汎用文で送信しました");
   }
 
-  const { warnings: recordWarnings } = recordSuccessfulSend({
-    prospectId: prospect.id,
-    senderId,
-    toEmail,
-    realToEmail: rawToEmail,
-    subject: outgoingSubject,
-    messageId: result.messageId,
-    threadId: result.threadId,
-  });
+  const { warnings: recordWarnings } = recordSuccessfulSend(
+    {
+      prospectId: prospect.id,
+      senderId,
+      toEmail,
+      realToEmail: rawToEmail,
+      subject: outgoingSubject,
+      messageId: result.messageId,
+      threadId: result.threadId,
+    },
+    TEST_MODE
+  );
   responseWarnings.push(...recordWarnings);
 
   // 送信＋記録が終わったのでクレームを解放（以降の重複は send_log/抑止リストが担保する）

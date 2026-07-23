@@ -217,7 +217,8 @@ export default function BulkSendPage() {
     const seenSend = new Set<string>();
     const targets: Prospect[] = [];
     for (const p of generatedProspects) {
-      if (!generatedChecked.has(p.id) || p.send_status === "sent") continue;
+      // 送信済み・予約済みは対象外（予約済みも「対応済み」として送信済みと同じ扱いにする）
+      if (!generatedChecked.has(p.id) || p.send_status === "sent" || p.send_status === "scheduled") continue;
       const email = firstEmailOf(p);
       if (!email) continue;
       const key = email.toLowerCase();
@@ -245,6 +246,60 @@ export default function BulkSendPage() {
         ? `テストモード: 生成メール${targets.length}件をテストアドレス宛に送信します。よろしいですか？`
         : `生成した個別メール${targets.length}件を、それぞれの会社（${sender?.email ?? ""} から）へ送信します。よろしいですか？`;
     if (!confirm(confirmMsg)) return;
+
+    // 予約はサーバ側で一括処理する。フロントの直列ループと違い、途中でモーダルを閉じたり
+    // 別ページへ移動しても全件が確実に予約される（「50件予約したのに一部だけ予約済」を防ぐ）。
+    if (isSchedule) {
+      setSendingGenerated(true);
+      targets.forEach((p) => setGenRowStatus((prev) => ({ ...prev, [p.id]: { state: "sending" } })));
+      try {
+        const res = await fetch("/api/prospects/bulk-schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prospectIds: targets.map((p) => p.id),
+            senderId: selectedSenderId,
+            scheduledAt: scheduledIso,
+            acknowledgedWarnings: allowWarnings,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || "予約に失敗しました");
+          setSendingGenerated(false);
+          return;
+        }
+        const failedList: { id: number; reason: string }[] = Array.isArray(data.failed) ? data.failed : [];
+        const failedMap = new Map<number, string>(
+          failedList.map((f) => [f.id, f.reason] as [number, string])
+        );
+        setProspects((prev) =>
+          prev.map((x) =>
+            targets.some((t) => t.id === x.id) && !failedMap.has(x.id)
+              ? { ...x, send_status: "scheduled" }
+              : x
+          )
+        );
+        targets.forEach((p) => {
+          const reason = failedMap.get(p.id);
+          setGenRowStatus((prev) => ({
+            ...prev,
+            [p.id]: reason ? { state: "failed", error: reason } : { state: "scheduled" },
+          }));
+        });
+        // 失敗分だけ選択に残し、成功は解除（失敗理由を各行で見ながら再操作できる）
+        setGeneratedChecked(new Set(failedList.map((f) => f.id)));
+        showToast(
+          failedList.length
+            ? `予約完了: 成功${data.scheduled}件 / 失敗${failedList.length}件（失敗理由は各行に表示）`
+            : `${data.scheduled}件を予約しました`
+        );
+      } catch {
+        showToast("予約に失敗しました（通信エラー）");
+      }
+      setSendingGenerated(false);
+      return;
+    }
 
     setSendingGenerated(true);
     let ok = 0;
@@ -885,7 +940,8 @@ export default function BulkSendPage() {
     const result: Prospect[] = [];
     for (const p of generatedProspects) {
       const email = firstEmailOf(p);
-      if (!email || p.send_status === "sent") continue;
+      // 送信済み・予約済みは選択対象から外す（予約済みも送信済みと同じく「対応済み」）
+      if (!email || p.send_status === "sent" || p.send_status === "scheduled") continue;
       const key = email.toLowerCase();
       if (seen.has(key)) continue; // 同一宛先は最新だけ残す
       seen.add(key);
@@ -2385,12 +2441,15 @@ export default function BulkSendPage() {
                   {generatedProspects.map((p) => {
                     const email = firstEmailOf(p);
                     const already = p.send_status === "sent";
+                    const scheduled = p.send_status === "scheduled";
+                    // 送信済み・予約済みはどちらも「対応済み」= 選択対象外にまとめる
+                    const done = already || scheduled;
                     const st = genRowStatus[p.id];
-                    const selectable = !!email && !already;
+                    const selectable = !!email && !done;
                     const editing = genEditingId === p.id;
                     const svcName = serviceNameOf(p.service_id);
                     // 同一宛先に、より新しい生成メールがある＝この行は古い重複（既定では選ばれない）
-                    const isOlderDup = !!email && !already && !genSelectableIds.has(p.id);
+                    const isOlderDup = !!email && !done && !genSelectableIds.has(p.id);
                     return (
                       <div key={p.id} className="rounded-lg border border-(--color-border)">
                         <div className="flex items-center gap-3 px-3 py-2.5">
@@ -2426,7 +2485,10 @@ export default function BulkSendPage() {
                                 <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">📦 {svcName}</span>
                               )}
                               {already && (
-                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-(--color-muted) dark:bg-slate-700">送信済</span>
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">📨 送信済み</span>
+                              )}
+                              {scheduled && (
+                                <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">⏰ 予約済み</span>
                               )}
                               {st?.state === "sending" && <span className="text-(--color-primary)">処理中…</span>}
                               {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
