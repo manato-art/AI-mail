@@ -244,6 +244,34 @@ export function findPriorityLinks(html: string, baseUrl: string): string[] {
   return results;
 }
 
+/**
+ * メールアドレスのTLDにはなり得ない、画像・アセット系のファイル拡張子。
+ * 「logo@2x.png」「sprite@2x.jpg」等の画像ファイル名を誤ってメアドと拾うのを防ぐ。
+ */
+const ASSET_TLD_BLOCKLIST = new Set([
+  "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "avif", "tiff",
+  "css", "js", "mjs", "cjs", "json", "map", "ts",
+  "woff", "woff2", "ttf", "eot", "otf",
+  "mp4", "webm", "mov", "avi", "wmv", "mkv",
+  "mp3", "wav", "ogg", "flac",
+  "pdf", "zip", "gz",
+  "2x", "3x",
+]);
+
+/**
+ * 抽出した文字列が「本物のメールアドレスらしいか」を判定する。
+ * TLD が画像等のアセット拡張子だったり、英字2文字以上でない場合は誤抽出とみなす。
+ */
+export function isPlausibleEmail(email: string): boolean {
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || at === email.length - 1) return false;
+  const domain = email.slice(at + 1);
+  const tld = domain.split(".").pop() ?? "";
+  if (ASSET_TLD_BLOCKLIST.has(tld.toLowerCase())) return false;
+  // 実在するメールのTLDは英字のみ（png/2x のような数字混じり・拡張子は弾く）
+  return /^[a-zA-Z]{2,}$/.test(tld);
+}
+
 export function extractEmails(text: string): string[] {
   const normalized = text
     .replace(/＠/g, "@")
@@ -267,7 +295,8 @@ export function extractEmails(text: string): string[] {
 
   const emails = new Set<string>();
   for (const match of matches) {
-    emails.add(match.toLowerCase().replace(/\.+$/, ""));
+    const email = match.toLowerCase().replace(/\.+$/, "");
+    if (isPlausibleEmail(email)) emails.add(email);
   }
 
   return Array.from(emails);
@@ -487,7 +516,8 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
   return {
     url,
     pages,
-    contactEmails: Array.from(emailSet),
+    // mailto/JSON-LD/属性由来も含め、画像ファイル名等の誤抽出を最終的に落とす
+    contactEmails: Array.from(emailSet).filter(isPlausibleEmail),
     formUrl,
     recruitPageUrl,
   };
