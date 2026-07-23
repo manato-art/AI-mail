@@ -24,11 +24,23 @@ import {
 } from "@/lib/wantedly-scraper";
 import type { CollectionRunStatus, CollectionSource } from "@/lib/types";
 
-/** 1回の実行で進める検索ページ数。まとめて叩かず少しずつ掘る */
-const PAGES_PER_RUN = 3;
+/** 正の整数の環境変数を読む。未設定・不正値はデフォルトに倒す（運用でノブを回せるように） */
+function readIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/**
+ * 1回の実行で進める検索ページ数。まとめて叩かず少しずつ掘る。
+ * 収集量を増やしたい時は env COLLECTION_PAGES_PER_RUN で調整（既定=バランス設定の5）。
+ */
+const PAGES_PER_RUN = readIntEnv("COLLECTION_PAGES_PER_RUN", 5);
 /** 検索結果はこの辺りから精度が落ちるので、超えたら先頭へ戻して新着を拾い直す */
 const MAX_PAGE = 9;
-const MAX_COMPANIES_PER_RUN = 30;
+/** 1ソース1回の登録上限。env COLLECTION_MAX_COMPANIES_PER_RUN で調整（既定=50） */
+const MAX_COMPANIES_PER_RUN = readIntEnv("COLLECTION_MAX_COMPANIES_PER_RUN", 50);
 
 /**
  * 「検索結果が0件」がこの回数続いたら止める。

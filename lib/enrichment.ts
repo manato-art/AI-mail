@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { logActivity } from "@/lib/activity-log";
 import { analyzeCompany } from "@/lib/analyze";
+import { companyNameAppearsOnSite } from "@/lib/data-integrity";
 import { resolveCompanyHomepage } from "@/lib/company-resolve";
 import { extractContactName } from "@/lib/keyword-search";
 import type { Company, FitScore, Service } from "@/lib/types";
@@ -96,6 +97,18 @@ async function enrichCompany(
   }
 
   logActivity(`📄 ${company.name}: ${resolved.crawl.pages.length}ページをクロール済み`);
+
+  // 収集時の社名検索が別会社のサイトを掴むことがある（例: 検索が別社の公式を上位に返す）。
+  // 自社名がHPのどこにも現れない場合は誤紐付けの疑いが強いので、連絡先を保存せず失敗として残す。
+  // これにより誤送信の源を断ち、整合チェックで再調査に戻した企業が再び同じ誤紐付けに陥るのも防ぐ。
+  if (!companyNameAppearsOnSite(company.name, resolved.crawl.pages)) {
+    logActivity(`❌ ${company.name}: HPに社名が見当たらず別会社の疑い（${resolved.domain}）`, "error");
+    markCompanyEnrichmentFailed(
+      company.id,
+      `社名「${company.name}」がHP（${resolved.domain}）に見当たりません（別会社サイトの誤検出の疑い）`
+    );
+    return "failed";
+  }
 
   const email = resolved.crawl.contactEmails[0] ?? null;
   if (email && !isEmailSuppressed(email)) {

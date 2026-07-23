@@ -9,6 +9,7 @@ import {
   GlobeSimple,
   Hourglass,
   PaperPlaneTilt,
+  ShieldCheck,
   SpinnerGap,
   WarningCircle,
   XCircle,
@@ -79,6 +80,7 @@ export default function CompaniesPage() {
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [reEnriching, setReEnriching] = useState(false);
   const [enrichingPending, setEnrichingPending] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingHpId, setEditingHpId] = useState<number | null>(null);
   const [hpUrlInput, setHpUrlInput] = useState("");
@@ -195,6 +197,27 @@ export default function CompaniesPage() {
     }
   }, [load, showToast]);
 
+  // 調査済み企業のHPを再クロールし、登録社名がHPに現れない誤紐付けを是正する（連絡先無効化→再調査へ）。
+  const handleReconcile = useCallback(async () => {
+    setReconciling(true);
+    try {
+      const res = await fetch("/api/companies/reconcile", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.started) {
+        await load();
+        showToast(`${data.queued}社の整合チェックを開始しました（HP再クロールで社名照合。数分かかります）`);
+      } else if (res.ok) {
+        showToast(data.message || "整合チェックの対象企業はありません");
+      } else {
+        showToast(data.error || "整合チェックの開始に失敗しました");
+      }
+    } catch {
+      showToast("整合チェックの開始に失敗しました（通信エラー）");
+    } finally {
+      setReconciling(false);
+    }
+  }, [load, showToast]);
+
   // 絞り込みの選択肢（実際に企業に付いているキーワード・商材だけ出す）
   const keywordOptions = useMemo(
     () => [...new Set(companies.map((c) => c.collection_keyword).filter((k): k is string => !!k))].sort(),
@@ -305,6 +328,22 @@ export default function CompaniesPage() {
               {reEnriching
                 ? "再取得中..."
                 : `${noEmailCount}社のメールを再取得`}
+            </button>
+          )}
+          {counts.done > 0 && (
+            <button
+              type="button"
+              onClick={handleReconcile}
+              disabled={reconciling}
+              title="調査済み企業のHPを再クロールし、登録社名がそのHPに現れない誤紐付け（別会社のメアド）を自動で無効化・再調査に戻します"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 text-[13px] font-medium text-(--color-fg) transition-colors hover:bg-(--color-bg) disabled:opacity-50 cursor-pointer"
+            >
+              {reconciling ? (
+                <SpinnerGap size={14} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={14} />
+              )}
+              {reconciling ? "整合チェック中..." : "整合チェック"}
             </button>
           )}
           <button

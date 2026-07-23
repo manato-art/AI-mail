@@ -341,6 +341,8 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "companies", "enrichment_status", "TEXT NOT NULL DEFAULT 'pending'");
   addColumnIfMissing(instance, "companies", "enriched_at", "TEXT");
   addColumnIfMissing(instance, "companies", "enrichment_error", "TEXT NOT NULL DEFAULT ''");
+  // データ整合（HP再クロールで社名照合）を最後に行った時刻。同じ企業を毎tick再クロールしないための間引きに使う
+  addColumnIfMissing(instance, "companies", "integrity_checked_at", "TEXT");
   // F3 相性スコア。どの商材に対するスコアかを持たないと、商材を変えた後に古い判定が残る
   addColumnIfMissing(instance, "companies", "fit_score", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(instance, "companies", "fit_reason", "TEXT NOT NULL DEFAULT ''");
@@ -1865,6 +1867,86 @@ export function resetEnrichedWithoutEmail(): number {
          )`
     )
     .run().changes;
+}
+
+/** 整合チェックの再確認間隔（日）。一度確認した企業はこの期間は再クロールしない */
+const INTEGRITY_RECHECK_DAYS = 30;
+
+/**
+ * データ整合チェックの対象企業を返す。
+ * 「調査完了・HP有・連絡先メール有」でありながら、まだ整合確認していない
+ * （または再確認期限を過ぎた）企業を、未確認→古い確認順に返す。
+ * HP再クロールで「登録社名がそのHPに現れるか」を照合するために使う。
+ */
+export function getCompaniesForIntegrityCheck(limit: number): Company[] {
+  return getDb()
+    .prepare(
+      `SELECT c.* FROM companies c
+       WHERE c.enrichment_status = 'done'
+         AND c.hp_url IS NOT NULL AND c.hp_url != ''
+         AND EXISTS (
+           SELECT 1 FROM contacts ct
+           WHERE ct.company_id = c.id AND ct.email IS NOT NULL AND ct.email != ''
+         )
+         AND (
+           c.integrity_checked_at IS NULL
+           OR c.integrity_checked_at < datetime('now', '-${INTEGRITY_RECHECK_DAYS} days')
+         )
+       ORDER BY (c.integrity_checked_at IS NOT NULL), c.integrity_checked_at ASC, c.id ASC
+       LIMIT ?`
+    )
+    .all(limit) as Company[];
+}
+
+/** 整合チェックの対象企業数（手動導線の件数表示に使う） */
+export function countCompaniesForIntegrityCheck(): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count FROM companies c
+       WHERE c.enrichment_status = 'done'
+         AND c.hp_url IS NOT NULL AND c.hp_url != ''
+         AND EXISTS (
+           SELECT 1 FROM contacts ct
+           WHERE ct.company_id = c.id AND ct.email IS NOT NULL AND ct.email != ''
+         )
+         AND (
+           c.integrity_checked_at IS NULL
+           OR c.integrity_checked_at < datetime('now', '-${INTEGRITY_RECHECK_DAYS} days')
+         )`
+    )
+    .get() as { count: number };
+  return row.count;
+}
+
+/** 整合チェックで問題なしだった企業の確認時刻を更新（次の再確認期限まで再クロールしない） */
+export function stampCompanyIntegrityChecked(id: number): void {
+  getDb()
+    .prepare(
+      "UPDATE companies SET integrity_checked_at = datetime('now','localtime') WHERE id = ?"
+    )
+    .run(id);
+}
+
+/**
+ * 誤紐付け（登録社名がHPに存在しない）と判明した企業を、連絡先を無効化して
+ * 再調査キューに戻す。誤った連絡先で送ってしまう事故を止めるのが目的。
+ * ドメインもクリアするので、正しい別企業が同ドメインで再登録できるようになる。
+ * 1つのトランザクションで行い、途中失敗で連絡先だけ消えて宙ぶらりんになるのを防ぐ。
+ */
+export function revertCompanyForReinvestigation(id: number, reason: string): void {
+  const instance = getDb();
+  const tx = instance.transaction((cid: number, r: string) => {
+    instance.prepare("DELETE FROM contacts WHERE company_id = ?").run(cid);
+    instance
+      .prepare(
+        `UPDATE companies
+         SET domain = NULL, enrichment_status = 'pending', enrichment_error = ?,
+             integrity_checked_at = datetime('now','localtime')
+         WHERE id = ?`
+      )
+      .run(r.slice(0, 500), cid);
+  });
+  tx(id, reason);
 }
 
 export interface InventoryStats {

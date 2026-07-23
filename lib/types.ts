@@ -218,6 +218,8 @@ export interface Company {
   enrichment_status: EnrichmentStatus;
   enriched_at: string | null;
   enrichment_error: string;
+  /** データ整合チェック（HP再クロールで社名照合）を最後に行った時刻。未確認は null */
+  integrity_checked_at?: string | null;
   /** F3: 相性スコア。fit_service_id とセットでないと古い商材の判定が混ざる */
   fit_score: FitScore;
   fit_reason: string;

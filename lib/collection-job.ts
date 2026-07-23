@@ -1,4 +1,5 @@
 import {
+  countCompaniesForIntegrityCheck,
   countCompaniesPendingEnrichment,
   getSetting,
   hasIntervalElapsed,
@@ -10,10 +11,23 @@ import {
 import { logActivity } from "@/lib/activity-log";
 import { runCollectionCycle, type CollectionCycleResult } from "@/lib/collection";
 import { runEnrichmentBatch, type EnrichmentBatchResult } from "@/lib/enrichment";
+import { runIntegrityCheckBatch } from "@/lib/data-integrity";
 import { runScheduledSendBatch } from "@/lib/send-scheduler";
 
-/** 収集は1日1回で足りる。叩く回数を増やすほど検知・ブロックのリスクが上がる */
-const RUN_INTERVAL_HOURS = 24;
+/** 正の整数の環境変数を読む。未設定・不正値はデフォルトに倒す（運用でノブを回せるように） */
+function readIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/**
+ * 収集の実行間隔（時間）。既定=バランス設定の8h（=1日3回）。
+ * 叩く回数を増やすほど検索APIの利用量（課金）と検知・ブロックのリスクが上がるので、
+ * env COLLECTION_INTERVAL_HOURS で運用側が調整できるようにしている（安全=24 / 積極=4）。
+ */
+const RUN_INTERVAL_HOURS = readIntEnv("COLLECTION_INTERVAL_HOURS", 8);
 
 /** スケジューラの見回り間隔。実際に走るかは前回実行時刻で決まる */
 const TICK_INTERVAL_MS = 30 * 60 * 1000;
@@ -30,6 +44,15 @@ const LOCK_TTL_MINUTES = 90;
 const ENRICH_TICK_INTERVAL_MS = 5 * 60 * 1000;
 const ENRICH_TICK_BATCH = 20;
 const ENRICH_LOCK_TTL_MINUTES = 30;
+
+/**
+ * データ整合チェックの見回り間隔とバッチ。
+ * 調査済み企業のHPを再クロールして「登録社名がそのHPに現れるか」を照合し、
+ * 誤紐付け（別会社サイトを掴んだ連絡先）を自動で無効化・再調査に戻す。
+ * enrichment と同じく相手サイトをクロールするので LOCK_KEY を共有して同時実行を避ける。
+ */
+const INTEGRITY_TICK_INTERVAL_MS = 10 * 60 * 1000;
+const INTEGRITY_TICK_BATCH = 10;
 
 /** 予約送信の見回り間隔。予約時刻の精度に効くので短め（1分） */
 const SCHEDULE_TICK_INTERVAL_MS = 60 * 1000;
@@ -109,6 +132,7 @@ export function getLastCollectionRunAt(): string | null {
 type ScheduleHolder = typeof globalThis & {
   __collectionSchedule?: NodeJS.Timeout;
   __enrichSchedule?: NodeJS.Timeout;
+  __integritySchedule?: NodeJS.Timeout;
   __scheduleSendSchedule?: NodeJS.Timeout;
 };
 
@@ -177,6 +201,32 @@ async function enrichTick(): Promise<void> {
 }
 
 /**
+ * データ整合チェックの見回り。調査済み企業のHPを再クロールして誤紐付けを是正する。
+ * enrichment と同じ相手サイトのクロールなので LOCK_KEY を共有し、同時実行は避ける。
+ * 対象が無い時・別処理が走っている時は何もしない。
+ */
+async function reconcileTick(): Promise<void> {
+  try {
+    if (isJobLocked(LOCK_KEY)) return;
+    if (countCompaniesForIntegrityCheck() === 0) return;
+    if (!tryAcquireJobLock(LOCK_KEY, ENRICH_LOCK_TTL_MINUTES)) return;
+    try {
+      const result = await runIntegrityCheckBatch(INTEGRITY_TICK_BATCH);
+      if (result.reverted > 0 || result.checked > 0) {
+        console.info(
+          `integrity tick: ${result.checked} checked / ${result.reverted} reverted / ${result.skipped} skipped`
+        );
+      }
+    } finally {
+      releaseJobLock(LOCK_KEY);
+    }
+  } catch (error) {
+    // 見回り自体は止めない。次のtickで再試行する
+    console.error("integrity tick failed:", error);
+  }
+}
+
+/**
  * 常時収集のスケジューラ。instrumentation.ts の register() から呼ぶ。
  *
  * 前回実行時刻はDBに持っているので、再起動でタイマーが巻き戻っても
@@ -195,6 +245,11 @@ export function startCollectionSchedule(): void {
   enrichTimer.unref?.();
   holder.__enrichSchedule = enrichTimer;
 
+  // データ整合チェックの見回り（10分ごと。対象が溜まっている時だけ少しずつ再クロールして是正）
+  const integrityTimer = setInterval(reconcileTick, INTEGRITY_TICK_INTERVAL_MS);
+  integrityTimer.unref?.();
+  holder.__integritySchedule = integrityTimer;
+
   // 予約送信の見回り（1分ごと。予約時刻が来たものだけ送る）
   const scheduleSendTimer = setInterval(scheduledSendTick, SCHEDULE_TICK_INTERVAL_MS);
   scheduleSendTimer.unref?.();
@@ -206,6 +261,9 @@ export function startCollectionSchedule(): void {
   // 起動直後にバックログがあれば早めに1回消化を始める
   const firstEnrich = setTimeout(enrichTick, 90 * 1000);
   firstEnrich.unref?.();
+  // 起動後、整合チェック対象があれば少し遅らせて1回走らせる（enrich と時間をずらす）
+  const firstReconcile = setTimeout(reconcileTick, 150 * 1000);
+  firstReconcile.unref?.();
   // 起動直後に期日到来済みの予約があれば早めに送る
   const firstScheduleSend = setTimeout(scheduledSendTick, 45 * 1000);
   firstScheduleSend.unref?.();
