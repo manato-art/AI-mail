@@ -24,11 +24,12 @@ function readIntEnv(name: string, fallback: number): number {
 }
 
 /**
- * 収集の実行間隔（時間）。既定=バランス設定の8h（=1日3回）。
+ * 収集の実行間隔（時間）。既定=3h（=1日8回。user要求 2026-07-24）。
  * 叩く回数を増やすほど検索APIの利用量（課金）と検知・ブロックのリスクが上がるので、
- * env COLLECTION_INTERVAL_HOURS で運用側が調整できるようにしている（安全=24 / 積極=4）。
+ * env COLLECTION_INTERVAL_HOURS で運用側が調整できるようにしている
+ * （安全=24＝1日1回 / 標準=8＝1日3回 / 現在の既定=3＝1日8回）。
  */
-const RUN_INTERVAL_HOURS = readIntEnv("COLLECTION_INTERVAL_HOURS", 8);
+const RUN_INTERVAL_HOURS = readIntEnv("COLLECTION_INTERVAL_HOURS", 3);
 
 /** スケジューラの見回り間隔。実際に走るかは前回実行時刻で決まる */
 const TICK_INTERVAL_MS = 30 * 60 * 1000;
