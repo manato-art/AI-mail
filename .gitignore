@@ -40,6 +40,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# smoke tests (playwright)
+/tests/smoke/.tmp-db/
+/tests/smoke/.auth/
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
