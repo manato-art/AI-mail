@@ -4,19 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  EnvelopeSimple,
-  TrendUp,
-  Handshake,
-  Briefcase,
+  AddressBook,
   ArrowRight,
-  PaperPlaneTilt,
-  Globe,
+  CalendarCheck,
   CaretDown,
+  ChatCircleDots,
+  Check,
+  Globe,
+  MagnifyingGlass,
+  PaperPlaneRight,
+  PaperPlaneTilt,
+  PlugsConnected,
+  ShieldWarning,
   SpinnerGap,
   Tray,
-  Check,
   Warning,
 } from "@phosphor-icons/react";
+import type { IconProps } from "@phosphor-icons/react";
+import type { ComponentType } from "react";
 import type {
   AnalysisResult,
   Persona,
@@ -24,6 +29,9 @@ import type {
   QualityCheckResult,
   Service,
 } from "@/lib/types";
+import type { CollectionStatus } from "@/app/collection/types";
+import { useActiveService } from "@/components/service-context";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, LABEL, SELECT } from "@/components/ui-kit";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -85,16 +93,49 @@ type GenerateResponse =
   | LowCompatibilityResponse
   | ErrorResponse;
 
+interface SenderInfo {
+  id: number;
+  email: string;
+  auth_status: string;
+}
+
+/**
+ * 1本でも失敗したら画面全体が落ちる、を避けるための取得ヘルパー。
+ * 落ちた分だけ既定値になり、その情報を使う表示（アラート等）が消えるだけにする。
+ */
+async function getJson<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return fallback;
+    return (await res.json()) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+interface AlertItem {
+  key: string;
+  Icon: ComponentType<IconProps>;
+  message: string;
+  href: string;
+  action: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
+  const { activeServiceId } = useActiveService();
 
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [senders, setSenders] = useState<SenderInfo[]>([]);
+  const [collectionStatus, setCollectionStatus] = useState<CollectionStatus | null>(null);
+  const [config, setConfig] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [quickUrl, setQuickUrl] = useState("");
-  const [quickServiceId, setQuickServiceId] = useState("");
+  // null = まだ自分で選んでいない（上部バーの商材が初期値になる）
+  const [quickServiceId, setQuickServiceId] = useState<string | null>(null);
   const [quickPersonaId, setQuickPersonaId] = useState("");
   const [quickStatus, setQuickStatus] = useState<QuickStatus>("idle");
   const [quickError, setQuickError] = useState<string | null>(null);
@@ -110,18 +151,21 @@ export default function DashboardPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [pRes, sRes, perRes] = await Promise.all([
-          fetch("/api/prospects"),
-          fetch("/api/services"),
-          fetch("/api/personas"),
+        const [pData, sData, perData, senderData, statusData, configData] = await Promise.all([
+          getJson<Prospect[]>("/api/prospects", []),
+          getJson<Service[]>("/api/services", []),
+          getJson<Persona[]>("/api/personas", []),
+          getJson<SenderInfo[]>("/api/senders", []),
+          getJson<CollectionStatus | null>("/api/collection/status", null),
+          getJson<Record<string, string> | null>("/api/settings", null),
         ]);
-        const pData: Prospect[] = pRes.ok ? await pRes.json() : [];
-        const sData: Service[] = sRes.ok ? await sRes.json() : [];
-        const perData: Persona[] = perRes.ok ? await perRes.json() : [];
         if (!cancelled) {
-          setProspects(pData);
-          setServices(sData);
-          setPersonas(perData);
+          setProspects(Array.isArray(pData) ? pData : []);
+          setServices(Array.isArray(sData) ? sData : []);
+          setPersonas(Array.isArray(perData) ? perData : []);
+          setSenders(Array.isArray(senderData) ? senderData : []);
+          setCollectionStatus(statusData);
+          setConfig(configData);
         }
       } catch {
         /* ignore */
@@ -133,13 +177,22 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, []);
 
+  /** 上部バーで商材を選んでいる間だけ、その商材の件数・履歴に絞る（すべて＝従来どおり） */
+  const scopedProspects = useMemo(
+    () =>
+      activeServiceId === null
+        ? prospects
+        : prospects.filter((p) => p.service_id === activeServiceId),
+    [prospects, activeServiceId]
+  );
+
   const sorted = useMemo(
     () =>
-      [...prospects].sort(
+      [...scopedProspects].sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       ),
-    [prospects]
+    [scopedProspects]
   );
 
   const recentProspects = sorted.slice(0, 5);
@@ -150,30 +203,114 @@ export default function DashboardPage() {
     return m;
   }, [services]);
 
-  const now = new Date();
-  const thisMonth = sorted.filter((p) => {
-    const d = new Date(p.created_at);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
+  const scheduledCount = useMemo(
+    () => scopedProspects.filter((p) => p.send_status === "scheduled").length,
+    [scopedProspects]
+  );
+  // 商談へ進んだ件は数えない（返ってきたばかりの1次返信だけを「新しい返信」とする）
+  const repliedCount = useMemo(
+    () => scopedProspects.filter((p) => p.send_status === "replied").length,
+    [scopedProspects]
+  );
 
-  const totalCount = prospects.length;
-  const monthCount = thisMonth.length;
-  const highCompatRate =
-    totalCount > 0
-      ? Math.round(
-          (prospects.filter((p) => p.compatibility_score === "high").length /
-            totalCount) *
-            100
-        )
-      : 0;
-  const serviceCount = services.length;
+  const activeServiceName =
+    activeServiceId === null ? null : serviceMap.get(activeServiceId) ?? null;
+
+  const alerts: AlertItem[] = [];
+  if (senders.some((s) => s.auth_status !== "connected")) {
+    alerts.push({
+      key: "reauth",
+      Icon: PlugsConnected,
+      message: "Gmailのつなぎ直しが必要なアカウントがあります。このままだと送信できません。",
+      href: "/settings",
+      action: "設定を開く",
+    });
+  }
+  if (collectionStatus?.isLowStock) {
+    alerts.push({
+      key: "low-stock",
+      Icon: Warning,
+      message: `すぐ送れる宛先が残り約${collectionStatus.daysRemaining}日分です。宛先を増やしてください。`,
+      href: "/collection",
+      action: "宛先を集める",
+    });
+  }
+  if (collectionStatus && collectionStatus.pausedSources.length > 0) {
+    alerts.push({
+      key: "paused",
+      Icon: Warning,
+      message: `自動で集める設定が${collectionStatus.pausedSources.length}件止まっています。`,
+      href: "/collection",
+      action: "自動収集を見る",
+    });
+  }
+  if (config && config.auth_enabled !== "true") {
+    alerts.push({
+      key: "auth",
+      Icon: ShieldWarning,
+      message: "アクセス保護が無効です。URLを知っている人は誰でもこの画面を開けます。",
+      href: "/settings",
+      action: "設定を開く",
+    });
+  }
+
+  const statusCards: Array<{
+    key: string;
+    Icon: ComponentType<IconProps>;
+    label: string;
+    value: string;
+    note: string;
+    href: string;
+  }> = [
+    {
+      key: "ready",
+      Icon: AddressBook,
+      label: "すぐ送れる宛先",
+      value: collectionStatus ? `${collectionStatus.readyCount}社` : "—",
+      note: collectionStatus
+        ? `残り約${collectionStatus.daysRemaining}日分（全商材合計）`
+        : "在庫を取得できませんでした",
+      href: "/collection/companies",
+    },
+    {
+      key: "pending",
+      Icon: MagnifyingGlass,
+      label: "準備中",
+      value: collectionStatus ? `${collectionStatus.pendingEnrichment}社` : "—",
+      note: "メールアドレスを調べている途中（全商材合計）",
+      href: "/collection/companies?status=pending",
+    },
+    {
+      key: "scheduled",
+      Icon: CalendarCheck,
+      label: "予約中",
+      value: `${scheduledCount}件`,
+      note: "送る時刻を決めて待っているメール",
+      href: "/history?status=scheduled",
+    },
+    {
+      key: "replied",
+      Icon: ChatCircleDots,
+      label: "新しい返信",
+      value: `${repliedCount}件`,
+      note: "返信ありのメール（商談中は履歴で見る）",
+      href: "/history?status=replied",
+    },
+  ];
 
   const isBusy = quickStatus === "crawling" || quickStatus === "analyzing" || quickStatus === "generating";
+
+  // 上部バーの商材を初期値にする。手で選んだらそちらが勝つ（APIへ送る値は常にこのselectの値）
+  const quickServiceValue =
+    quickServiceId ??
+    (activeServiceId !== null && services.some((s) => s.id === activeServiceId)
+      ? String(activeServiceId)
+      : "");
 
   const canQuickSubmit =
     !isBusy &&
     quickStatus !== "done" &&
-    Boolean(quickServiceId) &&
+    Boolean(quickServiceValue) &&
     Boolean(quickPersonaId) &&
     Boolean(quickUrl.trim());
 
@@ -191,7 +328,7 @@ export default function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          serviceId: Number(quickServiceId),
+          serviceId: Number(quickServiceValue),
           personaId: Number(quickPersonaId),
           url: quickUrl.trim(),
           force: false,
@@ -244,37 +381,6 @@ export default function DashboardPage() {
     }
   }
 
-  const metrics = [
-    {
-      label: "総生成数",
-      value: totalCount,
-      icon: EnvelopeSimple,
-      color: "text-(--color-primary)",
-      bg: "bg-(--color-primary-light)",
-    },
-    {
-      label: "今月の生成",
-      value: monthCount,
-      icon: TrendUp,
-      color: "text-(--color-success)",
-      bg: "bg-(--color-success-light)",
-    },
-    {
-      label: "高相性率",
-      value: `${highCompatRate}%`,
-      icon: Handshake,
-      color: "text-(--color-warning)",
-      bg: "bg-(--color-warning-light)",
-    },
-    {
-      label: "サービス数",
-      value: serviceCount,
-      icon: Briefcase,
-      color: "text-(--color-muted)",
-      bg: "bg-gray-100 dark:bg-slate-700",
-    },
-  ];
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -285,48 +391,95 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        {metrics.map((m) => (
-          <div
-            key={m.label}
-            className="rounded-xl border border-(--color-border) bg-(--color-card) p-3 md:p-4 transition-shadow hover:shadow-md"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className={`flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg ${m.bg}`}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((alert) => (
+            <div
+              key={alert.key}
+              className="flex flex-col gap-2 rounded-xl border border-(--color-danger)/40 bg-(--color-danger-light) p-3.5 sm:flex-row sm:items-center"
+            >
+              <alert.Icon
+                size={18}
+                weight="fill"
+                className="shrink-0 text-(--color-danger)"
+              />
+              <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-(--color-danger)">
+                {alert.message}
+              </p>
+              <Link
+                href={alert.href}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-(--color-danger)/40 bg-(--color-card) px-3.5 text-[13px] font-semibold text-(--color-danger) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
               >
-                <m.icon className={`size-4 md:size-5 ${m.color}`} weight="duotone" />
-              </div>
-              <div>
-                <p className="text-xs text-(--color-muted)">{m.label}</p>
-                <p className="text-xl font-bold tracking-tight">{m.value}</p>
-              </div>
+                {alert.action}
+              </Link>
             </div>
-          </div>
+          ))}
+        </div>
+      )}
+
+      {/* 今日の状況（左から 集める→作る→送る→返ってくる の順） */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statusCards.map((card) => (
+          <Link
+            key={card.key}
+            href={card.href}
+            className={`${CARD} group flex min-h-11 flex-col gap-1 p-4 transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:bg-(--color-card-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)`}
+          >
+            <span className="flex items-center gap-2 text-[13px] font-medium text-(--color-muted)">
+              <card.Icon size={16} weight="duotone" className="shrink-0 text-(--color-primary)" />
+              {card.label}
+            </span>
+            <span className="text-2xl font-bold tabular-nums tracking-tight">{card.value}</span>
+            <span className="text-[12px] leading-relaxed text-(--color-muted)">{card.note}</span>
+          </Link>
         ))}
       </div>
 
-      <div className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
-        <div className="mb-4 flex items-center justify-between">
+      {/* いちばん使う道（ヒーロー） */}
+      <div className={`${CARD} flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between`}>
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold tracking-tight text-balance">今日の営業をはじめる</h1>
+          <p className="mt-1 text-[13px] leading-relaxed text-(--color-muted)">
+            まとめて送るときはこちら。送る相手は次の画面で自分で選びます。
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+          {/* 画面内でいちばん大きい青ボタン（1画面1主目的・IA-DESIGN §5-1） */}
+          <Link
+            href="/bulk-send"
+            className="inline-flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-6 text-base font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-(--color-primary-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) focus-visible:ring-offset-2 focus-visible:ring-offset-(--color-background)"
+          >
+            <PaperPlaneRight size={18} weight="fill" />
+            一括送信をはじめる
+          </Link>
+          <Link href="/generate" className={BTN_SECONDARY}>
+            1社だけ作る
+          </Link>
+        </div>
+      </div>
+
+      <div className={`${CARD} p-5`}>
+        <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold">クイック生成</h2>
           <Link
             href="/generate"
-            className="text-xs text-(--color-primary) hover:underline underline-offset-2"
+            className="text-[13px] text-(--color-primary) underline-offset-2 hover:underline"
           >
             詳細フォームへ
           </Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_2fr_auto] gap-3 items-end">
+        <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_2fr_auto]">
           <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-1">
+            <label htmlFor="quick-service" className={LABEL}>
               サービス
             </label>
             <div className="relative">
               <select
-                value={quickServiceId}
+                id="quick-service"
+                value={quickServiceValue}
                 onChange={(e) => setQuickServiceId(e.target.value)}
                 disabled={isBusy}
-                className="w-full h-10 px-3 pr-8 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
+                className={`${SELECT} disabled:opacity-50`}
               >
                 <option value="">選択</option>
                 {services.map((s) => (
@@ -336,22 +489,23 @@ export default function DashboardPage() {
                 ))}
               </select>
               <CaretDown
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
                 size={14}
                 weight="bold"
               />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-1">
+            <label htmlFor="quick-persona" className={LABEL}>
               人格
             </label>
             <div className="relative">
               <select
+                id="quick-persona"
                 value={quickPersonaId}
                 onChange={(e) => setQuickPersonaId(e.target.value)}
                 disabled={isBusy}
-                className="w-full h-10 px-3 pr-8 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
+                className={`${SELECT} disabled:opacity-50`}
               >
                 <option value="">選択</option>
                 {personas.map((p) => (
@@ -361,28 +515,29 @@ export default function DashboardPage() {
                 ))}
               </select>
               <CaretDown
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400"
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
                 size={14}
                 weight="bold"
               />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-1">
+            <label htmlFor="quick-url" className={LABEL}>
               企業URL
             </label>
             <div className="relative">
               <Globe
                 size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
               />
               <input
+                id="quick-url"
                 type="url"
                 value={quickUrl}
                 onChange={(e) => setQuickUrl(e.target.value)}
                 disabled={isBusy}
                 placeholder="https://example.co.jp"
-                className="w-full h-10 pl-9 pr-3 border border-(--color-border) rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50"
+                className="h-11 w-full rounded-lg border border-(--color-border) bg-(--color-card) pl-9 pr-3 text-sm text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25 disabled:opacity-50"
               />
             </div>
           </div>
@@ -390,7 +545,7 @@ export default function DashboardPage() {
             type="button"
             onClick={handleQuickGenerate}
             disabled={!canQuickSubmit}
-            className="h-10 px-5 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap w-full md:w-auto"
+            className={`${BTN_PRIMARY} w-full whitespace-nowrap md:w-auto`}
           >
             {isBusy ? (
               <SpinnerGap size={16} className="animate-spin" />
@@ -404,14 +559,14 @@ export default function DashboardPage() {
         {isBusy && <QuickProgressBar status={quickStatus} />}
 
         {quickStatus === "error" && quickError && (
-          <div className="mt-4 flex gap-2.5 rounded-lg border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger) animate-fade-in">
-            <Warning size={18} weight="fill" className="shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
+          <div className="animate-fade-in mt-4 flex gap-2.5 rounded-lg border border-(--color-danger)/40 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+            <Warning size={18} weight="fill" className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
               <p>{quickError}</p>
               <button
                 type="button"
                 onClick={handleQuickGenerate}
-                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline cursor-pointer"
+                className="mt-2 cursor-pointer text-xs font-medium underline underline-offset-2 hover:no-underline"
               >
                 再試行
               </button>
@@ -420,12 +575,19 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="rounded-xl border border-(--color-border) bg-(--color-card)">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--color-border)">
-          <h2 className="text-base font-semibold">最近の生成</h2>
+      <div className={CARD}>
+        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-5 py-4">
+          <h2 className="text-base font-semibold">
+            最近の生成
+            {activeServiceName && (
+              <span className="ml-2 text-[12px] font-medium text-(--color-muted)">
+                （{activeServiceName}）
+              </span>
+            )}
+          </h2>
           <Link
             href="/history"
-            className="inline-flex items-center gap-1 text-xs text-(--color-primary) hover:underline underline-offset-2"
+            className="inline-flex items-center gap-1 text-[13px] text-(--color-primary) underline-offset-2 hover:underline"
           >
             すべて見る
             <ArrowRight size={12} />
@@ -434,16 +596,13 @@ export default function DashboardPage() {
 
         {recentProspects.length === 0 ? (
           <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--color-card-hover) text-(--color-muted)">
               <Tray size={24} />
             </div>
             <p className="text-sm text-(--color-muted)">
               まだ生成履歴がありません。
             </p>
-            <Link
-              href="/generate"
-              className="mt-1 inline-flex h-9 items-center rounded-lg border border-(--color-border) px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover) cursor-pointer"
-            >
+            <Link href="/generate" className={`${BTN_SECONDARY} mt-1`}>
               メールを作成する
             </Link>
           </div>
@@ -452,25 +611,25 @@ export default function DashboardPage() {
           {/* Mobile card list */}
           <div className="md:hidden">
             {recentProspects.map((prospect) => (
-              <div key={prospect.id} className="border-b border-(--color-border) last:border-0 px-4 py-3">
-                <div className="flex items-center justify-between mb-1">
+              <div key={prospect.id} className="border-b border-(--color-border) px-4 py-3 last:border-0">
+                <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold">{prospect.company_name || prospect.domain}</span>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       COMPATIBILITY_STYLES[prospect.compatibility_score] ??
-                      "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
+                      "bg-(--color-card-hover) text-(--color-muted)"
                     }`}
                   >
                     {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
                       prospect.compatibility_score}
                   </span>
                 </div>
-                <p className="text-xs text-(--color-muted) truncate">{prospect.subject}</p>
-                <div className="flex items-center justify-between mt-2">
+                <p className="truncate text-xs text-(--color-muted)">{prospect.subject}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-(--color-muted)">
                     {formatDate(prospect.created_at)} · {serviceMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
                   </span>
-                  <Link href={`/prospect/${prospect.id}`} className="text-xs text-(--color-primary) font-medium">
+                  <Link href={`/prospect/${prospect.id}`} className="text-xs font-medium text-(--color-primary)">
                     詳細 →
                   </Link>
                 </div>
@@ -479,10 +638,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50 text-left">
+                <tr className="border-b border-(--color-border) bg-(--color-card-hover) text-left">
                   <th className="whitespace-nowrap px-5 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">
                     日付
                   </th>
@@ -507,13 +666,13 @@ export default function DashboardPage() {
                     key={prospect.id}
                     className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)"
                   >
-                    <td className="whitespace-nowrap px-5 py-3 text-gray-600 dark:text-gray-400">
+                    <td className="whitespace-nowrap px-5 py-3 text-(--color-muted)">
                       {formatDate(prospect.created_at)}
                     </td>
-                    <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-900 dark:text-gray-100">
+                    <td className="whitespace-nowrap px-5 py-3 font-medium">
                       {prospect.company_name || prospect.domain}
                     </td>
-                    <td className="whitespace-nowrap px-5 py-3 text-gray-600 dark:text-gray-400">
+                    <td className="whitespace-nowrap px-5 py-3 text-(--color-muted)">
                       {serviceMap.get(prospect.service_id) ??
                         `#${prospect.service_id}`}
                     </td>
@@ -521,20 +680,20 @@ export default function DashboardPage() {
                       <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                           COMPATIBILITY_STYLES[prospect.compatibility_score] ??
-                          "bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400"
+                          "bg-(--color-card-hover) text-(--color-muted)"
                         }`}
                       >
                         {COMPATIBILITY_LABELS[prospect.compatibility_score] ??
                           prospect.compatibility_score}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-gray-600 dark:text-gray-400">
+                    <td className="px-5 py-3 text-(--color-muted)">
                       {truncate(prospect.subject, 40)}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 text-right">
                       <Link
                         href={`/prospect/${prospect.id}`}
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-(--color-card-hover) hover:text-(--color-primary) cursor-pointer"
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary)"
                       >
                         詳細
                         <ArrowRight size={12} />
@@ -557,8 +716,8 @@ function QuickProgressBar({ status }: { status: QuickStatus }) {
   const pct = currentStep?.pct ?? 0;
 
   return (
-    <div className="mt-4 animate-fade-in">
-      <div className="flex items-center justify-between mb-2">
+    <div className="animate-fade-in mt-4">
+      <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {QUICK_STEPS.slice(0, 3).map((step) => {
             const stepIdx = QUICK_STEPS.findIndex((s) => s.key === step.key);
@@ -572,7 +731,7 @@ function QuickProgressBar({ status }: { status: QuickStatus }) {
                 ) : isCurrent ? (
                   <SpinnerGap size={14} className="animate-spin text-(--color-primary)" />
                 ) : (
-                  <div className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 dark:border-gray-600" />
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-(--color-border)" />
                 )}
                 <span className={`text-xs ${isCurrent ? "font-semibold text-(--color-primary)" : isDone ? "text-(--color-success)" : "text-(--color-muted)"}`}>
                   {step.label}
@@ -583,9 +742,9 @@ function QuickProgressBar({ status }: { status: QuickStatus }) {
         </div>
         <span className="text-xs tabular-nums text-(--color-muted)">{pct}%</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-(--color-card-hover)">
         <div
-          className="h-full rounded-full bg-(--color-primary) transition-all duration-700 ease-out"
+          className="h-full rounded-full bg-(--color-primary) transition-all duration-700 ease-out motion-reduce:transition-none"
           style={{ width: `${pct}%` }}
         />
       </div>
