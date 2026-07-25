@@ -1,15 +1,13 @@
 "use client";
 
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   ArrowsClockwise,
   Buildings,
   CaretLeft,
   CaretRight,
   Check,
-  EnvelopeOpen,
   Eye,
-  MagicWand,
   PaperPlaneTilt,
   PencilSimple,
   Warning,
@@ -18,9 +16,9 @@ import { resolveEmailVariables } from "@/lib/variables";
 import type { GeneratedEmail, Recipient } from "../shared";
 
 /**
- * 右側の3状態パネル。
+ * 「実際に届くメール」を見せる側のパネル（3状態）。
  *  - 生成済み(hasGenerated): 生成結果を編集＋「この宛先に実際に届くメール」
- *  - 直接入力(direct): メール作成＋差し込みプレビュー
+ *  - 直接入力(direct): 差し込みプレビュー
  *  - テンプレ(template): 送信プレビュー（{{AI:}} は説明に置き換えて表示）
  */
 interface RightPanelProps {
@@ -34,14 +32,6 @@ interface RightPanelProps {
   previewCount: number;
   setPreviewIndex: Dispatch<SetStateAction<number>>;
   inputMode: "template" | "direct";
-  directSubject: string;
-  setDirectSubject: (value: string) => void;
-  directBody: string;
-  setDirectBody: (value: string) => void;
-  directBodyRef: RefObject<HTMLTextAreaElement | null>;
-  insertAtCursorDirect: (text: string, cursorBack?: number) => void;
-  canQuoteGenerated: boolean;
-  onOpenGenerated: () => void;
   buildEmail: (r: Recipient) => { subject: string; body: string; unresolved: string[] };
   hasContent: boolean;
   checkedCount: number;
@@ -58,20 +48,12 @@ export function RightPanel({
   previewCount,
   setPreviewIndex,
   inputMode,
-  directSubject,
-  setDirectSubject,
-  directBody,
-  setDirectBody,
-  directBodyRef,
-  insertAtCursorDirect,
-  canQuoteGenerated,
-  onOpenGenerated,
   buildEmail,
   hasContent,
   checkedCount,
 }: RightPanelProps) {
   return (
-    <div className="sticky top-6 h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+    <div className="h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
       {hasGenerated ? (
         <>
           <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3 dark:bg-slate-700/50">
@@ -185,75 +167,8 @@ export function RightPanel({
         </>
       ) : inputMode === "direct" ? (
         <>
-          <div className="flex items-center justify-between border-b border-(--color-border) bg-gray-50 px-5 py-3 dark:bg-slate-700/50">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <MagicWand size={15} />
-              メール作成
-            </h2>
-            {canQuoteGenerated && (
-              <button
-                type="button"
-                onClick={onOpenGenerated}
-                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-              >
-                <EnvelopeOpen size={12} />
-                引用
-              </button>
-            )}
-          </div>
-          <div className="space-y-2.5 p-4">
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">件名</label>
-              <input
-                type="text"
-                value={directSubject}
-                onChange={(e) => setDirectSubject(e.target.value)}
-                className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-[13px] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                placeholder="{{company_name}}様へのご提案"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">本文</label>
-              <textarea
-                ref={directBodyRef}
-                value={directBody}
-                onChange={(e) => setDirectBody(e.target.value)}
-                rows={10}
-                className="w-full rounded-lg border border-(--color-border) bg-(--color-card) p-3 font-mono text-[12px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-                placeholder={"本文を入力\n\n{{company_name}} → 企業名\n{{person_name}} → 担当者名\n{{AI:指示}} → AI生成"}
-              />
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {([
-                ["company_name", "企業名"],
-                ["person_name", "担当者名"],
-                ["sender_name", "送信者名"],
-                ["service_name", "サービス名"],
-                ["lp_url", "LP"],
-                ["booking_url", "予約URL"],
-              ] as const).map(([v, label]) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => insertAtCursorDirect(`{{${v}}}`)}
-                  className="inline-flex h-6 cursor-pointer items-center rounded border border-(--color-border) px-1.5 text-[10px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => insertAtCursorDirect("{{AI:}}", 2)}
-                className="inline-flex h-6 cursor-pointer items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                title="AIが企業ごとに書く部分。空なら全体になじむ文をAIが考える。: の後に指示も書ける"
-              >
-                <MagicWand size={10} weight="fill" />
-                AI
-              </button>
-            </div>
-          </div>
-          {previewRecipient && hasContent && (
-            <div className="border-t border-(--color-border) bg-gray-50 dark:bg-slate-800/50">
+          {previewRecipient && hasContent ? (
+            <div className="bg-gray-50 dark:bg-slate-800/50">
               <div className="flex items-center justify-between px-4 py-2">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">
                   差し込みプレビュー
@@ -286,6 +201,14 @@ export function RightPanel({
                   {buildEmail(previewRecipient).body}
                 </p>
               </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+              <p className="text-sm text-(--color-muted)">
+                {!hasContent
+                  ? "件名と本文を入力すると、ここに届く内容が出ます"
+                  : "チェックした宛先のプレビューが表示されます"}
+              </p>
             </div>
           )}
         </>

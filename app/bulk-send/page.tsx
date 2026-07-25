@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Attachment, Prospect, Service, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import { useActiveService } from "@/components/service-context";
 import { resolveEmailVariables } from "@/lib/variables";
 import { uid, type Recipient, type SenderInfo } from "./shared";
 import { useSendRun } from "./use-send-run";
@@ -20,6 +21,8 @@ import { useImport } from "./use-import";
 import { useAddRecipients } from "./use-add-recipients";
 import { RecipientTable } from "./ui/recipient-table";
 import { RightPanel } from "./ui/right-panel";
+import { DirectEditor } from "./ui/direct-editor";
+import { StepSection } from "./ui/step-section";
 import { SendFooter } from "./ui/send-footer";
 import { HistoryModal } from "./ui/history-modal";
 import { CompaniesModal } from "./ui/companies-modal";
@@ -32,6 +35,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function BulkSendPage() {
+  const { activeServiceId } = useActiveService();
   const [templates, setTemplates] = useState<TemplateWithAttachments[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +58,10 @@ export default function BulkSendPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [recipientsHydrated, setRecipientsHydrated] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+
+  // ②③の開閉。null = まだ自分で開閉していない（宛先が1件以上あれば自動で開く）
+  const [stepTwoOpen, setStepTwoOpen] = useState<boolean | null>(null);
+  const [stepThreeOpen, setStepThreeOpen] = useState<boolean | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -171,6 +179,9 @@ export default function BulkSendPage() {
     [services]
   );
 
+  /** 上部バーで選んでいる商材の名前（企業一覧は名前で絞り込むため） */
+  const activeServiceName = activeServiceId === null ? null : serviceNameOf(activeServiceId) || null;
+
   const checkedRecipients = useMemo(() => recipients.filter((r) => r.checked), [recipients]);
   const checkedPreviewList = checkedRecipients;
 
@@ -221,11 +232,20 @@ export default function BulkSendPage() {
     allowWarnings: run.allowWarnings,
     showToast,
     open: generatedOpen,
+    activeServiceId,
   });
 
   const imp = useImport({ recipients, setRecipients, showToast });
 
-  const add = useAddRecipients({ sorted, serviceNameOf, recipients, setRecipients, showToast });
+  const add = useAddRecipients({
+    sorted,
+    serviceNameOf,
+    recipients,
+    setRecipients,
+    showToast,
+    activeServiceId,
+    activeServiceName,
+  });
 
   useEffect(() => {
     if (!run.isSending && recipients.length === 0) return;
@@ -289,8 +309,37 @@ export default function BulkSendPage() {
     if (idx >= 0) setPreviewIndex(idx);
   }
 
+
   const canQuoteGenerated = prospects.some((p) => p.generated_subject && p.generated_body && p.input_url);
   const allChecked = recipients.length > 0 && recipients.every((r) => r.checked);
+  const hasRecipients = recipients.length > 0;
+  // ②③は宛先が0件のうちは畳んでおく（初見で見える塊を減らす）。自分で開閉したらそれを優先する
+  const twoOpen = stepTwoOpen ?? hasRecipients;
+  const threeOpen = stepThreeOpen ?? (hasRecipients || senders.length === 0);
+
+  /** ②の見出し行に出す入力方法の切替。折りたたみ中でも押せて、押すと②が開く */
+  const inputModeSwitch = (
+    <div className="flex overflow-hidden rounded-lg border border-(--color-border)">
+      <button
+        type="button"
+        onClick={() => { setInputMode("template"); setStepTwoOpen(true); }}
+        className={`min-h-11 cursor-pointer px-3 text-center text-[13px] font-medium transition-colors motion-reduce:transition-none ${
+          inputMode === "template" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+        }`}
+      >
+        テンプレートから送信
+      </button>
+      <button
+        type="button"
+        onClick={() => { setInputMode("direct"); setStepTwoOpen(true); }}
+        className={`min-h-11 cursor-pointer border-l border-(--color-border) px-3 text-center text-[13px] font-medium transition-colors motion-reduce:transition-none ${
+          inputMode === "direct" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+        }`}
+      >
+        直接入力して送信
+      </button>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -304,43 +353,11 @@ export default function BulkSendPage() {
   }
 
   return (
-    <div className="animate-fade-in pb-20">
+    <div className={`animate-fade-in ${hasRecipients ? "pb-48" : "pb-10"}`}>
       <div className="mb-1">
         <h1 className="text-xl font-bold tracking-tight">メール一括送信</h1>
         <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、メールを一括送信します</p>
       </div>
-
-      {/* No sender warning */}
-      {senders.length === 0 && (
-        <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
-          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
-          <p className="text-gray-700 dark:text-gray-300">
-            Gmailアカウントが未接続です。一括送信には
-            <Link href="/settings" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
-              設定ページ
-            </Link>
-            からGmail接続が必要です。
-          </p>
-        </div>
-      )}
-
-      {/* テンプレートが1件も無い場合の導線（テンプレートモード時のみ） */}
-      {inputMode === "template" && templates.length === 0 && (
-        <div className="mt-5 flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
-          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
-          <div className="text-gray-700 dark:text-gray-300">
-            一括送信にはテンプレートが必要です。
-            <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
-              テンプレート
-            </Link>
-            で作成してください。企業名は
-            <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{company_name}}"}</code>
-            、担当者名は
-            <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{person_name}}"}</code>
-            と書くと宛先ごとに差し替わります。
-          </div>
-        </div>
-      )}
 
       {/* Test mode badge */}
       {testMode && (
@@ -349,29 +366,7 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* Input mode selector */}
-      <div className="mt-5 flex overflow-hidden rounded-lg border border-(--color-border)">
-        <button
-          type="button"
-          onClick={() => setInputMode("template")}
-          className={`flex-1 cursor-pointer py-2.5 text-center text-[13px] font-medium transition-colors ${
-            inputMode === "template" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
-          }`}
-        >
-          テンプレートから送信
-        </button>
-        <button
-          type="button"
-          onClick={() => setInputMode("direct")}
-          className={`flex-1 cursor-pointer border-l border-(--color-border) py-2.5 text-center text-[13px] font-medium transition-colors ${
-            inputMode === "direct" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
-          }`}
-        >
-          直接入力して送信
-        </button>
-      </div>
-
-      {/* 「生成」で作った個別メールを各社へまとめて送る入口。どちらのタブでも常に見える */}
+      {/* 「生成」で作った個別メールを各社へまとめて送る入口 */}
       {canQuoteGenerated && (
         <button
           type="button"
@@ -383,155 +378,216 @@ export default function BulkSendPage() {
         </button>
       )}
 
-      {/* Template / sender / direct input */}
-      <div className="mt-5 flex flex-wrap items-end gap-3">
-        {inputMode === "template" && (
-          <div className="min-w-[280px] flex-1">
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-              テンプレートメール
-            </label>
-            <div className="relative">
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => handleTemplateChange(e.target.value)}
-                className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-              >
-                <option value="">テンプレートを選択</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} — {t.subject.slice(0, 40)}
-                  </option>
-                ))}
-              </select>
-              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+      <div className="mt-5 space-y-4">
+        {/* ① だれに送る */}
+        <StepSection
+          step={1}
+          title="だれに送る"
+          hint="送りたい会社をこの一覧にそろえます"
+          open
+          id="bulk-step-recipients"
+          bodyClassName=""
+        >
+          <RecipientTable
+            flush
+            recipients={recipients}
+            allChecked={allChecked}
+            rowStatus={run.rowStatus}
+            hasContent={hasContent}
+            buildEmail={buildEmail}
+            onToggleAll={handleToggleAll}
+            onToggle={handleToggle}
+            onUpdate={handleUpdateRecipient}
+            onDelete={handleDelete}
+            onPreviewRow={handlePreviewRow}
+            onAddOne={handleAddOne}
+            onOpenImport={imp.openImport}
+            onOpenHistory={add.openHistory}
+            onOpenCompanies={add.openCompaniesModal}
+          />
+        </StepSection>
+
+        {/* ② なにを送る */}
+        <StepSection
+          step={2}
+          title="なにを送る"
+          hint="テンプレートを選ぶか、その場で書きます"
+          open={twoOpen}
+          onToggle={() => setStepTwoOpen(!twoOpen)}
+          headerExtra={inputModeSwitch}
+          id="bulk-step-content"
+        >
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_380px]">
+            <div className="space-y-4">
+              {/* テンプレートが1件も無い場合の導線（テンプレートモード時のみ） */}
+              {inputMode === "template" && templates.length === 0 && (
+                <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
+                  <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+                  <div className="text-gray-700 dark:text-gray-300">
+                    一括送信にはテンプレートが必要です。
+                    <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                      テンプレート
+                    </Link>
+                    で作成してください。企業名は
+                    <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{company_name}}"}</code>
+                    、担当者名は
+                    <code className="mx-1 rounded bg-gray-100 px-1.5 py-0.5 text-[12px] dark:bg-slate-700">{"{{person_name}}"}</code>
+                    と書くと宛先ごとに差し替わります。
+                  </div>
+                </div>
+              )}
+
+              {inputMode === "template" ? (
+                <div>
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                    テンプレートメール
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => handleTemplateChange(e.target.value)}
+                      className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                    >
+                      <option value="">テンプレートを選択</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} — {t.subject.slice(0, 40)}
+                        </option>
+                      ))}
+                    </select>
+                    <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+                  </div>
+                </div>
+              ) : (
+                <DirectEditor
+                  directSubject={directSubject}
+                  setDirectSubject={setDirectSubject}
+                  directBody={directBody}
+                  setDirectBody={setDirectBody}
+                  directBodyRef={directBodyRef}
+                  insertAtCursorDirect={insertAtCursorDirect}
+                  canQuoteGenerated={canQuoteGenerated}
+                  onOpenGenerated={openGenerated}
+                />
+              )}
+
+              {/* F22: 添付が許可されていないテンプレでは、添付欄そのものを出さない */}
+              {inputMode === "template" && selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
+                <p className="text-[12px] text-(--color-muted)">
+                  このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
+                  添付したい場合は
+                  <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                    テンプレート
+                  </Link>
+                  で「資料の添付を許可」をONにしてください。
+                </p>
+              )}
+
+              {/* Attachment picker */}
+              {((inputMode === "template" && selectedTemplate?.allow_attachments) || inputMode === "direct") && attachmentsLib.length > 0 && (
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                    添付資料（全宛先に添付されます）
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {attachmentsLib.map((a) => {
+                      const selected = selectedAttachmentIds.has(a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          disabled={run.isSending}
+                          onClick={() => {
+                            setSelectedAttachmentIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(a.id)) next.delete(a.id);
+                              else next.add(a.id);
+                              return next;
+                            });
+                          }}
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                            selected
+                              ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
+                              : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                          }`}
+                        >
+                          {selected ? <Check size={12} weight="bold" /> : <Paperclip size={12} />}
+                          {a.filename}
+                          <span className="opacity-60">{formatSize(a.size_bytes)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
 
-        {senders.length > 0 && (
-          <div className={inputMode === "direct" ? "min-w-[280px] flex-1" : "min-w-[240px]"}>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-              送信元アカウント
-            </label>
-            <div className="relative">
-              <select
-                value={selectedSenderId ?? ""}
-                onChange={(e) => setSelectedSenderId(Number(e.target.value))}
-                className="h-10 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-              >
-                {senders.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.display_name ? `${s.display_name} (${s.email})` : s.email}
-                    {s.auth_status !== "connected" ? " [要再認証]" : ""}
-                  </option>
-                ))}
-              </select>
-              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+            {/* 右: 生成結果の編集 / 実際に届くメール */}
+            <RightPanel
+              hasGenerated={run.hasGenerated}
+              previewRecipient={previewRecipient}
+              generatedEmails={run.generatedEmails}
+              isSending={run.isSending}
+              onClearGenerated={run.handleClearGenerated}
+              onUpdateGenerated={run.handleUpdateGenerated}
+              clampedPreviewIndex={clampedPreviewIndex}
+              previewCount={checkedPreviewList.length}
+              setPreviewIndex={setPreviewIndex}
+              inputMode={inputMode}
+              buildEmail={buildEmail}
+              hasContent={hasContent}
+              checkedCount={checkedRecipients.length}
+            />
+          </div>
+        </StepSection>
+
+        {/* ③ だれから送る */}
+        <StepSection
+          step={3}
+          title="だれから送る"
+          hint="どのGmailアカウントから送るかを選びます"
+          open={threeOpen}
+          onToggle={() => setStepThreeOpen(!threeOpen)}
+          id="bulk-step-sender"
+        >
+          {senders.length === 0 ? (
+            <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-(--color-warning-light) p-4 text-sm dark:border-amber-800">
+              <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
+              <p className="text-gray-700 dark:text-gray-300">
+                Gmailアカウントが未接続です。一括送信には
+                <Link href="/settings" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                  設定ページ
+                </Link>
+                からGmail接続が必要です。
+              </p>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Direct input: placeholder — editing moved to the preview panel */}
-
-      {/* F22: 添付が許可されていないテンプレでは、添付欄そのものを出さない */}
-      {inputMode === "template" && selectedTemplate && !selectedTemplate.allow_attachments && attachmentsLib.length > 0 && (
-        <p className="mt-3 text-[12px] text-(--color-muted)">
-          このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
-          添付したい場合は
-          <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
-            テンプレート
-          </Link>
-          で「資料の添付を許可」をONにしてください。
-        </p>
-      )}
-
-      {/* Attachment picker */}
-      {((inputMode === "template" && selectedTemplate?.allow_attachments) || inputMode === "direct") && attachmentsLib.length > 0 && (
-        <div className="mt-3">
-          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-            添付資料（全宛先に添付されます）
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {attachmentsLib.map((a) => {
-              const selected = selectedAttachmentIds.has(a.id);
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  disabled={run.isSending}
-                  onClick={() => {
-                    setSelectedAttachmentIds((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(a.id)) next.delete(a.id);
-                      else next.add(a.id);
-                      return next;
-                    });
-                  }}
-                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
-                    selected
-                      ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
-                      : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
-                  }`}
+          ) : (
+            <div className="max-w-[420px]">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                送信元アカウント
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedSenderId ?? ""}
+                  onChange={(e) => setSelectedSenderId(Number(e.target.value))}
+                  className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
                 >
-                  {selected ? <Check size={12} weight="bold" /> : <Paperclip size={12} />}
-                  {a.filename}
-                  <span className="opacity-60">{formatSize(a.size_bytes)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Main grid */}
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_380px]">
-        {/* Left: Recipients */}
-        <RecipientTable
-          recipients={recipients}
-          allChecked={allChecked}
-          rowStatus={run.rowStatus}
-          hasContent={hasContent}
-          buildEmail={buildEmail}
-          onToggleAll={handleToggleAll}
-          onToggle={handleToggle}
-          onUpdate={handleUpdateRecipient}
-          onDelete={handleDelete}
-          onPreviewRow={handlePreviewRow}
-          onAddOne={handleAddOne}
-          onOpenImport={imp.openImport}
-          onOpenHistory={add.openHistory}
-          onOpenCompanies={add.openCompaniesModal}
-        />
-
-        {/* Right: Generated editor / Input / Preview */}
-        <RightPanel
-          hasGenerated={run.hasGenerated}
-          previewRecipient={previewRecipient}
-          generatedEmails={run.generatedEmails}
-          isSending={run.isSending}
-          onClearGenerated={run.handleClearGenerated}
-          onUpdateGenerated={run.handleUpdateGenerated}
-          clampedPreviewIndex={clampedPreviewIndex}
-          previewCount={checkedPreviewList.length}
-          setPreviewIndex={setPreviewIndex}
-          inputMode={inputMode}
-          directSubject={directSubject}
-          setDirectSubject={setDirectSubject}
-          directBody={directBody}
-          setDirectBody={setDirectBody}
-          directBodyRef={directBodyRef}
-          insertAtCursorDirect={insertAtCursorDirect}
-          canQuoteGenerated={canQuoteGenerated}
-          onOpenGenerated={openGenerated}
-          buildEmail={buildEmail}
-          hasContent={hasContent}
-          checkedCount={checkedRecipients.length}
-        />
+                  {senders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name ? `${s.display_name} (${s.email})` : s.email}
+                      {s.auth_status !== "connected" ? " [要再認証]" : ""}
+                    </option>
+                  ))}
+                </select>
+                <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} weight="bold" />
+              </div>
+            </div>
+          )}
+        </StepSection>
       </div>
 
-      {/* Footer action bar */}
-      {recipients.length > 0 && (
+      {/* 下部固定の送信バー */}
+      {hasRecipients && (
         <SendFooter
           checkedCount={checkedRecipients.length}
           totalCount={recipients.length}

@@ -35,6 +35,8 @@ interface Options {
   showToast: (msg: string) => void;
   /** 生成済みメールの面が開いているか。開いた瞬間に既定選択を作る */
   open: boolean;
+  /** 上部バーで選んでいる商材。商材フィルタの初期値にだけ使う（APIには渡さない） */
+  activeServiceId: number | null;
 }
 
 export function useGeneratedSend({
@@ -48,6 +50,7 @@ export function useGeneratedSend({
   allowWarnings,
   showToast,
   open,
+  activeServiceId,
 }: Options) {
   const [generatedSearch, setGeneratedSearch] = useState("");
   const [generatedChecked, setGeneratedChecked] = useState<Set<number>>(new Set());
@@ -55,7 +58,8 @@ export function useGeneratedSend({
   const [genRowStatus, setGenRowStatus] = useState<Record<number, GenRowStatus>>({});
   const [genScheduledAt, setGenScheduledAt] = useState("");
   const [genEmailFilter, setGenEmailFilter] = useState("");
-  const [genServiceFilter, setGenServiceFilter] = useState("");
+  // null = まだ自分で選んでいない（上部バーの商材が初期値になる）
+  const [genServiceFilterState, setGenServiceFilter] = useState<string | null>(null);
   // 生成メールの内容プレビュー/編集（展開中の1件）
   const [genEditingId, setGenEditingId] = useState<number | null>(null);
   const [genEditSubject, setGenEditSubject] = useState("");
@@ -70,6 +74,13 @@ export function useGeneratedSend({
     }
     return [...ids].map((id) => ({ id, name: serviceNameOf(id) || `#${id}` }));
   }, [prospects, serviceNameOf]);
+
+  // 上部バーの商材が選択肢に無いときは「すべての商材」のまま（空の一覧を見せない）
+  const genServiceFilter =
+    genServiceFilterState ??
+    (activeServiceId !== null && genServiceOptions.some((o) => o.id === activeServiceId)
+      ? String(activeServiceId)
+      : "");
 
   const generatedProspects = useMemo(() => {
     const q = generatedSearch.toLowerCase();

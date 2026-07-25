@@ -34,6 +34,8 @@ interface RecipientTableProps {
   onOpenImport: () => void;
   onOpenHistory: () => void;
   onOpenCompanies: () => void;
+  /** 親（①のセクション枠）の中に直に置くとき＝自前の枠線を出さない */
+  flush?: boolean;
 }
 
 export function RecipientTable({
@@ -51,13 +53,14 @@ export function RecipientTable({
   onOpenImport,
   onOpenHistory,
   onOpenCompanies,
+  flush = false,
 }: RecipientTableProps) {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
-      <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-3.5">
+    <div className={flush ? "overflow-hidden" : "overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)"}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--color-border) px-4 py-3 md:px-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1.5 14c0-3 2-4.5 4.5-4.5s4.5 1.5 4.5 4.5"/><circle cx="11.5" cy="5.5" r="2"/><path d="M14.5 14c0-2.2-1.2-3.5-3-3.8"/></svg>
           宛先リスト

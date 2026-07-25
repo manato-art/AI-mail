@@ -16,22 +16,49 @@ interface Options {
   recipients: Recipient[];
   setRecipients: Dispatch<SetStateAction<Recipient[]>>;
   showToast: (msg: string) => void;
+  /** 上部バーで選んでいる商材。フィルタの初期値にだけ使う（APIには渡さない） */
+  activeServiceId: number | null;
+  /** 同・商材名（企業一覧は名前で絞り込むため） */
+  activeServiceName: string | null;
 }
 
-export function useAddRecipients({ sorted, serviceNameOf, recipients, setRecipients, showToast }: Options) {
+export function useAddRecipients({
+  sorted,
+  serviceNameOf,
+  recipients,
+  setRecipients,
+  showToast,
+  activeServiceId,
+  activeServiceName,
+}: Options) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
-  const [historyServiceFilter, setHistoryServiceFilter] = useState("");
+  // null = まだ自分で選んでいない（上部バーの商材が初期値になる）
+  const [historyServiceFilterState, setHistoryServiceFilter] = useState<string | null>(null);
   const [historyChecked, setHistoryChecked] = useState<Set<number>>(new Set());
 
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const [companiesList, setCompaniesList] = useState<CompanyWithTag[]>([]);
   const [companiesKeywordFilter, setCompaniesKeywordFilter] = useState("");
-  const [companiesServiceFilter, setCompaniesServiceFilter] = useState("");
+  const [companiesServiceFilterState, setCompaniesServiceFilter] = useState<string | null>(null);
   const [contactsList, setContactsList] = useState<Contact[]>([]);
   const [companiesSearch, setCompaniesSearch] = useState("");
   const [companiesChecked, setCompaniesChecked] = useState<Set<number>>(new Set());
   const [companiesLoading, setCompaniesLoading] = useState(false);
+
+  /** 送信履歴に含まれる商材の選択肢（service_id → 名前） */
+  const historyServiceOptions = useMemo(() => {
+    const ids = new Set<number>();
+    for (const p of sorted) if (p.send_status === "sent" && p.emails_found_json) ids.add(p.service_id);
+    return [...ids].map((id) => ({ id, name: serviceNameOf(id) || `#${id}` }));
+  }, [sorted, serviceNameOf]);
+
+  // 上部バーの商材が選択肢に無いときは「すべての商材」のまま（空の一覧を見せない）
+  const historyServiceFilter =
+    historyServiceFilterState ??
+    (activeServiceId !== null && historyServiceOptions.some((o) => o.id === activeServiceId)
+      ? String(activeServiceId)
+      : "");
 
   const sentProspects = useMemo(() => {
     const q = historySearch.toLowerCase();
@@ -45,13 +72,6 @@ export function useAddRecipients({ sorted, serviceNameOf, recipients, setRecipie
         (p.emails_found_json || "").toLowerCase().includes(q)
       );
   }, [sorted, historySearch, historyServiceFilter]);
-
-  /** 送信履歴に含まれる商材の選択肢（service_id → 名前） */
-  const historyServiceOptions = useMemo(() => {
-    const ids = new Set<number>();
-    for (const p of sorted) if (p.send_status === "sent" && p.emails_found_json) ids.add(p.service_id);
-    return [...ids].map((id) => ({ id, name: serviceNameOf(id) || `#${id}` }));
-  }, [sorted, serviceNameOf]);
 
   const allHistoryChecked = sentProspects.length > 0 && sentProspects.every((p) => historyChecked.has(p.id));
   function toggleHistoryAll() {
@@ -100,7 +120,7 @@ export function useAddRecipients({ sorted, serviceNameOf, recipients, setRecipie
     setCompaniesChecked(new Set());
     setCompaniesSearch("");
     setCompaniesKeywordFilter("");
-    setCompaniesServiceFilter("");
+    setCompaniesServiceFilter(null);
     if (companiesList.length > 0) return;
     setCompaniesLoading(true);
     try {
@@ -136,6 +156,11 @@ export function useAddRecipients({ sorted, serviceNameOf, recipients, setRecipie
     for (const c of companiesList) if (c.collection_service_name) set.add(c.collection_service_name);
     return [...set].sort();
   }, [companiesList]);
+
+  // 上部バーの商材が選択肢に無いときは「すべての商材」のまま
+  const companiesServiceFilter =
+    companiesServiceFilterState ??
+    (activeServiceName && companyServiceOptions.includes(activeServiceName) ? activeServiceName : "");
 
   const filteredCompanies = useMemo(() => {
     let list = companiesList.filter(
