@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * D5/D6/D7/D8/D13/D14: 一括送信の「生成済みメールを各社へ送信」モーダル（最重要域）。
+ * D5/D6/D7/D8/D13/D14: 一括送信の「生成済みメールを各社へ送信」タブ（最重要域）。
  *
  * 検証の重心はネットワーク契約: 「地雷入りの生成メール群」を送ったとき、
  * 実際に /api/send へ飛ぶのは "安全な部分集合だけ" であることを送信bodyで断定する。
@@ -14,6 +14,7 @@ import { test, expect, type Page } from "@playwright/test";
  * 外部(Gmail)には到達させない＝/api/send と /api/prospects/bulk-schedule を intercept。
  */
 
+/** 生成済みメールの面（M6でモーダル→モード2タブのパネルへ昇格。中身の契約は不変） */
 const MODAL = '[aria-labelledby="bulk-generated-title"]';
 
 function genProspect(over: Record<string, unknown>) {
@@ -59,7 +60,8 @@ async function openGeneratedModal(page: Page) {
     return route.continue();
   });
   await page.goto("/bulk-send");
-  await page.getByRole("button", { name: /個別メールを各社へ送信/ }).filter({ visible: true }).first().click();
+  // IA-DESIGN §6-6: 開き方だけタブ切替に変更（ネットワーク契約・内部セレクタは不変）
+  await page.getByRole("button", { name: /生成済みメールを送る/ }).filter({ visible: true }).first().click();
   await expect(page.locator(MODAL)).toBeVisible();
 }
 

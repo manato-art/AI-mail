@@ -7,6 +7,7 @@ import {
   Check,
   EnvelopeOpen,
   Paperclip,
+  PaperPlaneTilt,
   SpinnerGap,
   Warning,
 } from "@phosphor-icons/react";
@@ -34,6 +35,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+/** 画面上部のモード2タブの見た目（選んでいる方だけ塗る） */
+function modeTabClass(active: boolean): string {
+  return `inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
+    active
+      ? "border-(--color-primary) bg-(--color-primary) text-white"
+      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+  }`;
+}
+
 export default function BulkSendPage() {
   const { activeServiceId } = useActiveService();
   const [templates, setTemplates] = useState<TemplateWithAttachments[]>([]);
@@ -52,7 +62,8 @@ export default function BulkSendPage() {
   const [directBody, setDirectBody] = useState("");
   const directBodyRef = useRef<HTMLTextAreaElement>(null);
 
-  const [generatedOpen, setGeneratedOpen] = useState(false);
+  /** 画面上部のモード2タブ。テンプレで一斉送信（既定）／生成済みメールを送る */
+  const [mode, setMode] = useState<"template" | "generated">("template");
   const [services, setServices] = useState<Service[]>([]);
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -231,7 +242,7 @@ export default function BulkSendPage() {
     testMode,
     allowWarnings: run.allowWarnings,
     showToast,
-    open: generatedOpen,
+    open: mode === "generated",
     activeServiceId,
   });
 
@@ -259,14 +270,16 @@ export default function BulkSendPage() {
   function handlePickGenerated(p: Prospect) {
     setDirectSubject(p.generated_subject);
     setDirectBody(p.generated_body);
-    setGeneratedOpen(false);
+    setMode("template");
     gen.setGeneratedSearch("");
     if (inputMode !== "direct") setInputMode("direct");
+    setStepTwoOpen(true);
     showToast("生成済みメールを読み込みました");
   }
 
+  /** 生成済みメールのタブへ切り替える（「引用」からも呼ぶ） */
   function openGenerated() {
-    setGeneratedOpen(true);
+    setMode("generated");
     gen.setGeneratedSearch("");
   }
 
@@ -311,6 +324,8 @@ export default function BulkSendPage() {
 
 
   const canQuoteGenerated = prospects.some((p) => p.generated_subject && p.generated_body && p.input_url);
+  // 生成済みメールが1件も無いときは、そのタブ自体を出さない
+  const activeMode = canQuoteGenerated ? mode : "template";
   const allChecked = recipients.length > 0 && recipients.every((r) => r.checked);
   const hasRecipients = recipients.length > 0;
   // ②③は宛先が0件のうちは畳んでおく（初見で見える塊を減らす）。自分で開閉したらそれを優先する
@@ -352,8 +367,11 @@ export default function BulkSendPage() {
     );
   }
 
+  const showTemplateBar = activeMode === "template" && hasRecipients;
+  const showGeneratedBar = activeMode === "generated" && gen.generatedProspects.length > 0;
+
   return (
-    <div className={`animate-fade-in ${hasRecipients ? "pb-48" : "pb-10"}`}>
+    <div className={`animate-fade-in ${showTemplateBar || showGeneratedBar ? "pb-48" : "pb-10"}`}>
       <div className="mb-1">
         <h1 className="text-xl font-bold tracking-tight">メール一括送信</h1>
         <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、メールを一括送信します</p>
@@ -366,18 +384,50 @@ export default function BulkSendPage() {
         </div>
       )}
 
-      {/* 「生成」で作った個別メールを各社へまとめて送る入口 */}
+      {/* モード2タブ。生成済みメールが1件も無いときは出さない（テンプレ一斉送信だけ） */}
       {canQuoteGenerated && (
-        <button
-          type="button"
-          onClick={openGenerated}
-          className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-(--color-primary)/50 bg-(--color-primary-light)/40 py-2.5 text-[13px] font-medium text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
-        >
-          <EnvelopeOpen size={15} />
-          「生成」で作った個別メールを各社へ送信
-        </button>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("template")}
+            aria-pressed={activeMode === "template"}
+            className={modeTabClass(activeMode === "template")}
+          >
+            <PaperPlaneTilt size={16} weight={activeMode === "template" ? "fill" : "regular"} />
+            テンプレで一斉送信
+          </button>
+          <button
+            type="button"
+            onClick={openGenerated}
+            aria-pressed={activeMode === "generated"}
+            className={modeTabClass(activeMode === "generated")}
+          >
+            <EnvelopeOpen size={16} weight={activeMode === "generated" ? "fill" : "regular"} />
+            生成済みメールを送る
+            <span
+              className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[12px] font-bold ${
+                activeMode === "generated" ? "bg-white/20 text-white" : "bg-(--color-primary-light) text-(--color-primary)"
+              }`}
+            >
+              {gen.genSelectable.length}
+            </span>
+          </button>
+        </div>
       )}
 
+      {activeMode === "generated" ? (
+        <div className="mt-4">
+          <GeneratedPanel
+            gen={gen}
+            onPick={handlePickGenerated}
+            senders={senders}
+            selectedSenderId={selectedSenderId}
+            onChangeSender={setSelectedSenderId}
+            testMode={testMode}
+            serviceNameOf={serviceNameOf}
+          />
+        </div>
+      ) : (
       <div className="mt-5 space-y-4">
         {/* ① だれに送る */}
         <StepSection
@@ -585,9 +635,10 @@ export default function BulkSendPage() {
           )}
         </StepSection>
       </div>
+      )}
 
       {/* 下部固定の送信バー */}
-      {hasRecipients && (
+      {showTemplateBar && (
         <SendFooter
           checkedCount={checkedRecipients.length}
           totalCount={recipients.length}
@@ -668,18 +719,6 @@ export default function BulkSendPage() {
           setColumnKinds={imp.setColumnKinds}
           onApplyMapping={imp.handleApplyMapping}
           importError={imp.importError}
-        />
-      )}
-
-      {/* Generated Email Picker Modal */}
-      {generatedOpen && (
-        <GeneratedPanel
-          gen={gen}
-          onClose={() => setGeneratedOpen(false)}
-          onPick={handlePickGenerated}
-          senderSelected={!!selectedSenderId}
-          testMode={testMode}
-          serviceNameOf={serviceNameOf}
         />
       )}
 

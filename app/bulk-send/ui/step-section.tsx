@@ -61,7 +61,7 @@ export function StepSection({
             onClick={onToggle}
             aria-expanded={open}
             aria-controls={id}
-            className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+            className="flex min-h-11 min-w-0 flex-1 basis-[15rem] cursor-pointer items-center gap-3 rounded-lg text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
           >
             {heading}
             <CaretDown
@@ -71,7 +71,7 @@ export function StepSection({
             />
           </button>
         ) : (
-          <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3">{heading}</div>
+          <div className="flex min-h-11 min-w-0 flex-1 basis-[15rem] items-center gap-3">{heading}</div>
         )}
         {headerExtra && <div className="shrink-0">{headerExtra}</div>}
       </div>
