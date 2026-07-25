@@ -19,6 +19,14 @@ import {
 import { AI_SITE_POOL, MAX_COUNT_OPTIONS } from "@/lib/keyword-search-constants";
 import type { Prospect } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  CARD,
+  FIELD,
+  LABEL,
+  SELECT,
+} from "@/components/ui-kit";
 
 type Phase = "idle" | "site" | "searching" | "resolving" | "done";
 
@@ -370,21 +378,20 @@ export default function KeywordSearchPage() {
     : "";
 
   return (
-    <div className="animate-fade-in pb-20">
-      <div className="mb-6">
-        <p className="text-sm text-(--color-muted)">
-          キーワードから企業を探し、メールアドレス・宛名入りの宛先リストを自動で作ります
-        </p>
-      </div>
+    <div className="animate-fade-in flex flex-col gap-5">
+      <p className="text-sm leading-relaxed text-(--color-foreground)">
+        キーワードから企業を探し、メールアドレス・宛名入りの宛先リストを自動で作ります
+      </p>
 
-      {/* Search mode toggle — segmented control */}
-      <div className="mb-5">
-        <div className="inline-flex rounded-lg border border-(--color-border) bg-gray-100 p-1 dark:bg-slate-800">
+      {/* 検索のやり方（1回だけ探す）。段は上から順に: 探し方 → 条件 → 進み具合 → 結果 → 次の行き先 */}
+      <div>
+        <div className="inline-flex rounded-lg border border-(--color-border) bg-(--color-card-hover) p-1">
           <button
             type="button"
             onClick={() => { if (searchMode !== "api") toggleSearchMode(); }}
             disabled={isBusy}
-            className={`cursor-pointer rounded-md px-4 py-2 text-sm font-medium transition-all disabled:opacity-40 ${
+            aria-pressed={searchMode === "api"}
+            className={`min-h-11 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
               searchMode === "api"
                 ? "bg-(--color-card) text-(--color-foreground) shadow-sm"
                 : "text-(--color-muted) hover:text-(--color-foreground)"
@@ -396,7 +403,8 @@ export default function KeywordSearchPage() {
             type="button"
             onClick={() => { if (searchMode !== "scrape") toggleSearchMode(); }}
             disabled={isBusy}
-            className={`cursor-pointer rounded-md px-4 py-2 text-sm font-medium transition-all disabled:opacity-40 ${
+            aria-pressed={searchMode === "scrape"}
+            className={`min-h-11 cursor-pointer rounded-md px-4 text-sm font-medium transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
               searchMode === "scrape"
                 ? "bg-(--color-card) text-(--color-foreground) shadow-sm"
                 : "text-(--color-muted) hover:text-(--color-foreground)"
@@ -405,7 +413,7 @@ export default function KeywordSearchPage() {
             スクレイピング（無料）
           </button>
         </div>
-        <p className="mt-2 text-xs text-(--color-muted)">
+        <p className="mt-2 text-[13px] leading-relaxed text-(--color-muted)">
           {searchMode === "api" ? (
             <>
               Serper.dev 経由で検索。登録で2,500クエリ無料。
@@ -422,41 +430,43 @@ export default function KeywordSearchPage() {
       </div>
 
       {/* Search form */}
-      <div className="rounded-xl border border-(--color-border) bg-(--color-card) p-5">
+      <div className={`${CARD} p-5`}>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className={LABEL} htmlFor="kw-search-keyword">
               キーワード
             </label>
             <div className="relative">
-              <MagnifyingGlass size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <MagnifyingGlass size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
               <input
+                id="kw-search-keyword"
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 disabled={isBusy}
                 placeholder="例: インターン"
-                className="h-11 w-full rounded-lg border border-(--color-border) pl-10 pr-3 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                className={`${FIELD} pl-10 disabled:opacity-50`}
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className={LABEL} htmlFor="kw-search-site">
               検索先サイト
             </label>
             <div className="relative">
-              <Globe size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Globe size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
               <input
+                id="kw-search-site"
                 type="text"
                 value={siteInput}
                 onChange={(e) => setSiteInput(e.target.value)}
                 disabled={isBusy || aiAuto}
                 placeholder="例: wantedly.com"
-                className="h-11 w-full rounded-lg border border-(--color-border) pl-10 pr-3 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                className={`${FIELD} pl-10 disabled:opacity-50`}
               />
             </div>
-            <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-[13px] text-(--color-foreground)">
               <input
                 type="checkbox"
                 checked={aiAuto}
@@ -466,27 +476,28 @@ export default function KeywordSearchPage() {
               />
               AIにおまかせ（キーワードから検索先を自動判断）
             </label>
-            <p className="mt-1 text-[11px] leading-relaxed text-(--color-muted)">
+            <p className="text-[12px] leading-relaxed text-(--color-muted)">
               AIの候補: {AI_SITE_POOL.map((s) => `${s.label}（${s.genre}）`).join(" / ")} ほか、キーワードに応じて判断
             </p>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className={LABEL} htmlFor="kw-search-max">
               最大件数
             </label>
             <div className="relative w-full md:w-40">
               <select
+                id="kw-search-max"
                 value={maxCount}
                 onChange={(e) => setMaxCount(e.target.value)}
                 disabled={isBusy}
-                className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-(--color-card) px-3 pr-9 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50 transition-shadow"
+                className={`${SELECT} disabled:opacity-50`}
               >
                 {MAX_COUNT_OPTIONS.map((n) => (
                   <option key={n} value={n}>{n}社</option>
                 ))}
               </select>
-              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" size={16} weight="bold" color="#9ca3af" />
+              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)" size={16} weight="bold" />
             </div>
           </div>
 
@@ -495,7 +506,7 @@ export default function KeywordSearchPage() {
               type="button"
               onClick={handleRun}
               disabled={!canRun}
-              className="btn-shine flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-all hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              className={`${BTN_PRIMARY} btn-shine w-full`}
             >
               {isBusy ? (
                 <>
@@ -515,32 +526,32 @@ export default function KeywordSearchPage() {
 
       {/* Progress */}
       {isBusy && (
-        <div className="mt-5 rounded-xl border border-(--color-border) bg-(--color-card) p-5 animate-fade-in">
-          <div className="mb-3 flex items-center justify-between">
+        <div className={`${CARD} animate-fade-in p-5`}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">{phaseLabel}</p>
             <div className="flex items-center gap-3">
-              <span className="text-xs tabular-nums text-(--color-muted)">{progressPct}%</span>
+              <span className="text-[13px] tabular-nums text-(--color-muted)">{progressPct}%</span>
               {phase === "resolving" && (
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2.5 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger)"
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-danger) hover:text-(--color-danger) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
                 >
-                  <X size={11} weight="bold" />
+                  <X size={12} weight="bold" />
                   中止
                 </button>
               )}
             </div>
           </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-slate-700">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-(--color-card-hover)">
             <div
-              className="h-full rounded-full bg-(--color-primary) transition-all duration-500 ease-out"
+              className="h-full rounded-full bg-(--color-primary) transition-all duration-500 ease-out motion-reduce:transition-none"
               style={{ width: `${progressPct}%` }}
             />
           </div>
           {decidedSite && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-(--color-muted)">
-              <Sparkle size={13} className="text-(--color-primary)" />
+            <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[13px] text-(--color-muted)">
+              <Sparkle size={14} className="text-(--color-primary)" />
               AIの判断: <span className="font-semibold text-(--color-foreground)">{decidedSite.site}</span>
               {decidedSite.reason && ` — ${decidedSite.reason}`}
             </p>
@@ -549,48 +560,48 @@ export default function KeywordSearchPage() {
       )}
 
       {runError && (
-        <div className="mt-5 flex gap-2.5 rounded-xl border border-red-200 bg-(--color-danger-light) p-4 text-sm animate-fade-in dark:border-red-800">
-          <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-danger)" }} />
-          <p className="text-gray-700 dark:text-gray-300">{runError}</p>
+        <div className="animate-fade-in flex gap-2.5 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm">
+          <Warning className="mt-0.5 shrink-0 text-(--color-danger)" size={20} weight="fill" />
+          <p className="leading-relaxed text-(--color-foreground)">{runError}</p>
         </div>
       )}
 
       {/* Results */}
       {rows.length > 0 && (
-        <div className="mt-5 overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card) animate-fade-in">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--color-border) px-5 py-3.5">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Buildings size={15} />
+        <div className={`${CARD} animate-fade-in overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3 sm:px-5">
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+              <Buildings size={16} />
               検索結果
-              <span className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-(--color-primary-light) px-1.5 text-[11px] font-bold text-(--color-primary)">
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-1.5 text-[13px] font-bold text-(--color-primary)">
                 {displayRows.length}
               </span>
               {decidedSite && !isBusy && (
-                <span className="text-[11px] font-normal text-(--color-muted)">via {decidedSite.site}</span>
+                <span className="text-[12px] font-normal text-(--color-muted)">via {decidedSite.site}</span>
               )}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-(--color-muted)">
+              <label className="flex min-h-11 cursor-pointer items-center gap-1.5 text-[13px] text-(--color-muted)">
                 <input
                   type="checkbox"
                   checked={excludeSent}
                   onChange={(e) => setExcludeSent(e.target.checked)}
-                  className="h-3.5 w-3.5 cursor-pointer accent-(--color-primary)"
+                  className="h-4 w-4 cursor-pointer accent-(--color-primary)"
                 />
                 送信済みを除外
               </label>
               <button
                 type="button"
                 onClick={() => handleToggleAll(true)}
-                className={`inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border px-3 text-xs font-medium transition-colors ${allDisplayChecked ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)" : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"}`}
+                className={`inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${allDisplayChecked ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)" : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"}`}
               >
-                <Check size={12} weight="bold" />
+                <Check size={13} weight="bold" />
                 全選択
               </button>
               <button
                 type="button"
                 onClick={() => handleToggleAll(false)}
-                className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-(--color-border) px-3 text-xs font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
               >
                 全解除
               </button>
@@ -598,7 +609,7 @@ export default function KeywordSearchPage() {
           </div>
 
           {/* Mobile card list */}
-          <div className="md:hidden divide-y divide-(--color-border)">
+          <div className="divide-y divide-(--color-border) md:hidden">
             {displayRows.map((r) => {
               const sent = isSentBefore(r);
               return (
@@ -608,23 +619,24 @@ export default function KeywordSearchPage() {
                       type="checkbox"
                       checked={r.checked}
                       onChange={() => handleToggleRow(r.id)}
+                      aria-label={`${r.name} を選択`}
                       className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--color-primary)"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold">{r.name}</span>
                         {sent && (
-                          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-slate-700 dark:text-gray-400">
+                          <span className="shrink-0 rounded-full bg-(--color-card-hover) px-2 py-0.5 text-[11px] font-medium text-(--color-muted)">
                             送信済み
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 text-xs text-(--color-muted)">{r.status === "done" ? contactLabel(r) : ""}</p>
-                      <div className="mt-1 text-xs">
+                      <p className="mt-0.5 text-[13px] text-(--color-muted)">{r.status === "done" ? contactLabel(r) : ""}</p>
+                      <div className="mt-1 text-[13px]">
                         {r.status === "pending" && <span className="text-(--color-muted)">待機中...</span>}
                         {r.status === "resolving" && (
                           <span className="flex items-center gap-1 text-(--color-muted)">
-                            <SpinnerGap size={12} className="animate-spin" />
+                            <SpinnerGap size={13} className="animate-spin" />
                             HP解析中...
                           </span>
                         )}
@@ -645,23 +657,24 @@ export default function KeywordSearchPage() {
           </div>
 
           {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
-                  <th className="w-[40px] px-3 py-2.5 text-center">
+                <tr className="border-b border-(--color-border) bg-(--color-card-hover) text-left">
+                  <th className="w-[40px] px-3 py-3 text-center">
                     <input
                       type="checkbox"
                       checked={allDisplayChecked}
                       onChange={(e) => handleToggleAll(e.target.checked)}
+                      aria-label="表示中の企業をすべて選択"
                       className="h-4 w-4 cursor-pointer accent-(--color-primary)"
                     />
                   </th>
-                  <th className="min-w-[180px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">企業名</th>
-                  <th className="min-w-[130px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">宛名</th>
-                  <th className="min-w-[200px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">メールアドレス</th>
-                  <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">リンク</th>
-                  <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">状態</th>
+                  <th className="min-w-[180px] px-3 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">企業名</th>
+                  <th className="min-w-[130px] px-3 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">宛名</th>
+                  <th className="min-w-[200px] px-3 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">メールアドレス</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">リンク</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -670,28 +683,29 @@ export default function KeywordSearchPage() {
                   return (
                     <tr
                       key={r.id}
-                      className={`border-b border-(--color-border) last:border-0 transition-colors ${r.checked ? "bg-(--color-primary-light)/30" : "hover:bg-(--color-card-hover)"} ${sent ? "opacity-60" : ""}`}
+                      className={`border-b border-(--color-border) transition-colors motion-reduce:transition-none last:border-0 ${r.checked ? "bg-(--color-primary-light)/40" : "hover:bg-(--color-card-hover)"} ${sent ? "opacity-60" : ""}`}
                     >
                       <td className="px-3 text-center">
                         <input
                           type="checkbox"
                           checked={r.checked}
                           onChange={() => handleToggleRow(r.id)}
+                          aria-label={`${r.name} を選択`}
                           className="h-4 w-4 cursor-pointer accent-(--color-primary)"
                         />
                       </td>
-                      <td className="px-3 py-2.5 font-medium">{r.name}</td>
-                      <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400">
+                      <td className="px-3 py-3 font-medium">{r.name}</td>
+                      <td className="px-3 py-3 text-(--color-muted)">
                         {r.status === "done" ? contactLabel(r) : "-"}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-3">
                         {r.status === "pending" && <span className="text-(--color-muted)">-</span>}
                         {r.status === "resolving" && <SpinnerGap size={14} className="animate-spin text-(--color-muted)" />}
                         {r.status === "failed" && <span className="text-(--color-danger)">取得失敗</span>}
                         {r.status === "done" && r.email && <span className="text-(--color-primary)">{r.email}</span>}
                         {r.status === "done" && !r.email && r.formUrl && (
                           <span className="inline-flex items-center gap-1 text-(--color-warning)">
-                            <Warning size={12} weight="fill" />
+                            <Warning size={13} weight="fill" />
                             フォームのみ（メール送信不可）
                           </span>
                         )}
@@ -699,7 +713,7 @@ export default function KeywordSearchPage() {
                           <span className="text-(--color-muted)">未検出</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-1.5">
                           {r.homepage && (
                             <a
@@ -707,9 +721,10 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="公式HP"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--color-muted) transition-colors hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              aria-label="公式HPを開く"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
                             >
-                              <Globe size={14} />
+                              <Globe size={15} />
                             </a>
                           )}
                           {/* F1 採用シグナル: 採用ページがある＝いま採用に動いている可能性が高い */}
@@ -719,7 +734,7 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="採用ページあり（採用活動中の可能性）"
-                              className="inline-flex h-7 items-center rounded-md bg-(--color-success-light) px-1.5 text-[10px] font-semibold text-(--color-success) transition-opacity hover:opacity-80"
+                              className="inline-flex h-9 items-center rounded-md bg-(--color-success-light) px-2 text-[11px] font-semibold text-(--color-success) transition-opacity hover:opacity-80"
                             >
                               採用中
                             </a>
@@ -730,9 +745,10 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="問い合わせフォーム"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--color-muted) transition-colors hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              aria-label="問い合わせフォームを開く"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
                             >
-                              <ArrowSquareOut size={14} />
+                              <ArrowSquareOut size={15} />
                             </a>
                           )}
                           {r.sourceUrl && (
@@ -741,24 +757,24 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="出典"
-                              className="inline-flex h-7 items-center rounded-md px-1.5 text-[10px] text-(--color-muted) transition-colors hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              className="inline-flex h-9 items-center rounded-md px-2 text-[11px] text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
                             >
                               出典
                             </a>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-3">
                         {sent ? (
-                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-slate-700 dark:text-gray-400">
+                          <span className="whitespace-nowrap rounded-full bg-(--color-card-hover) px-2 py-0.5 text-[11px] font-medium text-(--color-muted)">
                             送信済み
                           </span>
                         ) : r.status === "done" ? (
-                          <span className="rounded-full bg-(--color-success-light) px-2 py-0.5 text-[10px] font-medium text-(--color-success)">
+                          <span className="whitespace-nowrap rounded-full bg-(--color-success-light) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
                             取得済み
                           </span>
                         ) : (
-                          <span className="text-[10px] text-(--color-muted)">
+                          <span className="text-[11px] text-(--color-muted)">
                             {r.status === "failed" ? "-" : "処理中"}
                           </span>
                         )}
@@ -774,7 +790,7 @@ export default function KeywordSearchPage() {
 
       {/* Footer action */}
       {rows.length > 0 && phase === "done" && (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-(--color-muted)">
             <span className="text-lg font-bold text-(--color-foreground)">{selectedRows.length}</span> / {displayRows.length} 件選択中
           </p>
@@ -783,7 +799,7 @@ export default function KeywordSearchPage() {
               type="button"
               onClick={handleSaveToCompanies}
               disabled={selectedRows.length === 0 || saving}
-              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-(--color-border) px-5 text-sm font-semibold text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+              className={BTN_SECONDARY}
               title="リロードしても消えないように企業リストへ保存します"
             >
               {saving ? <SpinnerGap size={16} className="animate-spin" /> : <Buildings size={16} />}
@@ -793,7 +809,7 @@ export default function KeywordSearchPage() {
               type="button"
               onClick={handleAddToBulkSend}
               disabled={selectedRows.length === 0}
-              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-6 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
+              className={BTN_PRIMARY}
             >
               <PaperPlaneTilt size={16} weight="fill" />
               選択した{selectedRows.length}件を一括送信リストに追加

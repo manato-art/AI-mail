@@ -12,12 +12,15 @@ import {
   ShieldCheck,
   SpinnerGap,
   WarningCircle,
+  X,
   XCircle,
 } from "@phosphor-icons/react";
 import type { CompanyWithTag, Contact } from "@/lib/types";
 import { normGenDomain } from "@/lib/gen-status";
+import { useActiveService } from "@/components/service-context";
 import { ActivityLogPanel } from "../activity-log-panel";
 import { Toast } from "@/components/toast";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD } from "@/components/ui-kit";
 
 const SOURCE_LABELS: Record<string, string> = {
   keyword_search: "キーワード検索",
@@ -52,6 +55,12 @@ const STATUS_CONFIG: Record<
   },
 };
 
+type StatusFilter = "all" | "done" | "pending" | "failed";
+
+function isStatusFilter(value: string): value is StatusFilter {
+  return value === "all" || value === "done" || value === "pending" || value === "failed";
+}
+
 function formatDate(value: string | null): string {
   if (!value) return "—";
   let iso = value.replace(" ", "T");
@@ -68,19 +77,38 @@ function formatDate(value: string | null): string {
   });
 }
 
+/** 状態タブ・絞り込みボタンの見た目（押されているものだけアクセント塗り） */
+const CHIP_BASE =
+  "inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)";
+
+function chipClass(active: boolean) {
+  return `${CHIP_BASE} ${
+    active
+      ? "border-(--color-primary) bg-(--color-primary) text-white"
+      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+  }`;
+}
+
+/**
+ * 絞り込み select。幅は中身なり（ui-kit の FIELD は w-full なのでここでは使わない）。
+ * appearance も既定のままにして、OS標準の▼が出る＝「選ぶもの」だと一目で分かるようにする。
+ */
+const FILTER_SELECT =
+  "h-11 rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 text-[13px] text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25";
+
 export default function CompaniesPage() {
   const router = useRouter();
+  const { activeServiceId } = useActiveService();
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   // 送信済みドメイン（send_log由来・正規化済み）。企業に「送信済み」を分かりやすく出すために使う
   const [sentDomains, setSentDomains] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | "done" | "pending" | "failed">(
-    "all",
-  );
+  const [filter, setFilter] = useState<StatusFilter>("all");
   // F1 タグ絞り込み: どのキーワード・どの商材で集めた企業かで絞る
   const [keywordFilter, setKeywordFilter] = useState<string>("all");
-  const [serviceFilter, setServiceFilter] = useState<string>("all");
+  // null = まだ自分で選んでいない（上部バーの商材が初期値になる）
+  const [serviceFilter, setServiceFilter] = useState<string | null>(null);
   // 送信済み絞り込み（all / sent 送信済みのみ / unsent 未送信のみ）
   const [sentFilter, setSentFilter] = useState<"all" | "sent" | "unsent">("all");
   const [reEnriching, setReEnriching] = useState(false);
@@ -94,6 +122,21 @@ export default function CompaniesPage() {
   const showToast = useCallback((msg: string) => {
     setToast(null);
     setTimeout(() => setToast(msg), 0);
+  }, []);
+
+  useEffect(() => {
+    // ホームの状況カード（?status=pending 等）から来たときは、その状態タブを選んでおく。
+    // useSearchParams は使わない（Suspense 境界が要る／履歴・ログインと同じ方針）。
+    // 読むだけ・無ければ「すべて」
+    try {
+      const value = new URLSearchParams(window.location.search).get("status");
+      if (value && isStatusFilter(value)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setFilter(value);
+      }
+    } catch {
+      /* クエリが壊れていても既定（すべて）で開く */
+    }
   }, []);
 
   const saveHpUrl = useCallback(async (companyId: number, url: string) => {
@@ -245,6 +288,13 @@ export default function CompaniesPage() {
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "ja"));
   }, [companies]);
 
+  // 上部バーの商材を初期値にする。画面の select で手動上書きできる（すべて＝従来どおり）
+  const serviceFilterValue =
+    serviceFilter ??
+    (activeServiceId !== null && serviceOptions.some(([id]) => id === activeServiceId)
+      ? String(activeServiceId)
+      : "all");
+
   // その企業のドメインに一度でも送信済みか（send_log 由来。単送信・一括・生成送信すべて含む）
   const isSent = (c: CompanyWithTag) => {
     const d = normGenDomain(c.domain);
@@ -254,7 +304,7 @@ export default function CompaniesPage() {
   const filtered = companies.filter((c) => {
     if (filter !== "all" && c.enrichment_status !== filter) return false;
     if (keywordFilter !== "all" && c.collection_keyword !== keywordFilter) return false;
-    if (serviceFilter !== "all" && String(c.collection_service_id) !== serviceFilter) return false;
+    if (serviceFilterValue !== "all" && String(c.collection_service_id) !== serviceFilterValue) return false;
     if (sentFilter === "sent" && !isSent(c)) return false;
     if (sentFilter === "unsent" && isSent(c)) return false;
     return true;
@@ -314,22 +364,22 @@ export default function CompaniesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-(--color-muted)">
+        <p className="text-[13px] leading-relaxed text-(--color-muted)">
           自動収集・キーワード検索・CSV取込で集めた企業の一覧です。
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {counts.pending > 0 && (
             <button
               type="button"
               onClick={handleEnrichPending}
               disabled={enrichingPending}
-              title="準備中の企業のHPを取得し、連絡先メールまで調査します"
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              title="準備中の企業すべてのHPを取得し、連絡先メールまで調査します（1社だけを選んで調べることはできません）"
+              className={BTN_PRIMARY}
             >
               {enrichingPending ? (
-                <SpinnerGap size={14} className="animate-spin" />
+                <SpinnerGap size={16} className="animate-spin" />
               ) : (
-                <GlobeSimple size={14} />
+                <GlobeSimple size={16} />
               )}
               {enrichingPending ? "調査を開始中..." : `準備中${counts.pending}社を調査`}
             </button>
@@ -339,12 +389,12 @@ export default function CompaniesPage() {
               type="button"
               onClick={handleReEnrich}
               disabled={reEnriching}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-(--color-primary) px-3 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              className={BTN_SECONDARY}
             >
               {reEnriching ? (
-                <SpinnerGap size={14} className="animate-spin" />
+                <SpinnerGap size={16} className="animate-spin" />
               ) : (
-                <EnvelopeSimple size={14} />
+                <EnvelopeSimple size={16} />
               )}
               {reEnriching
                 ? "再取得中..."
@@ -357,69 +407,58 @@ export default function CompaniesPage() {
               onClick={handleReconcile}
               disabled={reconciling}
               title="調査済み企業のHPを再クロールし、登録社名がそのHPに現れない誤紐付け（別会社のメアド）を自動で無効化・再調査に戻します"
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 text-[13px] font-medium text-(--color-fg) transition-colors hover:bg-(--color-bg) disabled:opacity-50 cursor-pointer"
+              className={BTN_SECONDARY}
             >
               {reconciling ? (
-                <SpinnerGap size={14} className="animate-spin" />
+                <SpinnerGap size={16} className="animate-spin" />
               ) : (
-                <ShieldCheck size={14} />
+                <ShieldCheck size={16} />
               )}
               {reconciling ? "整合チェック中..." : "整合チェック"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={load}
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium transition-colors hover:bg-(--color-card-hover) cursor-pointer"
-          >
-            <ArrowClockwise size={14} />
+          <button type="button" onClick={load} className={BTN_SECONDARY}>
+            <ArrowClockwise size={16} />
             更新
           </button>
         </div>
       </div>
 
+      {/* 状態タブ＋絞り込み。件数付きで「いま何を見ているか」を常に出す */}
       <div className="flex flex-wrap items-center gap-2">
         {(["all", "done", "pending", "failed"] as const).map((key) => (
           <button
             key={key}
             type="button"
+            aria-pressed={filter === key}
             onClick={() => setFilter(key)}
-            className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
-              filter === key
-                ? "bg-(--color-primary) text-white"
-                : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover)"
-            }`}
+            className={chipClass(filter === key)}
           >
             {key === "all" ? "すべて" : STATUS_CONFIG[key]?.label ?? key}
-            <span className="ml-1.5 tabular-nums">({counts[key]})</span>
+            <span className="tabular-nums">({counts[key]})</span>
           </button>
         ))}
 
         {/* 送信済み/未送信の絞り込み。送信済み企業を一目で分けられるようにする */}
-        <span className="mx-1 h-5 w-px bg-(--color-border)" aria-hidden />
+        <span className="mx-1 h-6 w-px bg-(--color-border)" aria-hidden />
         <button
           type="button"
+          aria-pressed={sentFilter === "sent"}
           onClick={() => setSentFilter((v) => (v === "sent" ? "all" : "sent"))}
           title="一度でも送信したことがある企業だけを表示"
-          className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
-            sentFilter === "sent"
-              ? "bg-blue-600 text-white"
-              : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover)"
-          }`}
+          className={chipClass(sentFilter === "sent")}
         >
-          📨 送信済み<span className="ml-1.5 tabular-nums">({counts.sent})</span>
+          <PaperPlaneTilt size={14} weight={sentFilter === "sent" ? "fill" : "regular"} />
+          送信済み<span className="tabular-nums">({counts.sent})</span>
         </button>
         <button
           type="button"
+          aria-pressed={sentFilter === "unsent"}
           onClick={() => setSentFilter((v) => (v === "unsent" ? "all" : "unsent"))}
           title="まだ一度も送信していない企業だけを表示"
-          className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
-            sentFilter === "unsent"
-              ? "bg-(--color-primary) text-white"
-              : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover)"
-          }`}
+          className={chipClass(sentFilter === "unsent")}
         >
-          未送信<span className="ml-1.5 tabular-nums">({counts.all - counts.sent})</span>
+          未送信<span className="tabular-nums">({counts.all - counts.sent})</span>
         </button>
 
         {/* F1: キーワード・商材タグでの絞り込み（該当タグが1つでもある時だけ出す） */}
@@ -428,7 +467,8 @@ export default function CompaniesPage() {
             value={keywordFilter}
             onChange={(e) => setKeywordFilter(e.target.value)}
             title="収集キーワードで絞り込む"
-            className="h-8 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            aria-label="収集キーワードで絞り込む"
+            className={FILTER_SELECT}
           >
             <option value="all">すべてのキーワード</option>
             {keywordOptions.map((k) => (
@@ -438,10 +478,11 @@ export default function CompaniesPage() {
         )}
         {serviceOptions.length > 0 && (
           <select
-            value={serviceFilter}
+            value={serviceFilterValue}
             onChange={(e) => setServiceFilter(e.target.value)}
             title="商材タグで絞り込む"
-            className="h-8 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            aria-label="商材タグで絞り込む"
+            className={FILTER_SELECT}
           >
             <option value="all">すべての商材</option>
             {serviceOptions.map(([id, name]) => (
@@ -451,67 +492,98 @@ export default function CompaniesPage() {
         )}
       </div>
 
+      {/* 選択バーはテーブルの直上（下部固定にしない＝モバイルの下部領域を奪わない） */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--color-primary) bg-(--color-primary-light) px-4 py-3 animate-fade-in">
+          <p className="text-sm font-medium text-(--color-foreground)">
+            <span className="tabular-nums text-(--color-primary)">{selectedIds.size}</span>社を選択中
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className={BTN_SECONDARY}
+            >
+              <X size={14} />
+              選択解除
+            </button>
+            <button type="button" onClick={handleGenerateSelected} className={BTN_PRIMARY}>
+              <PaperPlaneTilt size={16} weight="fill" />
+              メール生成
+            </button>
+          </div>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
-        <p className="py-12 text-center text-[13px] text-(--color-muted)">
-          {companies.length === 0
-            ? "企業がまだありません。自動収集やキーワード検索で追加できます。"
-            : "該当する企業がありません。"}
-        </p>
+        <div className={`${CARD} px-6 py-16 text-center`}>
+          <p className="text-[13px] text-(--color-muted)">
+            {companies.length === 0
+              ? "企業がまだありません。自動収集やキーワード検索で追加できます。"
+              : "該当する企業がありません。"}
+          </p>
+        </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-(--color-border)">
-          <table className="w-full min-w-[700px] text-[13px]">
-            <thead>
-              <tr className="border-b border-(--color-border) bg-(--color-card) text-left text-(--color-muted)">
-                <th className="w-10 px-3 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelectableChecked}
-                    onChange={toggleAll}
-                    className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
-                  />
-                </th>
-                <th className="px-4 py-3 font-medium">企業名</th>
-                <th className="px-4 py-3 font-medium">メール</th>
-                <th className="px-4 py-3 font-medium">経路</th>
-                <th className="px-4 py-3 font-medium">ステータス</th>
-                <th className="px-4 py-3 font-medium">登録日</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((company) => {
-                const companyContacts = contactsByCompany.get(company.id) ?? [];
-                const email = companyContacts[0]?.email ?? null;
-                const cfg = STATUS_CONFIG[company.enrichment_status];
-                const StatusIcon = cfg?.icon ?? Hourglass;
-                return (
-                  <tr
-                    key={company.id}
-                    className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover) transition-colors"
-                  >
-                    <td className="px-3 py-3">
-                      {company.hp_url ? (
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(company.id)}
-                          onChange={() => toggleOne(company.id)}
-                          className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
-                        />
-                      ) : (
-                        <span className="block h-4 w-4" />
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
+        <div className={`${CARD} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-[13px]">
+              <thead>
+                <tr className="border-b border-(--color-border) bg-(--color-card-hover) text-left">
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allSelectableChecked}
+                      onChange={toggleAll}
+                      aria-label="表示中の企業をすべて選択"
+                      className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-(--color-primary)"
+                    />
+                  </th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">企業名</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">メール</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">経路</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">登録日</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((company) => {
+                  const companyContacts = contactsByCompany.get(company.id) ?? [];
+                  const email = companyContacts[0]?.email ?? null;
+                  const cfg = STATUS_CONFIG[company.enrichment_status];
+                  const StatusIcon = cfg?.icon ?? Hourglass;
+                  const selected = selectedIds.has(company.id);
+                  return (
+                    <tr
+                      key={company.id}
+                      className={`border-b border-(--color-border) transition-colors motion-reduce:transition-none last:border-0 ${
+                        selected ? "bg-(--color-primary-light)/50" : "hover:bg-(--color-card-hover)"
+                      }`}
+                    >
+                      <td className="px-3 py-3 align-top">
+                        {company.hp_url ? (
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleOne(company.id)}
+                            aria-label={`${company.name} を選択`}
+                            className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-(--color-primary)"
+                          />
+                        ) : (
+                          <span className="block h-4 w-4" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="font-medium">{company.name}</p>
                           {isSent(company) && (
-                            <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                              📨 送信済み
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[11px] font-medium text-(--color-primary)">
+                              <PaperPlaneTilt size={11} weight="fill" />
+                              送信済み
                             </span>
                           )}
                         </div>
                         {company.hp_url ? (
-                          <p className="mt-0.5 truncate text-[11px] text-(--color-muted) max-w-[250px]">
+                          <p className="mt-0.5 max-w-[250px] truncate text-[12px] text-(--color-muted)">
                             {company.domain || company.hp_url}
                           </p>
                         ) : editingHpId === company.id ? (
@@ -528,81 +600,58 @@ export default function CompaniesPage() {
                               value={hpUrlInput}
                               onChange={(e) => setHpUrlInput(e.target.value)}
                               placeholder="https://example.com"
-                              className="h-7 w-48 rounded border border-(--color-border) bg-transparent px-2 text-[11px] outline-none focus:border-(--color-primary)"
+                              aria-label="企業HPのURL"
+                              className="h-9 w-48 rounded border border-(--color-border) bg-transparent px-2 text-[13px] outline-none focus:border-(--color-primary)"
                             />
                             <button
                               type="submit"
                               disabled={savingHpUrl || !hpUrlInput.trim()}
-                              className="h-7 rounded bg-(--color-primary) px-2 text-[11px] font-medium text-white disabled:opacity-50 cursor-pointer"
+                              className="h-9 cursor-pointer rounded bg-(--color-primary) px-2.5 text-[12px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {savingHpUrl ? "..." : "保存"}
                             </button>
                             <button
                               type="button"
                               onClick={() => { setEditingHpId(null); setHpUrlInput(""); }}
-                              className="h-7 px-1.5 text-[11px] text-(--color-muted) hover:text-(--color-text) cursor-pointer"
+                              aria-label="HPの入力をやめる"
+                              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-foreground)"
                             >
-                              ✕
+                              <X size={14} />
                             </button>
                           </form>
                         ) : (
                           <button
                             type="button"
                             onClick={() => { setEditingHpId(company.id); setHpUrlInput(""); }}
-                            className="mt-0.5 flex items-center gap-1 text-[11px] text-(--color-primary) hover:underline cursor-pointer"
+                            className="mt-0.5 flex cursor-pointer items-center gap-1 text-[12px] text-(--color-primary) hover:underline"
                           >
-                            <GlobeSimple size={12} />
+                            <GlobeSimple size={13} />
                             HP追加
                           </button>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-(--color-muted)">
-                      {email ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded bg-(--color-card) px-2 py-0.5 text-[11px] text-(--color-muted)">
-                        {company.source_detail || (SOURCE_LABELS[company.source] ?? company.source)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`flex items-center gap-1.5 ${cfg?.className ?? ""}`}>
-                        <StatusIcon size={14} />
-                        {cfg?.label ?? company.enrichment_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-(--color-muted) whitespace-nowrap">
-                      {formatDate(company.created_at)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {selectedIds.size > 0 && (
-        <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 px-4 py-3 shadow-lg animate-fade-in">
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-            <span className="tabular-nums text-(--color-primary)">{selectedIds.size}</span>社を選択中
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedIds(new Set())}
-              className="h-8 px-3 rounded-lg text-[13px] font-medium text-(--color-muted) hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-            >
-              選択解除
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerateSelected}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-[13px] font-medium text-white hover:opacity-90 transition-colors cursor-pointer"
-            >
-              <PaperPlaneTilt size={14} weight="fill" />
-              メール生成
-            </button>
+                      </td>
+                      <td className="px-4 py-3 align-top text-(--color-muted)">
+                        {email ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <span className="rounded bg-(--color-card-hover) px-2 py-0.5 text-[11px] text-(--color-muted)">
+                          {company.source_detail || (SOURCE_LABELS[company.source] ?? company.source)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <span className={`flex items-center gap-1.5 whitespace-nowrap ${cfg?.className ?? ""}`}>
+                          <StatusIcon size={15} weight="fill" />
+                          {cfg?.label ?? company.enrichment_status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 align-top tabular-nums text-(--color-muted)">
+                        {formatDate(company.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

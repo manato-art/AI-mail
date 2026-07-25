@@ -1,17 +1,15 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  PaperPlaneTilt,
-  Globe,
   CaretDown,
-  Check,
+  Globe,
+  Package,
+  PaperPlaneTilt,
   SpinnerGap,
   Warning,
-  Lock,
-  MagnifyingGlass,
 } from "@phosphor-icons/react";
 import type {
   AnalysisResult,
@@ -19,108 +17,29 @@ import type {
   Contact,
   Persona,
   Prospect,
-  QualityCheckResult,
   Service,
   Template,
 } from "@/lib/types";
-import { classifyGenStatus, type GenStatus } from "@/lib/gen-status";
+import { useActiveService } from "@/components/service-context";
+import { BTN_PRIMARY, CARD, FIELD, LABEL, SELECT } from "@/components/ui-kit";
+import { AdvancedPanel } from "./advanced-panel";
 import { BatchProgress, type BatchItem } from "./batch-progress";
-
-/** 収集経路の表示名（企業選択のタグ表示用） */
-function sourceLabel(source: string): string {
-  switch (source) {
-    case "keyword_search": return "キーワード検索";
-    case "wantedly_direct":
-    case "wantedly": return "Wantedly";
-    case "csv_import": return "CSV取込";
-    case "manual": return "手動追加";
-    default: return source || "その他";
-  }
-}
-
-type Status =
-  | "idle"
-  | "crawling"
-  | "analyzing"
-  | "generating"
-  | "done"
-  | "error"
-  | "duplicate"
-  | "low-compat";
-
-interface GenerateSuccessResponse {
-  prospect: Prospect;
-  qualityCheck: QualityCheckResult;
-}
-
-interface DuplicateResponse {
-  duplicate: true;
-  existingProspect: Prospect;
-}
-
-interface LowCompatibilityResponse {
-  lowCompatibility: true;
-  analysis: AnalysisResult;
-}
-
-interface ErrorResponse {
-  error: string;
-}
-
-type GenerateResponse =
-  | GenerateSuccessResponse
-  | DuplicateResponse
-  | LowCompatibilityResponse
-  | ErrorResponse;
-
-function isSuccessResponse(
-  data: GenerateResponse
-): data is GenerateSuccessResponse {
-  return (data as GenerateSuccessResponse).prospect !== undefined;
-}
-
-function isDuplicateResponse(
-  data: GenerateResponse
-): data is DuplicateResponse {
-  return (data as DuplicateResponse).duplicate === true;
-}
-
-function isLowCompatibilityResponse(
-  data: GenerateResponse
-): data is LowCompatibilityResponse {
-  return (data as LowCompatibilityResponse).lowCompatibility === true;
-}
-
-function isErrorResponse(data: GenerateResponse): data is ErrorResponse {
-  return typeof (data as ErrorResponse).error === "string";
-}
-
-const PROGRESS_STEPS = [
-  { key: "crawling", label: "企業HPを取得中", sub: "Webサイトをクロールしています" },
-  { key: "analyzing", label: "企業を分析中", sub: "事業内容と相性を判定しています" },
-  { key: "generating", label: "メールを作成中", sub: "パーソナライズされた文面を生成しています" },
-] as const;
-
-const STEP_DELAY_MS = 2000;
-
-const GEN_STATUS_META: Record<GenStatus, { label: string; cls: string }> = {
-  sent: {
-    label: "📨 送信済み",
-    cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  },
-  generated: {
-    label: "📝 生成済み・未送信",
-    cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  },
-  none: {
-    label: "🆕 未生成",
-    cls: "bg-gray-100 text-(--color-muted) dark:bg-slate-700",
-  },
-};
+import { CompanyPicker } from "./company-picker";
+import { DuplicateDialog, ErrorCard, LowCompatDialog, ProgressCard } from "./result-cards";
+import {
+  isDuplicateResponse,
+  isErrorResponse,
+  isLowCompatibilityResponse,
+  isSuccessResponse,
+  STEP_DELAY_MS,
+  type GenerateResponse,
+  type Status,
+} from "./types";
 
 function GeneratePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { activeServiceId } = useActiveService();
 
   const [services, setServices] = useState<Service[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -137,6 +56,8 @@ function GeneratePageInner() {
   const [cta, setCta] = useState("online_meeting");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const [fixedText, setFixedText] = useState("");
+  /** 「詳しい設定」は初期は畳む（初見で見える要素を7±2に抑える・IA-DESIGN §5-6） */
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   // 連絡先メールが1件以上ある企業のID。生成側でも「メアド有無」で絞れるようにする
@@ -155,11 +76,8 @@ function GeneratePageInner() {
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [duplicateProspect, setDuplicateProspect] = useState<Prospect | null>(
-    null
-  );
-  const [lowCompatAnalysis, setLowCompatAnalysis] =
-    useState<AnalysisResult | null>(null);
+  const [duplicateProspect, setDuplicateProspect] = useState<Prospect | null>(null);
+  const [lowCompatAnalysis, setLowCompatAnalysis] = useState<AnalysisResult | null>(null);
 
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -182,15 +100,9 @@ function GeneratePageInner() {
           fetch("/api/companies"),
           fetch("/api/companies/gen-status"),
         ]);
-        const servicesData: Service[] = servicesRes.ok
-          ? await servicesRes.json()
-          : [];
-        const personasData: Persona[] = personasRes.ok
-          ? await personasRes.json()
-          : [];
-        const templatesData: Template[] = templatesRes.ok
-          ? await templatesRes.json()
-          : [];
+        const servicesData: Service[] = servicesRes.ok ? await servicesRes.json() : [];
+        const personasData: Persona[] = personasRes.ok ? await personasRes.json() : [];
+        const templatesData: Template[] = templatesRes.ok ? await templatesRes.json() : [];
         const companiesData = companiesRes.ok
           ? await companiesRes.json()
           : { companies: [], contacts: [] };
@@ -198,6 +110,7 @@ function GeneratePageInner() {
           setServices(servicesData);
           setPersonas(personasData);
           setTemplates(templatesData);
+          // 調査未完了の企業は混ぜない（HPあり かつ enrichment_status==='done' のみ）
           setCompanies(
             (companiesData.companies as CompanyWithTag[]).filter((c) => c.hp_url && c.enrichment_status === "done")
           );
@@ -209,9 +122,7 @@ function GeneratePageInner() {
                 .map((c) => c.company_id as number)
             )
           );
-          const genStatus = genStatusRes.ok
-            ? await genStatusRes.json().catch(() => ({}))
-            : {};
+          const genStatus = genStatusRes.ok ? await genStatusRes.json().catch(() => ({})) : {};
           setSentDomains(new Set((genStatus.sentDomains as string[] | undefined) ?? []));
           setGeneratedDomains(new Set((genStatus.generatedDomains as string[] | undefined) ?? []));
         }
@@ -223,9 +134,7 @@ function GeneratePageInner() {
           setCompanies([]);
         }
       } finally {
-        if (!cancelled) {
-          setLoadingOptions(false);
-        }
+        if (!cancelled) setLoadingOptions(false);
       }
     }
 
@@ -242,8 +151,15 @@ function GeneratePageInner() {
     const paramPersona = searchParams.get("persona");
     const paramMode = searchParams.get("mode");
     if (paramUrl) setUrl(paramUrl);
+    // URLクエリの service= が最優先。無いときだけ上部バーの商材を初期値に入れる
+    // （どちらも実在チェックを通してからセットする）
+    let serviceApplied = false;
     if (paramService && services.some((s) => String(s.id) === paramService)) {
       setSelectedServiceId(paramService);
+      serviceApplied = true;
+    }
+    if (!serviceApplied && activeServiceId !== null && services.some((s) => s.id === activeServiceId)) {
+      setSelectedServiceId(String(activeServiceId));
     }
     if (paramPersona && personas.some((p) => String(p.id) === paramPersona)) {
       setSelectedPersonaId(paramPersona);
@@ -275,6 +191,7 @@ function GeneratePageInner() {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
+    // 生成中の内部リンククリックを抑止する（離脱でバッチを落とさないための安全策）
     const handleClick = (e: MouseEvent) => {
       const anchor = (e.target as Element).closest?.("a[href]");
       if (!anchor) return;
@@ -381,9 +298,7 @@ function GeneratePageInner() {
       clearTimeout(t1);
       clearTimeout(t2);
       setStatus("error");
-      setError(
-        err instanceof Error ? err.message : "通信エラーが発生しました。"
-      );
+      setError(err instanceof Error ? err.message : "通信エラーが発生しました。");
     }
   }
 
@@ -436,6 +351,7 @@ function GeneratePageInner() {
           );
           return;
         } else if (isDuplicateResponse(data)) {
+          // 重複・相性低は error ではなく skipped（二重生成・誤失敗表示への退行を防ぐ）
           setBatchItems((prev) =>
             prev.map((item, idx) =>
               idx === i ? { ...item, status: "skipped", skipReason: "生成済み", prospectId: data.existingProspect.id, companyName: data.existingProspect.company_name } : item
@@ -537,30 +453,41 @@ function GeneratePageInner() {
   const missingServices = !loadingOptions && services.length === 0;
   const missingPersonas = !loadingOptions && personas.length === 0;
 
+  // 上部バーで選んでいる商材の名前（企業選択の商材フィルタの初期値に使う）
+  const activeServiceName =
+    activeServiceId !== null
+      ? services.find((s) => s.id === activeServiceId)?.name ?? null
+      : null;
+
+  const modeTabClass = (active: boolean) =>
+    `min-h-11 cursor-pointer px-5 text-sm font-semibold transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
+      active
+        ? "bg-(--color-primary) text-white"
+        : "bg-(--color-card) text-(--color-muted) hover:bg-(--color-card-hover) hover:text-(--color-foreground)"
+    }`;
+
   return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">営業メールを作成</h1>
-          <p className="mt-1 text-sm text-(--color-muted)">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight">営業メールを作成</h1>
+          <p className="mt-1 text-[13px] leading-relaxed text-(--color-muted)">
             企業URLを入力すると、HPを自動分析してパーソナライズされた営業メールを生成します
           </p>
         </div>
-        <div className="flex rounded-lg border border-(--color-border) overflow-hidden">
+        {/* 作り方の切替。1社ずつ＝URLを1つ、まとめて＝調査済みの企業から選ぶ */}
+        <div className="flex overflow-hidden rounded-lg border border-(--color-border)">
           {([
-            { value: "single" as const, label: "1社" },
+            { value: "single" as const, label: "1社ずつ" },
             { value: "batch" as const, label: "まとめて" },
           ]).map((opt) => (
             <button
               key={opt.value}
               type="button"
+              aria-pressed={mode === opt.value}
               onClick={() => { setMode(opt.value); setBatchItems([]); setSelectedCompanyIds(new Set()); }}
               disabled={isBusy}
-              className={`h-8 px-4 text-[13px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                mode === opt.value
-                  ? "bg-(--color-primary) text-white"
-                  : "bg-white dark:bg-slate-800 text-(--color-muted) hover:bg-gray-50 dark:hover:bg-slate-700"
-              }`}
+              className={modeTabClass(mode === opt.value)}
             >
               {opt.label}
             </button>
@@ -569,21 +496,21 @@ function GeneratePageInner() {
       </div>
 
       {(missingServices || missingPersonas) && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-4 text-sm animate-fade-in">
-          <Warning className="shrink-0 mt-0.5" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
-          <div className="space-y-1">
+        <div className="animate-fade-in flex gap-2.5 rounded-xl border border-(--color-warning) bg-(--color-warning-light) p-4 text-sm">
+          <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={20} weight="fill" />
+          <div className="space-y-1 leading-relaxed">
             {missingServices && (
-              <p className="text-gray-700 dark:text-gray-300">
+              <p className="text-(--color-foreground)">
                 サービスが未登録です。
-                <Link href="/settings/services" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                <Link href="/settings/services" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
                   サービスを登録
                 </Link>
               </p>
             )}
             {missingPersonas && (
-              <p className="text-gray-700 dark:text-gray-300">
+              <p className="text-(--color-foreground)">
                 人格が未登録です。
-                <Link href="/settings/personas" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
+                <Link href="/settings/personas" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
                   人格を登録
                 </Link>
               </p>
@@ -592,69 +519,67 @@ function GeneratePageInner() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 左カラム: 基本入力 */}
-        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* 左: 基本設定（ここだけ埋めれば作れる） */}
+        <div className={`${CARD} space-y-4 p-5`}>
+          <h2 className="flex items-center gap-2 border-b border-(--color-border) pb-2.5 text-[15px] font-semibold">
+            <Package size={16} className="text-(--color-primary)" />
             基本設定
           </h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              サービス
-            </label>
+            <label className={LABEL} htmlFor="gen-service">サービス</label>
             <div className="relative">
               <select
+                id="gen-service"
                 value={selectedServiceId}
                 onChange={(e) => setSelectedServiceId(e.target.value)}
                 disabled={isBusy || loadingOptions}
-                className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                className={`${SELECT} disabled:opacity-50`}
               >
                 <option value="">選択してください</option>
                 {services.map((service) => (
                   <option key={service.id} value={service.id}>{service.name}</option>
                 ))}
               </select>
-              <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)" size={16} weight="bold" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              送信者（人格）
-            </label>
+            <label className={LABEL} htmlFor="gen-persona">送信者（人格）</label>
             <div className="relative">
               <select
+                id="gen-persona"
                 value={selectedPersonaId}
                 onChange={(e) => setSelectedPersonaId(e.target.value)}
                 disabled={isBusy || loadingOptions}
-                className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                className={`${SELECT} disabled:opacity-50`}
               >
                 <option value="">選択してください</option>
                 {personas.map((persona) => (
                   <option key={persona.id} value={persona.id}>{persona.name}（{persona.title}）</option>
                 ))}
               </select>
-              <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
+              <CaretDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)" size={16} weight="bold" />
             </div>
           </div>
 
           {mode === "single" ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                企業URL
-              </label>
+              <label className={LABEL} htmlFor="gen-url">企業URL</label>
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                  <Globe size={20} />
-                </div>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)">
+                  <Globe size={18} />
+                </span>
                 <input
+                  id="gen-url"
                   type="url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   disabled={isBusy}
                   placeholder="https://example.co.jp"
-                  className="w-full h-11 pl-10 pr-3 border border-(--color-border) rounded-lg focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
+                  className={`${FIELD} pl-10 disabled:opacity-50`}
                 />
               </div>
             </div>
@@ -677,14 +602,15 @@ function GeneratePageInner() {
               search={companySearch}
               onSearchChange={setCompanySearch}
               disabled={isBusy}
+              initialServiceName={activeServiceName}
             />
           )}
 
           <button
             type="button"
-            onClick={() => mode === "single" ? handleGenerate() : handleBatchGenerate()}
+            onClick={() => (mode === "single" ? handleGenerate() : handleBatchGenerate())}
             disabled={!canSubmit}
-            className="w-full h-11 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            className={`${BTN_PRIMARY} w-full`}
           >
             {isBusy ? (
               <>
@@ -700,160 +626,25 @@ function GeneratePageInner() {
           </button>
         </div>
 
-        {/* 右カラム: カスタマイズ */}
-        <div className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-(--color-border) pb-2.5">
-            カスタマイズ
-          </h2>
-
-          <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-1.5">テンプレート</label>
-            {templates.length > 0 ? (
-              <>
-                <div className="relative">
-                  <select
-                    value={selectedTemplateId}
-                    onChange={(e) => setSelectedTemplateId(e.target.value)}
-                    disabled={isBusy}
-                    className="w-full h-11 px-3 pr-9 border border-(--color-border) rounded-lg bg-white dark:bg-slate-800 appearance-none focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-                  >
-                    <option value="">使用しない（自由生成）</option>
-                    {templates.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                  <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" size={16} weight="bold" color="#9ca3af" />
-                </div>
-                {selectedTemplateId && (
-                  <p className="mt-1 text-[11px] text-(--color-muted)">
-                    テンプレートが文体・長さ・CTAを管理します（トーン等の個別指定は不要）
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="text-xs text-(--color-muted)">
-                テンプレートがありません。
-                <Link href="/settings/templates" className="text-(--color-primary) font-medium underline underline-offset-2 ml-1">
-                  作成する
-                </Link>
-              </p>
-            )}
-          </div>
-
-          {!selectedTemplateId && (
-          <>
-          <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-2">トーン</label>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { value: "formal", label: "丁寧・堅め" },
-                { value: "balanced", label: "バランス" },
-                { value: "friendly", label: "親しみやすい" },
-              ] as const).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setTone(opt.value)}
-                  disabled={isBusy}
-                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                    tone === opt.value
-                      ? "bg-(--color-primary) text-white"
-                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-2">文章量</label>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { value: "short", label: "短め（200字）" },
-                { value: "standard", label: "標準（300字）" },
-                { value: "long", label: "長め（450字）" },
-              ] as const).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setLength(opt.value)}
-                  disabled={isBusy}
-                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                    length === opt.value
-                      ? "bg-(--color-primary) text-white"
-                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-2">行動喚起（CTA）</label>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { value: "online_meeting", label: "オンライン商談" },
-                { value: "phone", label: "電話" },
-                { value: "send_materials", label: "資料送付" },
-                { value: "seminar", label: "セミナー招待" },
-              ] as const).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setCta(opt.value)}
-                  disabled={isBusy}
-                  className={`h-8 px-3 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                    cta === opt.value
-                      ? "bg-(--color-primary) text-white"
-                      : "border border-(--color-border) text-gray-600 dark:text-gray-400 hover:border-(--color-primary) hover:text-(--color-primary)"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          </>
-          )}
-
-          <div>
-            <label className="flex items-center gap-1.5 text-xs font-medium text-(--color-muted) mb-1.5">
-              <Lock size={12} />
-              固定テキスト（任意）
-            </label>
-            <textarea
-              rows={3}
-              value={fixedText}
-              onChange={(e) => setFixedText(e.target.value)}
-              disabled={isBusy}
-              placeholder={"全メールにそのまま入る文章を書きます\n例: 弊社は〇〇分野で10年の実績があり…"}
-              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-            />
-            {fixedText.trim() && (
-              <p className="mt-1 text-[11px] text-(--color-muted)">
-                この文章はAIが改変せず、全メールにそのまま挿入されます
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-(--color-muted) mb-1.5">
-              追加の指示（任意）
-            </label>
-            <textarea
-              rows={2}
-              value={additionalInstructions}
-              onChange={(e) => setAdditionalInstructions(e.target.value)}
-              disabled={isBusy}
-              placeholder="例: 導入事例に触れてほしい、価格には触れないで、など"
-              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-(--color-primary) focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 dark:disabled:bg-slate-700 transition-shadow"
-            />
-          </div>
-        </div>
+        {/* 右: 詳しい設定（初期は畳む。触らなくても作れる） */}
+        <AdvancedPanel
+          open={showAdvanced}
+          onToggle={() => setShowAdvanced((v) => !v)}
+          templates={templates}
+          templateId={selectedTemplateId}
+          onTemplateId={setSelectedTemplateId}
+          tone={tone}
+          onTone={setTone}
+          length={length}
+          onLength={setLength}
+          cta={cta}
+          onCta={setCta}
+          fixedText={fixedText}
+          onFixedText={setFixedText}
+          additionalInstructions={additionalInstructions}
+          onAdditionalInstructions={setAdditionalInstructions}
+          disabled={isBusy}
+        />
       </div>
 
       {mode === "batch" && batchItems.length > 0 && (
@@ -888,434 +679,6 @@ function GeneratePageInner() {
       {mode === "single" && status === "error" && error && (
         <ErrorCard message={error} onRetry={() => handleGenerate()} />
       )}
-    </div>
-  );
-}
-
-function CompanyPicker({
-  companies,
-  emailCompanyIds,
-  sentDomains,
-  generatedDomains,
-  selectedIds,
-  onToggle,
-  onToggleAll,
-  search,
-  onSearchChange,
-  disabled,
-}: {
-  companies: CompanyWithTag[];
-  emailCompanyIds: Set<number>;
-  sentDomains: Set<string>;
-  generatedDomains: Set<string>;
-  selectedIds: Set<number>;
-  onToggle: (id: number) => void;
-  onToggleAll: (ids: Set<number>) => void;
-  search: string;
-  onSearchChange: (v: string) => void;
-  disabled: boolean;
-}) {
-  // どのキーワード・どの商材向けに集めた企業かで絞り込めるよう、実データから選択肢を作る
-  const [keywordFilter, setKeywordFilter] = useState("");
-  const [serviceFilter, setServiceFilter] = useState("");
-  // メアド有無で絞る（"" すべて / "has" メアドあり / "none" メアド未取得）
-  const [emailFilter, setEmailFilter] = useState("");
-  // 生成/送信状態で絞る（"" すべて / "none" 未生成 / "generated" 生成済み・未送信 / "sent" 送信済み）
-  const [statusFilter, setStatusFilter] = useState("");
-
-  // 企業ごとの生成/送信状態を domain 突き合わせで1つに分類（送信済み > 生成済み > 未生成）
-  const statusById = useMemo(() => {
-    const m = new Map<number, GenStatus>();
-    for (const c of companies) {
-      m.set(c.id, classifyGenStatus(c.domain, sentDomains, generatedDomains));
-    }
-    return m;
-  }, [companies, sentDomains, generatedDomains]);
-
-  const keywordOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of companies) if (c.collection_keyword) set.add(c.collection_keyword);
-    return [...set].sort();
-  }, [companies]);
-  const serviceOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of companies) if (c.collection_service_name) set.add(c.collection_service_name);
-    return [...set].sort();
-  }, [companies]);
-
-  const filtered = useMemo(() => {
-    let list = companies;
-    if (keywordFilter) list = list.filter((c) => c.collection_keyword === keywordFilter);
-    if (serviceFilter) list = list.filter((c) => c.collection_service_name === serviceFilter);
-    if (emailFilter === "has") list = list.filter((c) => emailCompanyIds.has(c.id));
-    else if (emailFilter === "none") list = list.filter((c) => !emailCompanyIds.has(c.id));
-    if (statusFilter) list = list.filter((c) => (statusById.get(c.id) ?? "none") === statusFilter);
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (c) => c.name.toLowerCase().includes(q) || (c.domain ?? "").toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [companies, keywordFilter, serviceFilter, emailFilter, emailCompanyIds, statusFilter, statusById, search]);
-
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
-
-  function handleToggleAll() {
-    if (allFilteredSelected) {
-      const removeIds = new Set(filtered.map((c) => c.id));
-      onToggleAll(new Set([...selectedIds].filter((id) => !removeIds.has(id))));
-    } else {
-      onToggleAll(new Set([...selectedIds, ...filtered.map((c) => c.id)]));
-    }
-  }
-
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-        送信先の企業を選択
-      </label>
-      <div className="border border-(--color-border) rounded-lg overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-(--color-border) bg-gray-50 dark:bg-slate-700/50">
-          <MagnifyingGlass size={16} className="shrink-0 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            disabled={disabled}
-            placeholder="企業名で検索..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 disabled:opacity-50"
-          />
-          {selectedIds.size > 0 && (
-            <span className="shrink-0 rounded-full bg-(--color-primary) px-2 py-0.5 text-[11px] font-medium text-white tabular-nums">
-              {selectedIds.size}
-            </span>
-          )}
-        </div>
-        {companies.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-b border-(--color-border) bg-gray-50/60 px-3 py-2 dark:bg-slate-700/30">
-            <select
-              value={emailFilter}
-              onChange={(e) => setEmailFilter(e.target.value)}
-              disabled={disabled}
-              aria-label="メール有無で絞り込む"
-              className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
-            >
-              <option value="">✉️ メアド有無：すべて</option>
-              <option value="has">✉️ メアドあり</option>
-              <option value="none">⚠️ メアド未取得</option>
-            </select>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              disabled={disabled}
-              aria-label="生成・送信の状態で絞り込む"
-              className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
-            >
-              <option value="">🗂️ 生成状態：すべて</option>
-              <option value="none">🆕 未生成</option>
-              <option value="generated">📝 生成済み・未送信</option>
-              <option value="sent">📨 送信済み</option>
-            </select>
-            {keywordOptions.length > 0 && (
-              <select
-                value={keywordFilter}
-                onChange={(e) => setKeywordFilter(e.target.value)}
-                disabled={disabled}
-                aria-label="キーワードで絞り込む"
-                className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
-              >
-                <option value="">🔍 すべてのキーワード</option>
-                {keywordOptions.map((k) => (
-                  <option key={k} value={k}>🔍 {k}</option>
-                ))}
-              </select>
-            )}
-            {serviceOptions.length > 0 && (
-              <select
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                disabled={disabled}
-                aria-label="商材で絞り込む"
-                className="h-8 rounded-lg border border-(--color-border) bg-white px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50 dark:bg-slate-800"
-              >
-                <option value="">📦 すべての商材</option>
-                {serviceOptions.map((s) => (
-                  <option key={s} value={s}>📦 {s}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-        <div className="max-h-[240px] overflow-y-auto">
-          {filtered.length === 0 ? (
-            <p className="py-6 text-center text-[13px] text-(--color-muted)">
-              {companies.length === 0
-                ? "調査済みの企業がありません"
-                : "該当する企業がありません"}
-            </p>
-          ) : (
-            <>
-              <label className="flex items-center gap-2.5 px-3 py-2 border-b border-(--color-border) bg-gray-50/50 dark:bg-slate-700/30 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700/60 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={allFilteredSelected}
-                  onChange={handleToggleAll}
-                  disabled={disabled}
-                  className="h-4 w-4 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
-                />
-                <span className="text-[12px] font-medium text-(--color-muted)">
-                  すべて選択（{filtered.length}社）
-                </span>
-              </label>
-              {filtered.map((company) => (
-                <label
-                  key={company.id}
-                  className="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(company.id)}
-                    onChange={() => onToggle(company.id)}
-                    disabled={disabled}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-(--color-primary) cursor-pointer"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="block min-w-0 truncate text-[13px]">
-                      <span className="font-medium">{company.name}</span>
-                      {company.domain && (
-                        <span className="ml-1.5 text-(--color-muted) text-[11px]">
-                          {company.domain}
-                        </span>
-                      )}
-                    </span>
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      {(() => {
-                        const st = statusById.get(company.id) ?? "none";
-                        const meta = GEN_STATUS_META[st];
-                        return (
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
-                            {meta.label}
-                          </span>
-                        );
-                      })()}
-                      {emailCompanyIds.has(company.id) ? (
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                          ✉️ メアドあり
-                        </span>
-                      ) : (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                          ⚠️ メアド未取得
-                        </span>
-                      )}
-                      {company.collection_keyword && (
-                        <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
-                          🔍 {company.collection_keyword}
-                        </span>
-                      )}
-                      {company.collection_service_name && (
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                          📦 {company.collection_service_name}
-                        </span>
-                      )}
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
-                        {sourceLabel(company.source)}
-                      </span>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProgressCard({ status }: { status: Status }) {
-  const currentIndex = PROGRESS_STEPS.findIndex((step) => step.key === status);
-  const pctMap: Record<string, number> = { crawling: 15, analyzing: 50, generating: 85 };
-  const pct = pctMap[status] ?? 0;
-
-  return (
-    <div className="mt-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 animate-fade-in">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-          {PROGRESS_STEPS[currentIndex]?.label ?? "処理中"}
-        </p>
-        <span className="text-xs tabular-nums text-(--color-muted)">{pct}%</span>
-      </div>
-      <div className="h-2.5 w-full rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden mb-5">
-        <div
-          className="h-full rounded-full bg-(--color-primary) transition-all duration-700 ease-out"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="space-y-4">
-        {PROGRESS_STEPS.map((step, index) => {
-          const isDone = currentIndex > index;
-          const isCurrent = currentIndex === index;
-          return (
-            <div key={step.key} className="flex items-start gap-3">
-              <div className="mt-0.5">
-                {isDone ? (
-                  <div className="h-6 w-6 rounded-full bg-(--color-success-light) flex items-center justify-center">
-                    <Check size={16} weight="bold" style={{ color: "var(--color-success)" }} />
-                  </div>
-                ) : isCurrent ? (
-                  <div className="h-6 w-6 rounded-full bg-(--color-primary-light) flex items-center justify-center relative">
-                    <div className="absolute inset-0 rounded-full bg-(--color-primary) opacity-20 animate-pulse-ring" />
-                    <div className="h-2.5 w-2.5 rounded-full bg-(--color-primary)" />
-                  </div>
-                ) : (
-                  <div className="h-6 w-6 rounded-full border-2 border-gray-200" />
-                )}
-              </div>
-              <div>
-                <p
-                  className={`text-sm font-medium ${
-                    isCurrent
-                      ? "text-gray-900 dark:text-gray-100"
-                      : isDone
-                        ? "text-gray-500"
-                        : "text-gray-400"
-                  }`}
-                >
-                  {step.label}
-                </p>
-                {isCurrent && (
-                  <p className="text-xs text-(--color-muted) mt-0.5">
-                    {step.sub}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DuplicateDialog({
-  prospect,
-  onView,
-  onForceNew,
-  onCancel,
-}: {
-  prospect: Prospect;
-  onView: () => void;
-  onForceNew: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="mt-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-(--color-warning-light) p-5 animate-fade-in">
-      <div className="flex gap-3">
-        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-warning)" }} />
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-            この企業は生成済みです
-          </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {prospect.company_name || prospect.domain}{" "}
-            宛のメールは既に作成されています。
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onView}
-              className="h-9 px-4 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-medium transition-colors cursor-pointer"
-            >
-              過去の結果を見る
-            </button>
-            <button
-              type="button"
-              onClick={onForceNew}
-              className="h-9 px-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 text-sm font-medium hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-            >
-              新規作成
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="h-9 px-4 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
-            >
-              キャンセル
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LowCompatDialog({
-  analysis,
-  onForce,
-  onCancel,
-}: {
-  analysis: AnalysisResult;
-  onForce: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="mt-5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-5 animate-fade-in">
-      <div className="flex gap-3">
-        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-danger)" }} />
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-            相性が低い可能性があります
-          </h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {analysis.compatibility.reason}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onForce}
-              className="h-9 px-4 rounded-lg bg-(--color-danger) hover:bg-(--color-danger-hover) text-white text-sm font-medium transition-colors cursor-pointer"
-            >
-              それでも生成する
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="h-9 px-4 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
-            >
-              キャンセル
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ErrorCard({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="mt-5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-5 animate-fade-in">
-      <div className="flex gap-3">
-        <Warning className="shrink-0 mt-0.5" size={24} weight="fill" style={{ color: "var(--color-danger)" }} />
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">エラーが発生しました</h2>
-          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{message}</p>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-4 h-9 px-4 rounded-lg bg-(--color-primary) hover:bg-(--color-primary-hover) text-white text-sm font-medium transition-colors cursor-pointer"
-          >
-            再試行
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

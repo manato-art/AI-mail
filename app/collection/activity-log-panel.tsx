@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Terminal } from "@phosphor-icons/react";
+import { CaretDown, Terminal } from "@phosphor-icons/react";
 import type { ActivityEntry } from "@/lib/activity-log";
 
 const LOG_POLL_MS = 2000;
@@ -45,27 +45,25 @@ export function ActivityLogPanel() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-5 py-3 text-left text-sm font-bold transition-colors hover:bg-(--color-card-hover) cursor-pointer"
+        aria-expanded={open}
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 px-5 py-3 text-left text-sm font-semibold transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
       >
         <Terminal size={16} className="text-(--color-muted)" />
         活動ログ
         {entries.length > 0 && (
-          <span className="ml-1 rounded-full bg-(--color-primary)/10 px-2 py-0.5 text-[11px] tabular-nums text-(--color-primary)">
+          <span className="ml-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[11px] tabular-nums text-(--color-primary)">
             {entries.length}
           </span>
         )}
-        <svg
-          className={`ml-auto h-4 w-4 text-(--color-muted) transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
+        <CaretDown
+          size={16}
+          weight="bold"
+          aria-hidden="true"
+          className={`ml-auto text-(--color-muted) transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
-        <div className="border-t border-(--color-border) bg-gray-950 px-4 py-3 font-mono text-[12px] leading-relaxed text-gray-300 max-h-[400px] overflow-y-auto">
+        <div className="max-h-[400px] overflow-y-auto border-t border-(--color-border) bg-gray-950 px-4 py-3 font-mono text-[13px] leading-relaxed text-gray-300">
           {entries.length === 0 ? (
             <p className="py-4 text-center text-gray-500">
               ログはまだありません。「今すぐ収集」を実行するとここに経過が流れます。
