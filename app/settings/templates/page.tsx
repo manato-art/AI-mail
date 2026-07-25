@@ -16,6 +16,16 @@ import {
 } from "@phosphor-icons/react";
 import type { Attachment, ComposeMode, Template, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import {
+  BTN_PRIMARY,
+  Card,
+  CountBadge,
+  FIELD,
+  ICON_BTN,
+  ICON_BTN_DANGER,
+  LABEL,
+  TEXTAREA,
+} from "@/components/ui-kit";
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -283,33 +293,29 @@ export default function TemplatesPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {templates.length > 0 && (
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
-              {templates.length}
-            </span>
-          )}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          {templates.length > 0 && <CountBadge count={templates.length} />}
+          <p className="text-[13px] leading-relaxed text-(--color-muted)">
+            一括送信で選べるメールの型です
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={startCreate}
-          disabled={isEditing}
-          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-3.5 text-xs font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus size={14} weight="bold" />
+        <button type="button" onClick={startCreate} disabled={isEditing} className={BTN_PRIMARY}>
+          <Plus size={16} weight="bold" />
           新規作成
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_2fr]">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(260px,1fr)_1.6fr]">
         {/* Left: template list */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {templates.length === 0 && !creating && (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
-              <BookmarkSimple size={28} className="text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-(--color-muted)">テンプレートがありません</p>
-              <p className="text-xs text-(--color-muted)">メール詳細画面の「テンプレ保存」から追加できます</p>
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
+              <BookmarkSimple size={30} className="text-(--color-muted)" />
+              <p className="text-sm font-medium">テンプレートがありません</p>
+              <p className="text-[13px] leading-relaxed text-(--color-muted)">
+                メール詳細画面の「テンプレ保存」から追加できます
+              </p>
             </div>
           )}
           {templates.map((t) => (
@@ -319,27 +325,27 @@ export default function TemplatesPage() {
               tabIndex={0}
               onClick={() => startEdit(t)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") startEdit(t); }}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-(--color-card) px-4 py-3 transition-colors ${editingId === t.id ? "border-(--color-primary) ring-2 ring-(--color-primary)/10" : "border-(--color-border) hover:border-(--color-primary)/40"}`}
+              className={`flex cursor-pointer items-center gap-2 rounded-xl border bg-(--color-card) py-3 pl-4 pr-2 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${editingId === t.id ? "border-(--color-primary) ring-2 ring-(--color-primary)/15" : "border-(--color-border) hover:border-(--color-primary)/40 hover:bg-(--color-card-hover)"}`}
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{t.name}</p>
-                <p className="mt-0.5 truncate text-xs text-(--color-muted)">{t.subject || "件名なし"}</p>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <p className="text-[10px] text-(--color-muted)">{formatDate(t.updated_at)}</p>
+                <p className="mt-0.5 truncate text-[13px] text-(--color-muted)">{t.subject || "件名なし"}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="text-[12px] tabular-nums text-(--color-muted)">{formatDate(t.updated_at)}</p>
                   {t.attachments.length > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-semibold text-(--color-primary)">
-                      <Paperclip size={10} weight="bold" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[12px] font-semibold text-(--color-primary)">
+                      <Paperclip size={11} weight="bold" />
                       {t.attachments.length}
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
-                <button type="button" onClick={() => handleCopy(t)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-primary-light) hover:text-(--color-primary)" title="コピー">
-                  <Copy size={14} />
+              <div className="flex shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button type="button" onClick={() => handleCopy(t)} className={ICON_BTN} title="コピー" aria-label="コピー">
+                  <Copy size={16} />
                 </button>
-                <button type="button" onClick={() => handleDelete(t.id)} className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)" title="削除">
-                  <Trash size={14} />
+                <button type="button" onClick={() => handleDelete(t.id)} className={ICON_BTN_DANGER} title="削除" aria-label="削除">
+                  <Trash size={16} />
                 </button>
               </div>
             </div>
@@ -348,51 +354,63 @@ export default function TemplatesPage() {
 
         {/* Right: edit panel */}
         {isEditing && (
-          <div className="sticky top-6 h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card) animate-fade-in">
-            <div className="flex items-center justify-between border-b border-(--color-border) px-5 py-3.5">
-              <h2 className="text-sm font-semibold">{creating ? "新規テンプレート" : "テンプレート編集"}</h2>
-              <button type="button" onClick={cancelEdit} className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)">
-                <X size={14} />
+          <Card
+            className="sticky top-6 h-fit animate-fade-in"
+            title={creating ? "新規テンプレート" : "テンプレート編集"}
+            Icon={BookmarkSimple}
+            action={
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className={ICON_BTN}
+                title="閉じる"
+                aria-label="閉じる"
+              >
+                <X size={16} />
               </button>
-            </div>
-            <div className="space-y-3 p-5">
+            }
+            bodyClassName="space-y-4 p-5"
+          >
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">テンプレート名</label>
+                <label htmlFor="template-name" className={LABEL}>テンプレート名</label>
                 <input
+                  id="template-name"
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  className={FIELD}
                   placeholder="テンプレート名"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">件名</label>
+                <label htmlFor="template-subject" className={LABEL}>件名</label>
                 <input
+                  id="template-subject"
                   type="text"
                   value={editSubject}
                   onChange={(e) => setEditSubject(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  className={FIELD}
                   placeholder="メールの件名"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                <label htmlFor="template-body" className={LABEL}>
                   本文
                 </label>
                 <textarea
+                  id="template-body"
                   ref={bodyRef}
                   value={editBody}
                   onChange={(e) => setEditBody(e.target.value)}
                   rows={12}
-                  className="w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-3 font-mono text-[13px] leading-[1.8] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                  className={`${TEXTAREA} font-mono leading-[1.8]`}
                   placeholder={"{{company_name}}\n{{person_name}}様\n\n突然のご連絡失礼いたします。\n\n{{AI:相手企業の事業内容に触れつつ、自社サービスとの接点を1〜2文で書いてください}}\n\nぜひ一度お話の機会をいただけましたら幸いです。"}
                 />
-                <div className="mt-2 rounded-lg border border-(--color-border) bg-gray-50 px-3 py-2.5 dark:bg-slate-800">
-                  <p className="text-[11px] font-medium text-(--color-muted)">
+                <div className="mt-2.5 rounded-lg border border-(--color-border) bg-(--color-background) px-3.5 py-3">
+                  <p className="text-[13px] font-semibold text-(--color-muted)">
                     本文に挿入できるマーカー
                   </p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {[
                       ["{{company_name}}", "企業名"],
                       ["{{person_name}}", "担当者名"],
@@ -404,41 +422,41 @@ export default function TemplatesPage() {
                         key={variable}
                         type="button"
                         onClick={() => insertAtCursor(variable!)}
-                        className="cursor-pointer rounded border border-(--color-border) bg-(--color-card) px-2 py-1 text-[11px] transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                        className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 py-1 text-[13px] transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                         title="カーソル位置に挿入"
                       >
                         <code>{variable}</code>
-                        <span className="ml-1 text-(--color-muted)">{label}</span>
+                        <span className="text-(--color-muted)">{label}</span>
                       </button>
                     ))}
                     <button
                       type="button"
                       onClick={() => insertAtCursor("{{AI:}}", 2)}
-                      className="cursor-pointer rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                      className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[13px] font-semibold text-amber-700 transition-colors motion-reduce:transition-none hover:border-amber-400 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
                       title="AIが企業ごとに書き分ける部分を挿入（指示は任意）"
                     >
-                      <MagicWand size={11} weight="bold" className="mr-1 inline-block align-[-1px]" />
+                      <MagicWand size={13} weight="bold" className="shrink-0" />
                       <code>{"{{AI:}}"}</code>
-                      <span className="ml-1 font-normal">AIが書く部分</span>
+                      <span className="font-normal">AIが書く部分</span>
                     </button>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-(--color-muted)">
+                  <p className="mt-2.5 text-[13px] leading-relaxed text-(--color-muted)">
                     <strong>固定テキスト</strong>はそのまま送られます。<strong>{"{{変数}}"}</strong>は宛先ごとに置換。<strong>{"{{AI:}}"}</strong>を入れた部分は、収集した企業の分析データをもとにAIが企業ごとに書き分けます。<strong>{"{{AI:}}"}</strong>だけなら<strong>メール全体に自然になじむ文</strong>をAIが考えます。指示を出したいときは <code>{"{{AI:実績に触れて}}"}</code> のように <code>:</code> の後に書きます。どこにでも何個でも置けます。
                   </p>
                 </div>
               </div>
               {/* F22: 初回メールに資料を添付する事故を構造的に防ぐ */}
-              <div className="rounded-lg border border-(--color-border) bg-gray-50 p-3.5 dark:bg-slate-800">
+              <div className="rounded-lg border border-(--color-border) bg-(--color-background) p-4">
                 <label className="flex cursor-pointer items-start gap-2.5">
                   <input
                     type="checkbox"
                     checked={editAllowAttachments}
                     onChange={(e) => setEditAllowAttachments(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 cursor-pointer accent-(--color-primary)"
+                    className="mt-0.5 h-5 w-5 cursor-pointer accent-(--color-primary)"
                   />
-                  <span className="text-[13px]">
+                  <span className="text-sm font-medium">
                     このテンプレートで資料の添付を許可する
-                    <span className="mt-1 block text-[11px] leading-relaxed text-(--color-muted)">
+                    <span className="mt-1.5 block text-[13px] font-normal leading-relaxed text-(--color-muted)">
                       <strong>初回メールには添付しない</strong>のが方針です（迷惑メール判定や警戒を招くため）。
                       返信をもらった後の2通目以降や「資料希望」への返信に使うテンプレートだけONにしてください。
                       OFFのままなら、一括送信の画面でも添付を選べません。
@@ -448,23 +466,23 @@ export default function TemplatesPage() {
               </div>
 
               <div className={editAllowAttachments ? "" : "pointer-events-none opacity-40"}>
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-(--color-foreground)">
                     添付資料{!editAllowAttachments && "（このテンプレートでは無効）"}
-                  </label>
+                  </span>
                   <button
                     type="button"
                     disabled={!editAllowAttachments}
                     onClick={() => setPickerOpen((v) => !v)}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-(--color-primary) transition-colors hover:bg-(--color-primary-light)"
+                    className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-(--color-primary) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                   >
-                    <Plus size={11} weight="bold" />
+                    <Plus size={13} weight="bold" />
                     資料を選ぶ
                   </button>
                 </div>
 
                 {selectedAttachments.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-(--color-border) px-3 py-3 text-center text-xs text-(--color-muted)">
+                  <p className="rounded-lg border border-dashed border-(--color-border) px-3 py-3.5 text-center text-[13px] text-(--color-muted)">
                     添付なし
                   </p>
                 ) : (
@@ -472,20 +490,21 @@ export default function TemplatesPage() {
                     {selectedAttachments.map((a) => (
                       <div
                         key={a.id}
-                        className="flex items-center gap-2 rounded-lg border border-(--color-border) px-3 py-2"
+                        className="flex items-center gap-2 rounded-lg border border-(--color-border) py-1.5 pl-3 pr-1.5"
                       >
-                        <Paperclip size={13} className="shrink-0 text-(--color-muted)" />
+                        <Paperclip size={15} className="shrink-0 text-(--color-muted)" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">{a.filename}</p>
-                          <p className="text-[10px] text-(--color-muted)">{formatBytes(a.size_bytes)}</p>
+                          <p className="truncate text-[13px] font-medium">{a.filename}</p>
+                          <p className="text-[12px] text-(--color-muted)">{formatBytes(a.size_bytes)}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => toggleAttachment(a.id)}
-                          className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                          className={ICON_BTN_DANGER}
                           title="このテンプレートから外す"
+                          aria-label="このテンプレートから外す"
                         >
-                          <X size={12} />
+                          <X size={15} />
                         </button>
                       </div>
                     ))}
@@ -493,7 +512,7 @@ export default function TemplatesPage() {
                 )}
 
                 {pickerOpen && (
-                  <div className="mt-2 rounded-lg border border-(--color-border) bg-(--color-card-hover) p-3 animate-fade-in">
+                  <div className="mt-2.5 animate-fade-in rounded-lg border border-(--color-border) bg-(--color-background) p-3">
                     <input
                       ref={uploadInputRef}
                       type="file"
@@ -507,9 +526,9 @@ export default function TemplatesPage() {
                       type="button"
                       onClick={() => uploadInputRef.current?.click()}
                       disabled={uploading}
-                      className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-(--color-primary)/50 text-xs font-semibold text-(--color-primary) transition-colors hover:bg-(--color-primary-light) disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-(--color-primary)/50 text-[13px] font-semibold text-(--color-primary) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {uploading ? <SpinnerGap size={13} className="animate-spin" /> : <UploadSimple size={13} />}
+                      {uploading ? <SpinnerGap size={15} className="animate-spin" /> : <UploadSimple size={15} />}
                       {uploading ? "アップロード中..." : "新しい資料をアップロード"}
                     </button>
 
@@ -522,29 +541,30 @@ export default function TemplatesPage() {
                               <button
                                 type="button"
                                 onClick={() => toggleAttachment(a.id)}
-                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-(--color-card)"
+                                className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors motion-reduce:transition-none hover:bg-(--color-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                               >
                                 <span
-                                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
                                     checked
                                       ? "border-(--color-primary) bg-(--color-primary) text-white"
                                       : "border-(--color-border)"
                                   }`}
                                 >
-                                  {checked && <Check size={10} weight="bold" />}
+                                  {checked && <Check size={12} weight="bold" />}
                                 </span>
                                 <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-xs">{a.filename}</span>
-                                  <span className="block text-[10px] text-(--color-muted)">{formatBytes(a.size_bytes)}</span>
+                                  <span className="block truncate text-[13px]">{a.filename}</span>
+                                  <span className="block text-[12px] text-(--color-muted)">{formatBytes(a.size_bytes)}</span>
                                 </span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteFromLibrary(a)}
-                                className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-(--color-muted) hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                                className={ICON_BTN_DANGER}
                                 title="資料一覧から削除"
+                                aria-label="資料一覧から削除"
                               >
-                                <Trash size={11} />
+                                <Trash size={15} />
                               </button>
                             </div>
                           );
@@ -552,24 +572,18 @@ export default function TemplatesPage() {
                       </div>
                     )}
 
-                    <p className="mt-2 text-[10px] leading-relaxed text-(--color-muted)">
+                    <p className="mt-2 text-[12px] leading-relaxed text-(--color-muted)">
                       PDF・Word・Excel・PowerPoint・画像・テキスト・CSV・ZIP／1ファイル10MBまで
                     </p>
                   </div>
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {saving ? <SpinnerGap size={14} className="animate-spin" /> : <FloppyDisk size={14} />}
+              <button type="button" onClick={handleSave} disabled={saving} className={`${BTN_PRIMARY} w-full`}>
+                {saving ? <SpinnerGap size={16} className="animate-spin" /> : <FloppyDisk size={16} />}
                 {saving ? "保存中..." : "保存"}
               </button>
-            </div>
-          </div>
+          </Card>
         )}
       </div>
 

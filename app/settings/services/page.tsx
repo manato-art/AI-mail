@@ -13,6 +13,17 @@ import {
   X,
 } from "@phosphor-icons/react";
 import type { Service, ServiceInput } from "@/lib/types";
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  CARD,
+  CountBadge,
+  FIELD,
+  ICON_BTN,
+  ICON_BTN_DANGER,
+  LABEL,
+  TEXTAREA,
+} from "@/components/ui-kit";
 
 const EMPTY_FORM: ServiceInput = {
   name: "",
@@ -159,22 +170,24 @@ export default function ServicesPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={openCreateForm}
-          className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
-        >
-          <Plus size={16} />
+    <div className="animate-fade-in">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          {services.length > 0 && <CountBadge count={services.length} />}
+          <p className="text-[13px] leading-relaxed text-(--color-muted)">
+            メールの元になる商材の情報です
+          </p>
+        </div>
+        <button type="button" onClick={openCreateForm} className={BTN_PRIMARY}>
+          <Plus size={16} weight="bold" />
           新規登録
         </button>
       </div>
 
       {listError && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-          <p>{listError}</p>
+          <p className="leading-relaxed">{listError}</p>
         </div>
       )}
 
@@ -199,47 +212,47 @@ export default function ServicesPage() {
           {services.map((service) => (
             <div
               key={service.id}
-              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 transition-colors hover:border-(--color-primary)"
+              className={`${CARD} transition-colors motion-reduce:transition-none hover:border-(--color-primary)/50`}
             >
               <div className="p-5">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white"
                       style={{ background: "linear-gradient(135deg, #2563eb, #06b6d4)" }}
                     >
                       {service.name.charAt(0)}
                     </span>
                     <div className="min-w-0">
-                      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                        {service.name}
-                      </h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      <h2 className="truncate text-[15px] font-semibold">{service.name}</h2>
+                      <p className="truncate text-[13px] text-(--color-muted)">
                         {truncate(service.description, 40)}
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-0.5">
+                  <div className="flex shrink-0">
                     <button
                       type="button"
                       onClick={() => openEditForm(service)}
                       aria-label="編集"
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
+                      title="編集"
+                      className={ICON_BTN}
                     >
-                      <PencilSimple size={15} />
+                      <PencilSimple size={16} />
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(service)}
                       aria-label="削除"
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                      title="削除"
+                      className={ICON_BTN_DANGER}
                     >
-                      <Trash size={15} />
+                      <Trash size={16} />
                     </button>
                   </div>
                 </div>
 
-                <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-400 mb-3">
+                <p className="mb-3 text-sm leading-relaxed text-(--color-muted)">
                   {truncate(service.description, 80)}
                 </p>
 
@@ -247,13 +260,13 @@ export default function ServicesPage() {
                   {service.strengths.split(/[、,\-]/).filter(Boolean).slice(0, 3).map((s) => (
                     <span
                       key={s}
-                      className="inline-flex items-center gap-1 rounded-md bg-(--color-border)/30 dark:bg-slate-700/50 px-2 py-1 text-[11px] font-medium text-gray-600 dark:text-gray-300"
+                      className="inline-flex items-center gap-1 rounded-md bg-(--color-background) px-2 py-1 text-[12px] font-medium text-(--color-muted)"
                     >
                       {s.trim().slice(0, 20)}
                     </span>
                   ))}
                   {service.target && (
-                    <span className="inline-flex items-center rounded-md bg-(--color-success-light) px-2 py-1 text-[11px] font-medium text-(--color-success)">
+                    <span className="inline-flex items-center rounded-md bg-(--color-success-light) px-2 py-1 text-[12px] font-medium text-(--color-success)">
                       {truncate(service.target, 20)}
                     </span>
                   )}
@@ -269,22 +282,16 @@ export default function ServicesPage() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-white dark:bg-slate-800 px-6 py-16 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700">
-        <Briefcase size={24} className="text-gray-400 dark:text-gray-500" />
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-(--color-primary-light)">
+        <Briefcase size={26} className="text-(--color-primary)" />
       </div>
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-        サービスが登録されていません
-      </p>
-      <p className="mt-1 text-sm text-(--color-muted)">
+      <p className="text-[15px] font-semibold">サービスが登録されていません</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-(--color-muted)">
         最初のサービスを登録して、営業メール作成を始めましょう
       </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-5 flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
-      >
-        <Plus size={16} />
+      <button type="button" onClick={onCreate} className={`${BTN_PRIMARY} mt-5`}>
+        <Plus size={16} weight="bold" />
         新規登録
       </button>
     </div>
@@ -419,109 +426,103 @@ function ServiceForm({
   const hasInput = Boolean(specText.trim()) || Boolean(selectedFile);
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="animate-fade-in mb-6 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
-    >
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-5">
+    <form onSubmit={onSubmit} className={`${CARD} animate-fade-in mb-6 p-6`}>
+      <h2 className="mb-5 text-lg font-semibold text-balance">
         {editing ? "サービスを編集" : "新規サービス登録"}
       </h2>
 
       {error && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-          <p>{error}</p>
+          <p className="leading-relaxed">{error}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="service-name" className={LABEL}>
               サービス名
             </label>
             <input
+              id="service-name"
               type="text"
               required
               value={form.name}
               onChange={(e) => onChange({ ...form, name: e.target.value })}
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={FIELD}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="service-description" className={LABEL}>
               サービス説明
             </label>
             <textarea
+              id="service-description"
               required
               rows={2}
               value={form.description}
               onChange={(e) => onChange({ ...form, description: e.target.value })}
-              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={TEXTAREA}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="service-strengths" className={LABEL}>
               強み
             </label>
             <textarea
+              id="service-strengths"
               required
               rows={2}
               value={form.strengths}
               onChange={(e) => onChange({ ...form, strengths: e.target.value })}
-              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={TEXTAREA}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="service-target" className={LABEL}>
               ターゲット
             </label>
             <textarea
+              id="service-target"
               required
               rows={2}
               value={form.target}
               onChange={(e) => onChange({ ...form, target: e.target.value })}
-              className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={TEXTAREA}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="service-lp-url" className={LABEL}>
               LP・HP URL
             </label>
             <input
+              id="service-lp-url"
               type="url"
               value={form.lp_url}
               onChange={(e) => onChange({ ...form, lp_url: e.target.value })}
               placeholder="https://example.co.jp"
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={FIELD}
             />
           </div>
 
-          <div className="flex gap-3 pt-1">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-            >
+          <div className="flex flex-wrap gap-3 pt-1">
+            <button type="submit" disabled={saving} className={BTN_PRIMARY}>
               {saving && <SpinnerGap size={16} className="animate-spin" />}
               {saving ? "保存中..." : "保存"}
             </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="h-11 cursor-pointer rounded-lg border border-(--color-border) px-5 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700"
-            >
+            <button type="button" onClick={onCancel} className={BTN_SECONDARY}>
               キャンセル
             </button>
           </div>
         </div>
 
-        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4 space-y-3 self-start">
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <div className="space-y-3 self-start rounded-xl border border-(--color-primary)/25 bg-(--color-primary-light) p-4">
+          <p className="text-sm font-semibold">
             仕様書・企画書から自動入力
           </p>
 
@@ -530,10 +531,10 @@ function ServiceForm({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onClick={() => fileInputRef.current?.click()}
-            className={`flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors cursor-pointer ${
+            className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors motion-reduce:transition-none ${
               dragging
-                ? "border-(--color-primary) bg-(--color-primary-light)"
-                : "border-gray-300 dark:border-gray-600 hover:border-(--color-primary) hover:bg-white dark:hover:bg-slate-800"
+                ? "border-(--color-primary) bg-(--color-card)"
+                : "border-(--color-border) hover:border-(--color-primary) hover:bg-(--color-card)"
             }`}
           >
             <input
@@ -550,15 +551,14 @@ function ServiceForm({
             {selectedFile ? (
               <div className="flex items-center gap-2">
                 <FileText size={20} className="text-(--color-primary)" />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {selectedFile.name}
-                </span>
+                <span className="text-sm font-medium">{selectedFile.name}</span>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
-                  className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-slate-600 cursor-pointer"
+                  aria-label="選択したファイルを外す"
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                 >
-                  <X size={12} className="text-(--color-muted)" />
+                  <X size={14} className="text-(--color-muted)" />
                 </button>
               </div>
             ) : (
@@ -567,7 +567,7 @@ function ServiceForm({
                 <p className="text-sm text-(--color-muted)">
                   ドラッグ&ドロップ、またはクリック
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">
+                <p className="text-[13px] text-(--color-muted)">
                   PDF・Markdown・テキスト（5MB以下）
                 </p>
               </>
@@ -575,9 +575,9 @@ function ServiceForm({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-600" />
-            <span className="text-xs text-gray-400 dark:text-gray-500">または</span>
-            <div className="h-px flex-1 bg-gray-200 dark:bg-gray-600" />
+            <div className="h-px flex-1 bg-(--color-border)" />
+            <span className="text-[13px] text-(--color-muted)">または</span>
+            <div className="h-px flex-1 bg-(--color-border)" />
           </div>
 
           <textarea
@@ -586,26 +586,26 @@ function ServiceForm({
             onChange={(e) => { setSpecText(e.target.value); if (e.target.value.trim()) setSelectedFile(null); }}
             disabled={parsing}
             placeholder="サービス内容を直接入力..."
-            className="w-full rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 py-2.5 text-sm leading-relaxed transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary) disabled:opacity-50"
+            className={`${TEXTAREA} disabled:opacity-50`}
           />
 
           {parseError && (
-            <p className="text-sm text-(--color-danger)">{parseError}</p>
+            <p className="text-sm leading-relaxed text-(--color-danger)">{parseError}</p>
           )}
           <button
             type="button"
             onClick={handleParse}
             disabled={parsing || !hasInput}
-            className="w-full flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${BTN_SECONDARY} w-full bg-(--color-card)`}
           >
             {parsing ? (
               <>
-                <SpinnerGap size={14} className="animate-spin" />
+                <SpinnerGap size={16} className="animate-spin" />
                 解析中...
               </>
             ) : (
               <>
-                <FileText size={14} />
+                <FileText size={16} />
                 解析してフォームに反映
               </>
             )}

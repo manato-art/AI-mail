@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CaretDown,
   MagnifyingGlass,
   Plus,
   Prohibit,
@@ -11,6 +12,15 @@ import {
 } from "@phosphor-icons/react";
 import type { Suppression, SuppressionReason, SuppressionTargetType } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import {
+  BTN_PRIMARY,
+  Card,
+  CountBadge,
+  FIELD,
+  ICON_BTN_DANGER,
+  LABEL,
+  SELECT,
+} from "@/components/ui-kit";
 
 const REASON_LABELS: Record<SuppressionReason, string> = {
   optout: "配信停止の依頼",
@@ -147,44 +157,44 @@ export default function SuppressionsPage() {
 
   return (
     <div className="animate-fade-in pb-20">
-      <div className="mb-1">
-        <p className="text-[13px] text-(--color-muted)">
-          ここに登録した宛先には、どの経路からも送信できなくなります
-        </p>
+      {/* 法令の注意は必ず画面のいちばん上に置く */}
+      <div className="flex gap-2.5 rounded-xl border border-(--color-warning)/40 bg-(--color-warning-light) p-4 text-sm">
+        <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={20} weight="fill" />
+        <div className="space-y-1.5 leading-relaxed">
+          <p className="font-semibold">
+            ここに登録した宛先には、どの経路からも送信できなくなります
+          </p>
+          <p className="text-[13px] leading-relaxed">
+            配信停止の依頼を受けたら、<strong>必ずここに登録してください</strong>。
+            特定電子メール法では、停止の申し出があった相手への送信が禁止されています。
+            宛先不明で戻ってきたものやHPに「営業お断り」の記載があったものは自動で登録されます。
+          </p>
+        </div>
       </div>
 
-      <div className="mt-4 flex gap-2.5 rounded-xl border border-(--color-border) bg-(--color-card) p-4 text-[13px]">
-        <Warning className="mt-0.5 shrink-0" size={18} weight="fill" style={{ color: "var(--color-warning)" }} />
-        <p className="leading-relaxed text-gray-700 dark:text-gray-300">
-          配信停止の依頼を受けたら、<strong>必ずここに登録してください</strong>。
-          特定電子メール法では、停止の申し出があった相手への送信が禁止されています。
-          宛先不明で戻ってきたものやHPに「営業お断り」の記載があったものは自動で登録されます。
-        </p>
-      </div>
-
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[380px_1fr]">
+      <div className="mt-5 grid grid-cols-1 items-start gap-5 lg:grid-cols-[380px_1fr]">
         {/* 追加フォーム */}
-        <form
-          onSubmit={handleAdd}
-          className="h-fit rounded-xl border border-(--color-border) bg-(--color-card) p-5"
-        >
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Plus size={15} weight="bold" />
-            宛先を追加
-          </h2>
+        <form onSubmit={handleAdd} className="h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
+          <div className="border-b border-(--color-border) px-5 py-4">
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--color-primary-light) text-(--color-primary)">
+                <Plus size={15} weight="bold" />
+              </span>
+              宛先を追加
+            </h2>
+          </div>
 
-          <div className="mt-3.5 space-y-3">
+          <div className="space-y-4 p-5">
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
-                対象
-              </label>
-              <div className="mb-2 inline-flex rounded-lg border border-(--color-border) bg-gray-100 p-0.5 dark:bg-slate-800">
+              <span className={LABEL}>対象</span>
+              <div className="mb-2 inline-flex rounded-lg border border-(--color-border) bg-(--color-background) p-1">
                 {(["email", "domain"] as SuppressionTargetType[]).map((t) => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => setTargetType(t)}
-                    className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                    aria-pressed={targetType === t}
+                    className={`min-h-10 cursor-pointer rounded-md px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
                       targetType === t
                         ? "bg-(--color-card) text-(--color-foreground) shadow-sm"
                         : "text-(--color-muted) hover:text-(--color-foreground)"
@@ -199,63 +209,68 @@ export default function SuppressionsPage() {
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 placeholder={targetType === "email" ? "info@example.com" : "example.com"}
-                className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                aria-label="対象"
+                className={FIELD}
               />
               {targetType === "domain" && (
-                <p className="mt-1 text-[11px] text-(--color-muted)">
+                <p className="mt-1.5 text-[13px] leading-relaxed text-(--color-muted)">
                   そのドメインの全アドレスが対象になります
                 </p>
               )}
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              <label htmlFor="suppression-reason" className={LABEL}>
                 理由
               </label>
-              <select
-                value={reason}
-                onChange={(e) => setReason(e.target.value as SuppressionReason)}
-                className="h-10 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
-              >
-                {SELECTABLE_REASONS.map((r) => (
-                  <option key={r} value={r}>{REASON_LABELS[r]}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  id="suppression-reason"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value as SuppressionReason)}
+                  className={SELECT}
+                >
+                  {SELECTABLE_REASONS.map((r) => (
+                    <option key={r} value={r}>{REASON_LABELS[r]}</option>
+                  ))}
+                </select>
+                <CaretDown
+                  size={15}
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">
+              <label htmlFor="suppression-note" className={LABEL}>
                 メモ（任意）
               </label>
               <input
+                id="suppression-note"
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="例: 2026-07-19 に電話で停止依頼"
-                className="h-10 w-full rounded-lg border border-(--color-border) px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                className={FIELD}
               />
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={saving || !target.trim()}
-            className="mt-4 flex h-10 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-(--color-primary) text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {saving ? <SpinnerGap size={15} className="animate-spin" /> : <Prohibit size={15} weight="bold" />}
-            {saving ? "登録中..." : "リストに追加"}
-          </button>
+            <button type="submit" disabled={saving || !target.trim()} className={`${BTN_PRIMARY} w-full`}>
+              {saving ? <SpinnerGap size={16} className="animate-spin" /> : <Prohibit size={16} weight="bold" />}
+              {saving ? "登録中..." : "リストに追加"}
+            </button>
+          </div>
         </form>
 
         {/* 一覧 */}
-        <div className="overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--color-border) px-5 py-3.5">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <Card
+          title={
+            <span className="flex items-center gap-2">
               登録済み
-              <span className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-(--color-primary-light) px-1.5 text-[11px] font-bold text-(--color-primary)">
-                {items.length}
-              </span>
-            </h2>
+              <CountBadge count={items.length} />
+            </span>
+          }
+          action={
             <div className="relative">
               <MagnifyingGlass size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
               <input
@@ -263,11 +278,13 @@ export default function SuppressionsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="アドレス・メモで検索"
-                className="h-9 w-[220px] rounded-lg border border-(--color-border) bg-gray-50 pl-9 pr-3 text-[13px] focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+                aria-label="アドレス・メモで検索"
+                className={`${FIELD} w-[220px] max-w-full pl-9`}
               />
             </div>
-          </div>
-
+          }
+          bodyClassName=""
+        >
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
               <p className="text-sm text-(--color-muted)">
@@ -278,14 +295,14 @@ export default function SuppressionsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-[13px]">
+              <table className="w-full min-w-0 text-sm">
                 <thead>
-                  <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">
-                    <th className="min-w-[220px] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">対象</th>
-                    <th className="min-w-[140px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">理由</th>
-                    <th className="min-w-[160px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">メモ</th>
-                    <th className="min-w-[140px] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-muted)">登録日時</th>
-                    <th className="w-[44px] px-2 py-2.5" />
+                  <tr className="border-b border-(--color-border) bg-(--color-background) text-left">
+                    <th className="min-w-[220px] px-4 py-3 text-[12px] font-semibold tracking-wide text-(--color-muted)">対象</th>
+                    <th className="min-w-[140px] px-3 py-3 text-[12px] font-semibold tracking-wide text-(--color-muted)">理由</th>
+                    <th className="min-w-[160px] px-3 py-3 text-[12px] font-semibold tracking-wide text-(--color-muted)">メモ</th>
+                    <th className="min-w-[150px] px-3 py-3 text-[12px] font-semibold tracking-wide text-(--color-muted)">登録日時</th>
+                    <th className="w-[60px] px-2 py-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -294,13 +311,13 @@ export default function SuppressionsPage() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium">{s.target}</span>
                         {s.target_type === "domain" && (
-                          <span className="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
+                          <span className="ml-1.5 rounded bg-(--color-background) px-1.5 py-0.5 text-[12px] text-(--color-muted)">
                             ドメイン全体
                           </span>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-medium ${REASON_STYLES[s.reason] ?? ""}`}>
+                        <span className={`inline-block rounded-md px-2 py-1 text-[12px] font-medium ${REASON_STYLES[s.reason] ?? ""}`}>
                           {REASON_LABELS[s.reason] ?? s.reason}
                         </span>
                       </td>
@@ -311,9 +328,10 @@ export default function SuppressionsPage() {
                           type="button"
                           onClick={() => handleDelete(s)}
                           title="リストから外す"
-                          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                          aria-label="リストから外す"
+                          className={ICON_BTN_DANGER}
                         >
-                          <Trash size={14} />
+                          <Trash size={16} />
                         </button>
                       </td>
                     </tr>
@@ -322,7 +340,7 @@ export default function SuppressionsPage() {
               </table>
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       <Toast message={toast} onDone={() => setToast(null)} />

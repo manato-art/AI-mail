@@ -11,6 +11,18 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import type { Persona, PersonaInput } from "@/lib/types";
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  CARD,
+  CountBadge,
+  FIELD,
+  ICON_BTN,
+  ICON_BTN_DANGER,
+  LABEL,
+  SELECT,
+  TEXTAREA,
+} from "@/components/ui-kit";
 
 type ParamKey = "logic" | "passion" | "politeness" | "salesiness" | "length";
 
@@ -211,22 +223,24 @@ export default function PersonasPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={openCreateForm}
-          className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
-        >
-          <Plus size={16} />
+    <div className="animate-fade-in">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          {personas.length > 0 && <CountBadge count={personas.length} />}
+          <p className="text-[13px] leading-relaxed text-(--color-muted)">
+            メールの差出人になる人の設定です
+          </p>
+        </div>
+        <button type="button" onClick={openCreateForm} className={BTN_PRIMARY}>
+          <Plus size={16} weight="bold" />
           新規登録
         </button>
       </div>
 
       {listError && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-          <p>{listError}</p>
+          <p className="leading-relaxed">{listError}</p>
         </div>
       )}
 
@@ -252,51 +266,51 @@ export default function PersonasPage() {
           {personas.map((persona) => (
             <div
               key={persona.id}
-              className="rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 transition-colors hover:border-(--color-primary)"
+              className={`${CARD} transition-colors motion-reduce:transition-none hover:border-(--color-primary)/50`}
             >
               <div className="p-5">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white"
                       style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
                     >
                       {persona.name.charAt(0)}
                     </span>
                     <div className="min-w-0">
-                      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                        {persona.name}
-                      </h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      <h2 className="truncate text-[15px] font-semibold">{persona.name}</h2>
+                      <p className="truncate text-[13px] text-(--color-muted)">
                         {persona.title}
                         {persona.company_name && ` / ${persona.company_name}`}
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-0.5">
+                  <div className="flex shrink-0">
                     <button
                       type="button"
                       onClick={() => openEditForm(persona)}
                       aria-label="編集"
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-300"
+                      title="編集"
+                      className={ICON_BTN}
                     >
-                      <PencilSimple size={15} />
+                      <PencilSimple size={16} />
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(persona)}
                       aria-label="削除"
-                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+                      title="削除"
+                      className={ICON_BTN_DANGER}
                     >
-                      <Trash size={15} />
+                      <Trash size={16} />
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {PARAMETER_CONFIG.map((param) => (
                     <div key={param.key} className="flex items-center gap-2.5">
-                      <span className="w-12 shrink-0 text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                      <span className="w-14 shrink-0 text-[13px] font-medium text-(--color-muted)">
                         {param.label}
                       </span>
                       <div className="flex flex-1 items-center gap-[3px]">
@@ -312,7 +326,7 @@ export default function PersonasPage() {
                         ))}
                       </div>
                       <span
-                        className="w-4 shrink-0 text-right text-[11px] font-semibold tabular-nums"
+                        className="w-4 shrink-0 text-right text-[13px] font-semibold tabular-nums"
                         style={{ color: param.color }}
                       >
                         {persona[param.key]}
@@ -331,22 +345,16 @@ export default function PersonasPage() {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-white dark:bg-slate-800 px-6 py-16 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-700">
-        <User size={24} className="text-gray-400 dark:text-gray-500" />
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-(--color-primary-light)">
+        <User size={26} className="text-(--color-primary)" />
       </div>
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-        人格が登録されていません
-      </p>
-      <p className="mt-1 text-sm text-(--color-muted)">
+      <p className="text-[15px] font-semibold">人格が登録されていません</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-(--color-muted)">
         メールの送信者となる人格を登録しましょう
       </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-5 flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-(--color-primary) px-4 text-sm font-medium text-white transition-colors hover:bg-(--color-primary-hover)"
-      >
-        <Plus size={16} />
+      <button type="button" onClick={onCreate} className={`${BTN_PRIMARY} mt-5`}>
+        <Plus size={16} weight="bold" />
         新規登録
       </button>
     </div>
@@ -373,83 +381,84 @@ function PersonaForm({
   onCancel: () => void;
 }) {
   return (
-    <form
-      onSubmit={onSubmit}
-      className="animate-fade-in mb-6 space-y-6 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-6"
-    >
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+    <form onSubmit={onSubmit} className={`${CARD} animate-fade-in mb-6 space-y-6 p-6`}>
+      <h2 className="text-lg font-semibold text-balance">
         {editing ? "人格を編集" : "新規人格登録"}
       </h2>
 
       {error && (
-        <div className="flex gap-2.5 rounded-xl border border-red-200 dark:border-red-800 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+        <div className="flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-          <p>{error}</p>
+          <p className="leading-relaxed">{error}</p>
         </div>
       )}
 
       <div className="space-y-4">
-        <h3 className="border-b border-(--color-border) pb-2.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <h3 className="border-b border-(--color-border) pb-2.5 text-[15px] font-semibold">
           基本情報
         </h3>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="persona-name" className={LABEL}>
               名前
             </label>
             <input
+              id="persona-name"
               type="text"
               required
               value={form.name}
               onChange={(e) => onChange({ ...form, name: e.target.value })}
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={FIELD}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="persona-title" className={LABEL}>
               役職
             </label>
             <input
+              id="persona-title"
               type="text"
               required
               value={form.title}
               onChange={(e) => onChange({ ...form, title: e.target.value })}
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={FIELD}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="persona-gender" className={LABEL}>
               性別
             </label>
             <div className="relative">
               <select
+                id="persona-gender"
                 value={form.gender}
                 onChange={(e) => onChange({ ...form, gender: e.target.value })}
-                className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 pr-9 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                className={SELECT}
               >
                 <option value="">未設定</option>
                 <option value="男性">男性</option>
                 <option value="女性">女性</option>
               </select>
               <CaretDown
-                size={16}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                size={15}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="persona-age" className={LABEL}>
               年代
             </label>
             <div className="relative">
               <select
+                id="persona-age"
                 value={form.age_range}
                 onChange={(e) => onChange({ ...form, age_range: e.target.value })}
-                className="h-11 w-full appearance-none rounded-lg border border-(--color-border) bg-white dark:bg-slate-800 px-3 pr-9 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+                className={SELECT}
               >
                 {AGE_RANGES.map((range) => (
                   <option key={range} value={range}>
@@ -458,44 +467,46 @@ function PersonaForm({
                 ))}
               </select>
               <CaretDown
-                size={16}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                size={15}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-(--color-muted)"
               />
             </div>
           </div>
 
           <div className="md:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="persona-company" className={LABEL}>
               会社名
             </label>
             <input
+              id="persona-company"
               type="text"
               value={form.company_name}
               onChange={(e) =>
                 onChange({ ...form, company_name: e.target.value })
               }
-              className="h-11 w-full rounded-lg border border-(--color-border) px-3 transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+              className={FIELD}
             />
           </div>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label htmlFor="persona-signature" className={LABEL}>
             署名ブロック
           </label>
           <textarea
+            id="persona-signature"
             rows={6}
             value={form.signature_block}
             onChange={(e) =>
               onChange({ ...form, signature_block: e.target.value })
             }
-            className="w-full rounded-lg border border-(--color-border) px-3 py-2.5 font-mono text-sm transition-shadow focus:border-transparent focus:outline-none focus:ring-2 focus:ring-(--color-primary)"
+            className={`${TEXTAREA} font-mono`}
           />
         </div>
       </div>
 
       <div className="space-y-5">
-        <h3 className="border-b border-(--color-border) pb-2.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <h3 className="border-b border-(--color-border) pb-2.5 text-[15px] font-semibold">
           性格パラメータ
         </h3>
 
@@ -503,14 +514,15 @@ function PersonaForm({
           {PARAMETER_CONFIG.map((param) => (
             <div key={param.key}>
               <div className="mb-2 flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label htmlFor={`persona-param-${param.key}`} className="text-sm font-medium">
                   {param.label}
                 </label>
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-(--color-primary-light) text-xs font-semibold text-(--color-primary)">
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-(--color-primary-light) text-[13px] font-semibold text-(--color-primary)">
                   {form[param.key]}
                 </span>
               </div>
               <input
+                id={`persona-param-${param.key}`}
                 type="range"
                 min={1}
                 max={5}
@@ -519,7 +531,7 @@ function PersonaForm({
                 onChange={(e) => onParamChange(param.key, Number(e.target.value))}
                 className="w-full cursor-pointer accent-(--color-primary)"
               />
-              <div className="mt-1.5 flex items-center justify-between text-xs text-(--color-muted)">
+              <div className="mt-1.5 flex items-center justify-between text-[13px] text-(--color-muted)">
                 <span>{param.minLabel}</span>
                 <span>{param.maxLabel}</span>
               </div>
@@ -528,20 +540,12 @@ function PersonaForm({
         </div>
       </div>
 
-      <div className="flex gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex h-11 cursor-pointer items-center gap-2 rounded-lg bg-(--color-primary) px-5 text-sm font-semibold text-white transition-colors hover:bg-(--color-primary-hover) disabled:cursor-not-allowed disabled:opacity-50"
-        >
+      <div className="flex flex-wrap gap-3 pt-1">
+        <button type="submit" disabled={saving} className={BTN_PRIMARY}>
           {saving && <SpinnerGap size={16} className="animate-spin" />}
           {saving ? "保存中..." : "保存"}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-11 cursor-pointer rounded-lg border border-(--color-border) px-5 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700"
-        >
+        <button type="button" onClick={onCancel} className={BTN_SECONDARY}>
           キャンセル
         </button>
       </div>
