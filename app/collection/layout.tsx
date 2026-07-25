@@ -9,7 +9,7 @@ import { TabNav, type TabItem } from "@/components/tab-nav";
  * （企業リストを増やす機能ではないため、ここへ移すと一括送信で宛先を選べなくなる）。
  */
 const TABS: TabItem[] = [
-  { href: "/collection", label: "在庫と自動収集", Icon: Stack },
+  { href: "/collection", label: "自動収集", Icon: Stack },
   { href: "/collection/search", label: "キーワードで探す", Icon: MagnifyingGlass },
   { href: "/collection/companies", label: "企業一覧", Icon: Buildings },
 ];
