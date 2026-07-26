@@ -62,7 +62,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
     <div className="mt-5 rounded-xl border border-(--color-border) bg-white dark:bg-slate-800 p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          {running && <CircleNotch size={16} className="animate-spin text-(--color-primary)" />}
+          {running && <CircleNotch size={16} className="animate-spin text-(--color-primary-text)" />}
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
             {running ? `生成中... (${finished}/${items.length}) ${formatElapsed(elapsed)}` : `完了 — ${done}件生成 (${formatElapsed(elapsed)})`}
           </p>
@@ -92,7 +92,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
       {!running && (done > 0 || skipped > 0 || errored > 0) && (
         <div className="flex gap-4 mb-4 text-xs">
           {done > 0 && (
-            <span className="flex items-center gap-1 text-(--color-success)">
+            <span className="flex items-center gap-1 text-(--color-success-text)">
               <Check size={12} weight="bold" />
               {done}件 生成
             </span>
@@ -104,7 +104,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
             </span>
           )}
           {errored > 0 && (
-            <span className="flex items-center gap-1 text-(--color-danger)">
+            <span className="flex items-center gap-1 text-(--color-danger-text)">
               <XCircle size={12} weight="bold" />
               {errored}件 エラー
             </span>
@@ -142,7 +142,7 @@ export function BatchProgress({ items, running, onStop }: Props) {
             {item.status === "done" && item.prospectId && (
               <Link
                 href={`/prospect/${item.prospectId}`}
-                className="shrink-0 text-[11px] font-medium text-(--color-primary) hover:underline"
+                className="shrink-0 text-[11px] font-medium text-(--color-primary-text) hover:underline"
               >
                 確認
               </Link>
@@ -151,14 +151,14 @@ export function BatchProgress({ items, running, onStop }: Props) {
               <span className="shrink-0 text-[11px] text-(--color-muted)">
                 {item.skipReason ?? "スキップ"}
                 {item.prospectId && (
-                  <Link href={`/prospect/${item.prospectId}`} className="ml-1 text-(--color-primary) hover:underline">
+                  <Link href={`/prospect/${item.prospectId}`} className="ml-1 text-(--color-primary-text) hover:underline">
                     過去の結果
                   </Link>
                 )}
               </span>
             )}
             {item.status === "error" && (
-              <span className="shrink-0 text-[11px] text-(--color-danger) max-w-[300px] break-words text-right">
+              <span className="shrink-0 text-[11px] text-(--color-danger-text) max-w-[300px] break-words text-right">
                 {item.error}
               </span>
             )}
@@ -174,13 +174,13 @@ function StatusIcon({ status }: { status: BatchItem["status"] }) {
     case "waiting":
       return <Clock size={16} className="shrink-0 text-gray-300 dark:text-gray-600" />;
     case "processing":
-      return <CircleNotch size={16} className="shrink-0 animate-spin text-(--color-primary)" />;
+      return <CircleNotch size={16} className="shrink-0 animate-spin text-(--color-primary-text)" />;
     case "done":
-      return <Check size={16} weight="bold" className="shrink-0 text-(--color-success)" />;
+      return <Check size={16} weight="bold" className="shrink-0 text-(--color-success-text)" />;
     case "skipped":
       return <SkipForward size={16} className="shrink-0 text-(--color-muted)" />;
     case "error":
-      return <Warning size={16} weight="fill" className="shrink-0 text-(--color-danger)" />;
+      return <Warning size={16} weight="fill" className="shrink-0 text-(--color-danger-text)" />;
   }
 }
 

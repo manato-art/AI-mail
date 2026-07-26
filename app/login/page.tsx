@@ -91,7 +91,7 @@ export default function LoginPage() {
         {error && (
           <p
             role="alert"
-            className="mt-3 flex items-start gap-2 rounded-lg border border-(--color-danger)/30 bg-(--color-danger-light) px-3 py-2.5 text-sm text-(--color-danger)"
+            className="mt-3 flex items-start gap-2 rounded-lg border border-(--color-danger)/30 bg-(--color-danger-light) px-3 py-2.5 text-sm text-(--color-danger-text)"
           >
             <Warning size={16} weight="fill" className="mt-0.5 shrink-0" />
             <span>{error}</span>

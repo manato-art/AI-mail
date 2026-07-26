@@ -39,7 +39,7 @@ export function DirectEditor({
           <button
             type="button"
             onClick={onOpenGenerated}
-            className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+            className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text)"
           >
             <EnvelopeOpen size={12} />
             引用
@@ -80,7 +80,7 @@ export function DirectEditor({
             key={v}
             type="button"
             onClick={() => insertAtCursorDirect(`{{${v}}}`)}
-            className="inline-flex h-6 cursor-pointer items-center rounded border border-(--color-border) px-1.5 text-[10px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+            className="inline-flex h-6 cursor-pointer items-center rounded border border-(--color-border) px-1.5 text-[10px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text)"
           >
             {label}
           </button>

@@ -86,7 +86,7 @@ const ITEM_BASE =
 function itemClass(active: boolean) {
   return `${ITEM_BASE} ${
     active
-      ? "bg-(--color-primary-light) font-semibold text-(--color-primary)"
+      ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)"
       : "font-medium text-(--color-muted) hover:bg-(--color-card-hover) hover:text-(--color-foreground)"
   }`;
 }
@@ -112,7 +112,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <header className="border-b border-(--color-border) bg-(--color-card)">
         {/* 上部バー（56px）。サイドバーより上に描いて左上のロゴを隠さない */}
-        <div className="relative z-30 flex h-14 items-center gap-2 bg-(--color-card) px-3 md:px-4 lg:px-6">
+        {/* gap は狭い画面で詰める。384px では gap-2 だとテーマ切替が右端を 1px 超えていた（M7） */}
+        <div className="relative z-30 flex h-14 items-center gap-1 bg-(--color-card) px-3 sm:gap-2 md:px-4 lg:px-6">
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
@@ -131,7 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-lg font-semibold tracking-tight">SalesMail</span>
           </Link>
 
-          <div className="ml-auto flex min-w-0 items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <TestModeBadge />
             <ServiceSwitcher />
             <button

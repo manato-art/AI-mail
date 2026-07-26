@@ -51,7 +51,7 @@ export function ActivityLogPanel() {
         <Terminal size={16} className="text-(--color-muted)" />
         活動ログ
         {entries.length > 0 && (
-          <span className="ml-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[11px] tabular-nums text-(--color-primary)">
+          <span className="ml-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[11px] tabular-nums text-(--color-primary-text)">
             {entries.length}
           </span>
         )}

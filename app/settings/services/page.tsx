@@ -185,7 +185,7 @@ export default function ServicesPage() {
       </div>
 
       {listError && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger-text)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
           <p className="leading-relaxed">{listError}</p>
         </div>
@@ -266,7 +266,7 @@ export default function ServicesPage() {
                     </span>
                   ))}
                   {service.target && (
-                    <span className="inline-flex items-center rounded-md bg-(--color-success-light) px-2 py-1 text-[12px] font-medium text-(--color-success)">
+                    <span className="inline-flex items-center rounded-md bg-(--color-success-light) px-2 py-1 text-[12px] font-medium text-(--color-success-text)">
                       {truncate(service.target, 20)}
                     </span>
                   )}
@@ -284,7 +284,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-(--color-primary-light)">
-        <Briefcase size={26} className="text-(--color-primary)" />
+        <Briefcase size={26} className="text-(--color-primary-text)" />
       </div>
       <p className="text-[15px] font-semibold">サービスが登録されていません</p>
       <p className="mt-1.5 text-sm leading-relaxed text-(--color-muted)">
@@ -432,7 +432,7 @@ function ServiceForm({
       </h2>
 
       {error && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger-text)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
           <p className="leading-relaxed">{error}</p>
         </div>
@@ -550,7 +550,7 @@ function ServiceForm({
             />
             {selectedFile ? (
               <div className="flex items-center gap-2">
-                <FileText size={20} className="text-(--color-primary)" />
+                <FileText size={20} className="text-(--color-primary-text)" />
                 <span className="text-sm font-medium">{selectedFile.name}</span>
                 <button
                   type="button"
@@ -590,7 +590,7 @@ function ServiceForm({
           />
 
           {parseError && (
-            <p className="text-sm leading-relaxed text-(--color-danger)">{parseError}</p>
+            <p className="text-sm leading-relaxed text-(--color-danger-text)">{parseError}</p>
           )}
           <button
             type="button"

@@ -31,11 +31,11 @@ const REASON_LABELS: Record<SuppressionReason, string> = {
 };
 
 const REASON_STYLES: Record<SuppressionReason, string> = {
-  optout: "bg-(--color-danger-light) text-(--color-danger)",
-  bounce: "bg-(--color-warning-light) text-(--color-warning)",
-  refusal_detected: "bg-(--color-danger-light) text-(--color-danger)",
+  optout: "bg-(--color-danger-light) text-(--color-danger-text)",
+  bounce: "bg-(--color-warning-light) text-(--color-warning-text)",
+  refusal_detected: "bg-(--color-danger-light) text-(--color-danger-text)",
   rejected_reply: "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300",
-  manual: "bg-(--color-primary-light) text-(--color-primary)",
+  manual: "bg-(--color-primary-light) text-(--color-primary-text)",
 };
 
 /** 手動登録で選べる理由。自動でしか付かないものは出さない */
@@ -149,7 +149,7 @@ export default function SuppressionsPage() {
     return (
       <div className="animate-fade-in">
         <div className="flex items-center justify-center py-20">
-          <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={24} className="animate-spin text-(--color-primary-text)" />
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ export default function SuppressionsPage() {
     <div className="animate-fade-in pb-20">
       {/* 法令の注意は必ず画面のいちばん上に置く */}
       <div className="flex gap-2.5 rounded-xl border border-(--color-warning)/40 bg-(--color-warning-light) p-4 text-sm">
-        <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={20} weight="fill" />
+        <Warning className="mt-0.5 shrink-0 text-(--color-warning-text)" size={20} weight="fill" />
         <div className="space-y-1.5 leading-relaxed">
           <p className="font-semibold">
             ここに登録した宛先には、どの経路からも送信できなくなります
@@ -177,7 +177,7 @@ export default function SuppressionsPage() {
         <form onSubmit={handleAdd} className="h-fit overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)">
           <div className="border-b border-(--color-border) px-5 py-4">
             <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--color-primary-light) text-(--color-primary)">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--color-primary-light) text-(--color-primary-text)">
                 <Plus size={15} weight="bold" />
               </span>
               宛先を追加
@@ -265,13 +265,13 @@ export default function SuppressionsPage() {
         {/* 一覧 */}
         <Card
           title={
-            <span className="flex items-center gap-2">
-              登録済み
+            <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+              <span>登録済み</span>
               <CountBadge count={items.length} />
             </span>
           }
           action={
-            <div className="relative">
+            <div className="relative min-w-0">
               <MagnifyingGlass size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-(--color-muted)" />
               <input
                 type="text"
@@ -311,13 +311,13 @@ export default function SuppressionsPage() {
                       <td className="px-4 py-2.5">
                         <span className="font-medium">{s.target}</span>
                         {s.target_type === "domain" && (
-                          <span className="ml-1.5 rounded bg-(--color-background) px-1.5 py-0.5 text-[12px] text-(--color-muted)">
+                          <span className="ml-1.5 whitespace-nowrap rounded bg-(--color-background) px-1.5 py-0.5 text-[12px] text-(--color-muted)">
                             ドメイン全体
                           </span>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-block rounded-md px-2 py-1 text-[12px] font-medium ${REASON_STYLES[s.reason] ?? ""}`}>
+                        <span className={`inline-block whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium ${REASON_STYLES[s.reason] ?? ""}`}>
                           {REASON_LABELS[s.reason] ?? s.reason}
                         </span>
                       </td>

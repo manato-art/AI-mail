@@ -34,9 +34,9 @@ const COMPATIBILITY_LABELS: Record<string, string> = {
 };
 
 const COMPATIBILITY_STYLES: Record<string, string> = {
-  high: "bg-(--color-success-light) text-(--color-success)",
-  medium: "bg-(--color-warning-light) text-(--color-warning)",
-  low: "bg-(--color-danger-light) text-(--color-danger)",
+  high: "bg-(--color-success-light) text-(--color-success-text)",
+  medium: "bg-(--color-warning-light) text-(--color-warning-text)",
+  low: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
 const STATUS_LABELS: Record<SendStatus, string> = {
@@ -50,13 +50,13 @@ const STATUS_LABELS: Record<SendStatus, string> = {
 };
 
 const STATUS_STYLES: Record<SendStatus, string> = {
-  unsent: "bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400",
-  scheduled: "bg-(--color-primary-light) text-(--color-primary)",
-  sent: "bg-(--color-primary-light) text-(--color-primary)",
-  failed: "bg-(--color-danger-light) text-(--color-danger)",
-  replied: "bg-(--color-success-light) text-(--color-success)",
-  meeting: "bg-(--color-warning-light) text-(--color-warning)",
-  rejected: "bg-(--color-danger-light) text-(--color-danger)",
+  unsent: "bg-gray-100 text-(--color-muted) dark:bg-slate-700",
+  scheduled: "bg-(--color-primary-light) text-(--color-primary-text)",
+  sent: "bg-(--color-primary-light) text-(--color-primary-text)",
+  failed: "bg-(--color-danger-light) text-(--color-danger-text)",
+  replied: "bg-(--color-success-light) text-(--color-success-text)",
+  meeting: "bg-(--color-warning-light) text-(--color-warning-text)",
+  rejected: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
 /** 状態は「色＋アイコン＋日本語」の3点セットで示す（IA-DESIGN §5-4） */
@@ -330,7 +330,7 @@ export default function HistoryPage() {
     return `${chipBase} ${
       active
         ? "border-(--color-primary) bg-(--color-primary) text-white"
-        : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+        : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
     }`;
   }
 
@@ -340,7 +340,7 @@ export default function HistoryPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold tracking-tight">生成履歴</h1>
           {!loading && (
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary)">
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-xs font-semibold text-(--color-primary-text)">
               {filtered.length}
             </span>
           )}
@@ -405,8 +405,8 @@ export default function HistoryPage() {
               aria-expanded={showFilters}
               className={`inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
                 showFilters || hasActiveFilters
-                  ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
-                  : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                  ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary-text)"
+                  : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
               }`}
             >
               <SlidersHorizontal size={14} />
@@ -452,7 +452,7 @@ export default function HistoryPage() {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-danger) hover:text-(--color-danger)"
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-danger) hover:text-(--color-danger-text)"
                 >
                   <X size={12} />
                   リセット
@@ -464,14 +464,14 @@ export default function HistoryPage() {
       )}
 
       {error && (
-        <div className="mb-4 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+        <div className="mb-4 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm text-(--color-danger-text)">
           {error}
         </div>
       )}
 
       {loading ? (
         <div className={`${CARD} flex flex-col items-center justify-center gap-3 py-20 text-center`}>
-          <SpinnerGap size={20} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={20} className="animate-spin text-(--color-primary-text)" />
           <p className="text-sm text-(--color-muted)">読み込み中...</p>
         </div>
       ) : filtered.length === 0 ? (
@@ -508,7 +508,7 @@ export default function HistoryPage() {
                       {STATUS_LABELS[prospect.send_status as SendStatus] ?? "未送信"}
                     </span>
                     {sentCountFor(prospect.domain) > 0 && (
-                      <span className="inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                      <span className="inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[10px] font-medium text-(--color-primary-text)">
                         この会社へ通算{sentCountFor(prospect.domain)}通
                       </span>
                     )}
@@ -546,7 +546,7 @@ export default function HistoryPage() {
                           {sentCountFor(prospect.domain) > 0 && (
                             <span
                               title="この会社へ実際に送信した通算回数"
-                              className="ml-2 inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 align-middle text-[10px] font-medium text-(--color-primary)"
+                              className="ml-2 inline-flex items-center rounded-full bg-(--color-primary-light) px-2 py-0.5 align-middle text-[10px] font-medium text-(--color-primary-text)"
                             >
                               通算{sentCountFor(prospect.domain)}通
                             </span>
@@ -577,7 +577,7 @@ export default function HistoryPage() {
                         </td>
                         <td className="px-4 py-3 text-(--color-muted)">
                           {prospect.send_status === "scheduled" && prospect.scheduled_at && (
-                            <span className="mr-1.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">
+                            <span className="mr-1.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)">
                               <CalendarCheck size={11} weight="fill" />
                               {formatScheduledAt(prospect.scheduled_at)}
                             </span>
@@ -598,7 +598,7 @@ export default function HistoryPage() {
                             )}
                             <Link
                               href={`/prospect/${prospect.id}`}
-                              className="inline-flex h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary)"
+                              className="inline-flex h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text)"
                             >
                               詳細
                               <ArrowRight size={14} />
@@ -611,7 +611,7 @@ export default function HistoryPage() {
                               disabled={suppressingDomain === prospect.domain}
                               aria-label="送信しないリストに追加"
                               title="この会社へ二度と送れなくなります"
-                              className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border border-(--color-danger)/40 text-(--color-danger) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger) disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg border border-(--color-danger)/40 text-(--color-danger-text) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger) disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Prohibit size={15} weight="bold" />
                             </button>

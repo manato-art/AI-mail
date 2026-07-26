@@ -30,9 +30,9 @@ const COMPATIBILITY_LABELS: Record<string, string> = {
 };
 
 const COMPATIBILITY_BG: Record<string, string> = {
-  high: "bg-(--color-success-light) text-(--color-success)",
-  medium: "bg-(--color-warning-light) text-(--color-warning)",
-  low: "bg-(--color-danger-light) text-(--color-danger)",
+  high: "bg-(--color-success-light) text-(--color-success-text)",
+  medium: "bg-(--color-warning-light) text-(--color-warning-text)",
+  low: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
 const STATUS_LABELS: Record<SendStatus, string> = {
@@ -46,18 +46,18 @@ const STATUS_LABELS: Record<SendStatus, string> = {
 };
 
 const STATUS_STYLES: Record<SendStatus, string> = {
-  unsent: "border-gray-300 text-gray-500 dark:border-gray-600 dark:text-gray-400",
-  scheduled: "border-(--color-primary) text-(--color-primary)",
-  sent: "border-(--color-primary) text-(--color-primary)",
-  failed: "border-(--color-danger) text-(--color-danger)",
-  replied: "border-(--color-success) text-(--color-success)",
-  meeting: "border-(--color-warning) text-(--color-warning)",
-  rejected: "border-(--color-danger) text-(--color-danger)",
+  unsent: "border-gray-300 text-(--color-muted) dark:border-gray-600",
+  scheduled: "border-(--color-primary) text-(--color-primary-text)",
+  sent: "border-(--color-primary) text-(--color-primary-text)",
+  failed: "border-(--color-danger) text-(--color-danger-text)",
+  replied: "border-(--color-success) text-(--color-success-text)",
+  meeting: "border-(--color-warning) text-(--color-warning-text)",
+  rejected: "border-(--color-danger) text-(--color-danger-text)",
 };
 
 /** 下部バーの補助ボタン（進む操作の青と見た目を分ける） */
 const BAR_BTN =
-  "inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-(--color-foreground) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-border) bg-(--color-card) px-3.5 text-[13px] font-medium text-(--color-foreground) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50";
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
@@ -394,7 +394,7 @@ export default function ProspectPage() {
       <div className="animate-fade-in">
         <h1 className="mb-6 text-2xl font-bold tracking-tight">メール確認</h1>
         <div className={`${CARD} flex flex-col items-center justify-center gap-3 py-20 text-center`}>
-          <SpinnerGap size={20} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={20} className="animate-spin text-(--color-primary-text)" />
           <p className="text-sm text-(--color-muted)">読み込み中...</p>
         </div>
       </div>
@@ -406,8 +406,8 @@ export default function ProspectPage() {
       <div className="animate-fade-in">
         <h1 className="mb-6 text-2xl font-bold tracking-tight">メール確認</h1>
         <div className="flex flex-col items-center gap-3 rounded-xl border border-(--color-danger) bg-(--color-danger-light) px-6 py-16 text-center">
-          <WarningCircle size={24} weight="fill" className="text-(--color-danger)" />
-          <p className="text-sm font-medium text-(--color-danger)">
+          <WarningCircle size={24} weight="fill" className="text-(--color-danger-text)" />
+          <p className="text-sm font-medium text-(--color-danger-text)">
             {loadError ?? "データが見つかりませんでした。"}
           </p>
         </div>
@@ -423,7 +423,7 @@ export default function ProspectPage() {
 
   /** 送信直前の平易な1文。下部バーの真上に出す（モバイル/デスクトップで1つずつ） */
   const noticeStrip = sendNotice ? (
-    <div className="flex items-start gap-2 border-b border-(--color-primary)/30 bg-(--color-primary-light) px-4 py-2 text-[13px] font-medium text-(--color-primary)">
+    <div className="flex items-start gap-2 border-b border-(--color-primary)/30 bg-(--color-primary-light) px-4 py-2 text-[13px] font-medium text-(--color-primary-text)">
       <PaperPlaneTilt size={14} weight="fill" className="mt-0.5 shrink-0" />
       <span className="min-w-0">{sendNotice}</span>
     </div>
@@ -435,7 +435,7 @@ export default function ProspectPage() {
       <nav aria-label="パンくず" className="mb-2 flex min-w-0 items-center gap-2 text-[13px]">
         <Link
           href="/history"
-          className="rounded-md text-(--color-primary) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+          className="rounded-md text-(--color-primary-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
         >
           履歴
         </Link>
@@ -450,7 +450,7 @@ export default function ProspectPage() {
         <h1 className="text-lg font-bold tracking-tight text-balance md:text-xl">
           {companyLabel} 宛のメール
         </h1>
-        <span className="hidden items-center gap-1.5 rounded-full bg-(--color-primary-light) px-3 py-1 text-xs font-semibold text-(--color-primary) md:inline-flex">
+        <span className="hidden items-center gap-1.5 rounded-full bg-(--color-primary-light) px-3 py-1 text-xs font-semibold text-(--color-primary-text) md:inline-flex">
           <Globe size={12} />
           {prospect.domain}
         </span>
@@ -476,7 +476,7 @@ export default function ProspectPage() {
             onClick={handleSuppress}
             disabled={suppressing}
             title="この会社へ二度と送れなくなります"
-            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-3 text-xs font-medium text-(--color-danger) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger) disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-3 text-xs font-medium text-(--color-danger-text) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger) disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Prohibit size={13} weight="bold" />
             送信しないリストに追加
@@ -489,7 +489,7 @@ export default function ProspectPage() {
         <div className="min-w-0">
           {/* Test Mode Banner */}
           {isTestMode && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-(--color-danger) px-4 py-2.5 text-sm font-semibold text-white">
               <Warning size={16} weight="bold" />
               テストモード: 宛先はテストアドレスに強制上書きされます
             </div>
@@ -499,7 +499,7 @@ export default function ProspectPage() {
           {hasRefusal && (
             <div className="mb-3 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-600 dark:bg-amber-950/30">
               <div className="flex items-start gap-2">
-                <WarningCircle size={18} weight="fill" className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <WarningCircle size={18} weight="fill" className="mt-0.5 shrink-0 text-(--color-warning-text)" />
                 <div>
                   <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
                     営業お断りの表記が検出されました
@@ -509,7 +509,7 @@ export default function ProspectPage() {
                       「{refusalText}」
                     </p>
                   )}
-                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  <p className="mt-1 text-xs text-(--color-warning-text)">
                     送信すると特定電子メール法に違反する可能性があります。
                   </p>
                 </div>
@@ -529,7 +529,7 @@ export default function ProspectPage() {
                   <li key={i} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">・{issue}</li>
                 ))}
               </ul>
-              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400/80">
+              <p className="mt-1.5 text-[11px] text-(--color-warning-text)/80">
                 送信はブロックしません。気になる項目は本文を直すか再生成してください。
               </p>
             </div>
@@ -577,7 +577,7 @@ export default function ProspectPage() {
             {prospect.form_url && (
               <div className="border-t border-(--color-border) bg-(--color-card-hover)/50 px-5 py-3.5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-(--color-muted)">フォームURL</p>
-                <a href={prospect.form_url} target="_blank" rel="noopener noreferrer" className="mt-0.5 block break-all text-[13px] text-(--color-primary) underline underline-offset-2 hover:text-(--color-primary-hover)">
+                <a href={prospect.form_url} target="_blank" rel="noopener noreferrer" className="mt-0.5 block break-all text-[13px] text-(--color-primary-text) underline underline-offset-2 hover:text-(--color-primary-hover)">
                   {prospect.form_url}
                 </a>
               </div>
@@ -635,8 +635,8 @@ export default function ProspectPage() {
             {sendError && (
               <div className="border-t border-(--color-danger)/30 bg-(--color-danger-light) px-5 py-3.5">
                 <div className="flex items-start gap-2">
-                  <WarningCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-(--color-danger)" />
-                  <p className="whitespace-pre-line text-[13px] font-medium text-(--color-danger)">{sendError}</p>
+                  <WarningCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-(--color-danger-text)" />
+                  <p className="whitespace-pre-line text-[13px] font-medium text-(--color-danger-text)">{sendError}</p>
                 </div>
               </div>
             )}
@@ -711,15 +711,15 @@ export default function ProspectPage() {
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-(--color-border) bg-(--color-card)/95 backdrop-blur-sm md:hidden">
         {noticeStrip}
         <div className="grid grid-cols-4 gap-1 px-2 py-2">
-          <button type="button" onClick={handleRegenerate} disabled={regenerating} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary) disabled:opacity-50">
+          <button type="button" onClick={handleRegenerate} disabled={regenerating} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary-text) disabled:opacity-50">
             <ArrowCounterClockwise size={18} className={regenerating ? "animate-spin" : ""} />
             <span className="text-[10px]">再生成</span>
           </button>
-          <button type="button" onClick={handleCopy} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary)">
+          <button type="button" onClick={handleCopy} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary-text)">
             <Copy size={18} />
             <span className="text-[10px]">コピー</span>
           </button>
-          <button type="button" onClick={handleSave} disabled={saving} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary) disabled:opacity-50">
+          <button type="button" onClick={handleSave} disabled={saving} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-primary-text) disabled:opacity-50">
             {saving ? <SpinnerGap size={18} className="animate-spin" /> : <Check size={18} weight="bold" />}
             <span className="text-[10px]">{saving ? "保存中" : "保存"}</span>
           </button>
@@ -727,7 +727,7 @@ export default function ProspectPage() {
             type="button"
             onClick={handleSend}
             disabled={sending || !canSend}
-            className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 font-medium text-(--color-primary) transition-colors motion-reduce:transition-none disabled:opacity-50"
+            className="flex cursor-pointer flex-col items-center gap-0.5 rounded-lg py-2 font-medium text-(--color-primary-text) transition-colors motion-reduce:transition-none disabled:opacity-50"
           >
             {sending ? <SpinnerGap size={18} className="animate-spin" /> : <PaperPlaneTilt size={18} weight="fill" />}
             <span className="text-[10px] font-semibold">{sending ? "送信中" : "送信"}</span>

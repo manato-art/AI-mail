@@ -285,7 +285,7 @@ export default function TemplatesPage() {
     return (
       <div className="animate-fade-in">
         <div className="flex items-center justify-center py-20">
-          <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={24} className="animate-spin text-(--color-primary-text)" />
         </div>
       </div>
     );
@@ -333,7 +333,7 @@ export default function TemplatesPage() {
                 <div className="mt-1 flex items-center gap-2">
                   <p className="text-[12px] tabular-nums text-(--color-muted)">{formatDate(t.updated_at)}</p>
                   {t.attachments.length > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[12px] font-semibold text-(--color-primary)">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-(--color-primary-light) px-2 py-0.5 text-[12px] font-semibold text-(--color-primary-text)">
                       <Paperclip size={11} weight="bold" />
                       {t.attachments.length}
                     </span>
@@ -422,7 +422,7 @@ export default function TemplatesPage() {
                         key={variable}
                         type="button"
                         onClick={() => insertAtCursor(variable!)}
-                        className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 py-1 text-[13px] transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                        className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 py-1 text-[13px] transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                         title="カーソル位置に挿入"
                       >
                         <code>{variable}</code>
@@ -474,7 +474,7 @@ export default function TemplatesPage() {
                     type="button"
                     disabled={!editAllowAttachments}
                     onClick={() => setPickerOpen((v) => !v)}
-                    className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-(--color-primary) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                    className="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-[13px] font-semibold text-(--color-primary-text) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                   >
                     <Plus size={13} weight="bold" />
                     資料を選ぶ
@@ -526,7 +526,7 @@ export default function TemplatesPage() {
                       type="button"
                       onClick={() => uploadInputRef.current?.click()}
                       disabled={uploading}
-                      className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-(--color-primary)/50 text-[13px] font-semibold text-(--color-primary) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-(--color-primary)/50 text-[13px] font-semibold text-(--color-primary-text) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {uploading ? <SpinnerGap size={15} className="animate-spin" /> : <UploadSimple size={15} />}
                       {uploading ? "アップロード中..." : "新しい資料をアップロード"}

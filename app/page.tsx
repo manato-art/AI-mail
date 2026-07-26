@@ -40,9 +40,9 @@ const COMPATIBILITY_LABELS: Record<string, string> = {
 };
 
 const COMPATIBILITY_STYLES: Record<string, string> = {
-  high: "bg-(--color-success-light) text-(--color-success)",
-  medium: "bg-(--color-warning-light) text-(--color-warning)",
-  low: "bg-(--color-danger-light) text-(--color-danger)",
+  high: "bg-(--color-success-light) text-(--color-success-text)",
+  medium: "bg-(--color-warning-light) text-(--color-warning-text)",
+  low: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
 function formatDate(iso: string): string {
@@ -384,7 +384,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+        <SpinnerGap size={24} className="animate-spin text-(--color-primary-text)" />
       </div>
     );
   }
@@ -401,14 +401,14 @@ export default function DashboardPage() {
               <alert.Icon
                 size={18}
                 weight="fill"
-                className="shrink-0 text-(--color-danger)"
+                className="shrink-0 text-(--color-danger-text)"
               />
-              <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-(--color-danger)">
+              <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-(--color-danger-text)">
                 {alert.message}
               </p>
               <Link
                 href={alert.href}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-(--color-danger)/40 bg-(--color-card) px-3.5 text-[13px] font-semibold text-(--color-danger) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-(--color-danger)/40 bg-(--color-card) px-3.5 text-[13px] font-semibold text-(--color-danger-text) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
               >
                 {alert.action}
               </Link>
@@ -426,7 +426,7 @@ export default function DashboardPage() {
             className={`${CARD} group flex min-h-11 flex-col gap-1 p-4 transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:bg-(--color-card-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)`}
           >
             <span className="flex items-center gap-2 text-[13px] font-medium text-(--color-muted)">
-              <card.Icon size={16} weight="duotone" className="shrink-0 text-(--color-primary)" />
+              <card.Icon size={16} weight="duotone" className="shrink-0 text-(--color-primary-text)" />
               {card.label}
             </span>
             <span className="text-2xl font-bold tabular-nums tracking-tight">{card.value}</span>
@@ -463,7 +463,7 @@ export default function DashboardPage() {
           <h2 className="text-base font-semibold">クイック生成</h2>
           <Link
             href="/generate"
-            className="text-[13px] text-(--color-primary) underline-offset-2 hover:underline"
+            className="text-[13px] text-(--color-primary-text) underline-offset-2 hover:underline"
           >
             詳細フォームへ
           </Link>
@@ -559,7 +559,7 @@ export default function DashboardPage() {
         {isBusy && <QuickProgressBar status={quickStatus} />}
 
         {quickStatus === "error" && quickError && (
-          <div className="animate-fade-in mt-4 flex gap-2.5 rounded-lg border border-(--color-danger)/40 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+          <div className="animate-fade-in mt-4 flex gap-2.5 rounded-lg border border-(--color-danger)/40 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger-text)">
             <Warning size={18} weight="fill" className="mt-0.5 shrink-0" />
             <div className="min-w-0 flex-1">
               <p>{quickError}</p>
@@ -587,7 +587,7 @@ export default function DashboardPage() {
           </h2>
           <Link
             href="/history"
-            className="inline-flex items-center gap-1 text-[13px] text-(--color-primary) underline-offset-2 hover:underline"
+            className="inline-flex items-center gap-1 text-[13px] text-(--color-primary-text) underline-offset-2 hover:underline"
           >
             すべて見る
             <ArrowRight size={12} />
@@ -629,7 +629,7 @@ export default function DashboardPage() {
                   <span className="text-[11px] text-(--color-muted)">
                     {formatDate(prospect.created_at)} · {serviceMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
                   </span>
-                  <Link href={`/prospect/${prospect.id}`} className="text-xs font-medium text-(--color-primary)">
+                  <Link href={`/prospect/${prospect.id}`} className="text-xs font-medium text-(--color-primary-text)">
                     詳細 →
                   </Link>
                 </div>
@@ -693,7 +693,7 @@ export default function DashboardPage() {
                     <td className="whitespace-nowrap px-5 py-3 text-right">
                       <Link
                         href={`/prospect/${prospect.id}`}
-                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary)"
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-(--color-border) px-3 text-xs font-medium transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text)"
                       >
                         詳細
                         <ArrowRight size={12} />
@@ -729,11 +729,11 @@ function QuickProgressBar({ status }: { status: QuickStatus }) {
                 {isDone ? (
                   <Check size={14} weight="bold" style={{ color: "var(--color-success)" }} />
                 ) : isCurrent ? (
-                  <SpinnerGap size={14} className="animate-spin text-(--color-primary)" />
+                  <SpinnerGap size={14} className="animate-spin text-(--color-primary-text)" />
                 ) : (
                   <div className="h-3.5 w-3.5 rounded-full border-2 border-(--color-border)" />
                 )}
-                <span className={`text-xs ${isCurrent ? "font-semibold text-(--color-primary)" : isDone ? "text-(--color-success)" : "text-(--color-muted)"}`}>
+                <span className={`text-xs ${isCurrent ? "font-semibold text-(--color-primary-text)" : isDone ? "text-(--color-success-text)" : "text-(--color-muted)"}`}>
                   {step.label}
                 </span>
               </div>

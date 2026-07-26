@@ -41,7 +41,7 @@ export function StepSection({
     <>
       <span
         aria-hidden="true"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--color-primary-light) text-[13px] font-bold text-(--color-primary)"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--color-primary-light) text-[13px] font-bold text-(--color-primary-text)"
       >
         {step}
       </span>

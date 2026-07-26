@@ -47,7 +47,10 @@ const PARAMETER_CONFIG: {
   label: string;
   minLabel: string;
   maxLabel: string;
+  /** バー（面）の色 */
   color: string;
+  /** 数字（文字）の色。面と同じ濃さだと白地で 4.5:1 に届かないので専用トークンを使う */
+  textColor: string;
 }[] = [
   {
     key: "logic",
@@ -55,6 +58,7 @@ const PARAMETER_CONFIG: {
     minLabel: "感情・共感型",
     maxLabel: "ロジカル",
     color: "var(--trait-logic)",
+    textColor: "var(--trait-logic-text)",
   },
   {
     key: "passion",
@@ -62,6 +66,7 @@ const PARAMETER_CONFIG: {
     minLabel: "低（淡々）",
     maxLabel: "高（前のめり）",
     color: "var(--trait-passion)",
+    textColor: "var(--trait-passion-text)",
   },
   {
     key: "politeness",
@@ -69,6 +74,7 @@ const PARAMETER_CONFIG: {
     minLabel: "フランク寄り",
     maxLabel: "最敬体",
     color: "var(--trait-polite)",
+    textColor: "var(--trait-polite-text)",
   },
   {
     key: "salesiness",
@@ -76,6 +82,7 @@ const PARAMETER_CONFIG: {
     minLabel: "控えめ・相談風",
     maxLabel: "ストレート",
     color: "var(--trait-sales)",
+    textColor: "var(--trait-sales-text)",
   },
   {
     key: "length",
@@ -83,6 +90,7 @@ const PARAMETER_CONFIG: {
     minLabel: "短め",
     maxLabel: "長め",
     color: "var(--trait-length)",
+    textColor: "var(--trait-length-text)",
   },
 ];
 
@@ -238,7 +246,7 @@ export default function PersonasPage() {
       </div>
 
       {listError && (
-        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger)">
+        <div className="mb-5 flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-4 text-sm text-(--color-danger-text)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
           <p className="leading-relaxed">{listError}</p>
         </div>
@@ -327,7 +335,7 @@ export default function PersonasPage() {
                       </div>
                       <span
                         className="w-4 shrink-0 text-right text-[13px] font-semibold tabular-nums"
-                        style={{ color: param.color }}
+                        style={{ color: param.textColor }}
                       >
                         {persona[param.key]}
                       </span>
@@ -347,7 +355,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-(--color-border) bg-(--color-card) px-6 py-16 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-(--color-primary-light)">
-        <User size={26} className="text-(--color-primary)" />
+        <User size={26} className="text-(--color-primary-text)" />
       </div>
       <p className="text-[15px] font-semibold">人格が登録されていません</p>
       <p className="mt-1.5 text-sm leading-relaxed text-(--color-muted)">
@@ -387,7 +395,7 @@ function PersonaForm({
       </h2>
 
       {error && (
-        <div className="flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger)">
+        <div className="flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) p-3.5 text-sm text-(--color-danger-text)">
           <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
           <p className="leading-relaxed">{error}</p>
         </div>
@@ -517,7 +525,7 @@ function PersonaForm({
                 <label htmlFor={`persona-param-${param.key}`} className="text-sm font-medium">
                   {param.label}
                 </label>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-(--color-primary-light) text-[13px] font-semibold text-(--color-primary)">
+                <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-(--color-primary-light) text-[13px] font-semibold text-(--color-primary-text)">
                   {form[param.key]}
                 </span>
               </div>

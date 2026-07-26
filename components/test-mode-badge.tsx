@@ -32,7 +32,7 @@ export function TestModeBadge() {
   if (!testMode) return null;
 
   return (
-    <span className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-(--color-danger)/40 bg-(--color-danger-light) px-2.5 text-xs font-semibold text-(--color-danger)">
+    <span className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-(--color-danger)/40 bg-(--color-danger-light) px-2.5 text-xs font-semibold text-(--color-danger-text)">
       <Flask size={14} weight="fill" className="shrink-0" />
       <span className="sr-only md:not-sr-only">テストモード：全メールは自分宛てに届きます</span>
     </span>

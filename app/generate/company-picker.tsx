@@ -289,7 +289,7 @@ export function CompanyPicker({
                           </span>
                         )}
                         {company.collection_keyword && (
-                          <span className={`${TAG} bg-(--color-primary-light) text-(--color-primary)`}>
+                          <span className={`${TAG} bg-(--color-primary-light) text-(--color-primary-text)`}>
                             <MagnifyingGlass size={11} weight="bold" />
                             {company.collection_keyword}
                           </span>

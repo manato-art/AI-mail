@@ -27,9 +27,9 @@ export function InventoryPanel({
     <section className="flex flex-col gap-3">
       {status.hasBlockedSource && (
         <div className="flex gap-3 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4">
-          <WarningOctagon size={20} className="mt-0.5 shrink-0 text-(--color-danger)" />
+          <WarningOctagon size={20} className="mt-0.5 shrink-0 text-(--color-danger-text)" />
           <div className="text-[13px] leading-relaxed">
-            <p className="font-semibold text-(--color-danger)">収集を自動停止しました</p>
+            <p className="font-semibold text-(--color-danger-text)">収集を自動停止しました</p>
             <p className="mt-1 text-(--color-foreground)">
               検索結果が取得できない状態が続いています。アクセスを制限されたか、検索元のページ構造が
               変わった可能性があります。原因を確認するまで、このキーワードの収集は再開されません。
@@ -40,9 +40,9 @@ export function InventoryPanel({
 
       {status.isLowStock && !status.hasBlockedSource && (
         <div className="flex gap-3 rounded-xl border border-(--color-warning) bg-(--color-warning-light) p-4">
-          <Warning size={20} className="mt-0.5 shrink-0 text-(--color-warning)" />
+          <Warning size={20} className="mt-0.5 shrink-0 text-(--color-warning-text)" />
           <div className="text-[13px] leading-relaxed">
-            <p className="font-semibold text-(--color-warning)">送れる企業が残りわずかです</p>
+            <p className="font-semibold text-(--color-warning-text)">送れる企業が残りわずかです</p>
             <p className="mt-1 text-(--color-foreground)">
               このペースだと約{status.daysRemaining}日分しかありません。キーワードを追加するか、
               企業リストを取り込んでください。

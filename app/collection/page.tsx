@@ -48,10 +48,10 @@ const RUN_STATUS_LABELS: Record<string, string> = {
 };
 
 const RUN_STATUS_STYLES: Record<string, string> = {
-  success: "bg-(--color-success-light) text-(--color-success)",
+  success: "bg-(--color-success-light) text-(--color-success-text)",
   no_new: "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300",
-  no_result: "bg-(--color-danger-light) text-(--color-danger)",
-  error: "bg-(--color-danger-light) text-(--color-danger)",
+  no_result: "bg-(--color-danger-light) text-(--color-danger-text)",
+  error: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
 /**
@@ -117,7 +117,7 @@ function CompactStat({
     <div className="rounded-xl border border-(--color-border) bg-(--color-card) px-4 py-3">
       <p className="text-[13px] text-(--color-muted)">{label}</p>
       <p
-        className={`mt-0.5 text-2xl font-bold tabular-nums ${tone === "warning" ? "text-(--color-warning)" : ""}`}
+        className={`mt-0.5 text-2xl font-bold tabular-nums ${tone === "warning" ? "text-(--color-warning-text)" : ""}`}
       >
         {value}
       </p>
@@ -463,7 +463,7 @@ export default function CollectionPage() {
       {jobRunning && (
         <div className="rounded-xl border border-(--color-primary)/30 bg-(--color-primary-light) p-4 animate-fade-in">
           <div className="flex items-center gap-3">
-            <SpinnerGap size={20} className="animate-spin text-(--color-primary) shrink-0" />
+            <SpinnerGap size={20} className="animate-spin text-(--color-primary-text) shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">収集を実行中...</p>
               <p className="mt-0.5 text-[13px] text-(--color-muted)">
@@ -485,7 +485,7 @@ export default function CollectionPage() {
         bodyClassName="p-4 sm:p-5"
       >
         {noSourceError && (
-          <p className="mb-3 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[13px] text-(--color-danger) animate-fade-in">
+          <p className="mb-3 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[13px] text-(--color-danger-text) animate-fade-in">
             収集するにはキーワードを追加してください。下のフォームからキーワードを登録すると収集できます。
           </p>
         )}
@@ -517,7 +517,7 @@ export default function CollectionPage() {
                     {source.source_type === "wantedly_url" ? (source.url ?? source.keyword) : source.keyword}
                   </p>
                   {isActive && (
-                    <span className="shrink-0 rounded-full bg-(--color-success-light) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
+                    <span className="shrink-0 rounded-full bg-(--color-success-light) px-2 py-0.5 text-[11px] font-medium text-(--color-success-text)">
                       収集対象
                     </span>
                   )}
@@ -532,10 +532,10 @@ export default function CollectionPage() {
                 </p>
                 {source.paused_kind && (
                   <p
-                    className={`mt-1.5 rounded px-2 py-1 text-[12px] ${
+                    className={`mt-1.5 rounded px-2 py-1 text-[12px] text-pretty ${
                       source.paused_kind === "blocked"
-                        ? "bg-(--color-danger-light) text-(--color-danger)"
-                        : "bg-(--color-warning-light) text-(--color-warning)"
+                        ? "bg-(--color-danger-light) text-(--color-danger-text)"
+                        : "bg-(--color-warning-light) text-(--color-warning-text)"
                     }`}
                   >
                     {source.paused_reason}
@@ -674,7 +674,7 @@ export default function CollectionPage() {
               type="button"
               onClick={handleAddWantedly}
               disabled={addingWantedly}
-              className="mt-2 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-(--color-border) text-sm text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+              className="mt-2 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-(--color-border) text-sm text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text) disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
             >
               {addingWantedly ? (
                 <SpinnerGap size={16} className="animate-spin" />

@@ -44,7 +44,7 @@ export function HistoryModal({
             type="button"
             onClick={onClose}
             aria-label="閉じる"
-            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger-text)"
           >
             <X size={16} />
           </button>

@@ -65,7 +65,7 @@ export function RightPanel({
               type="button"
               onClick={onClearGenerated}
               disabled={isSending}
-              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger) disabled:opacity-40"
+              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-(--color-border) px-2 text-[11px] font-medium text-(--color-muted) transition-colors hover:border-(--color-danger) hover:text-(--color-danger-text) disabled:opacity-40"
             >
               <ArrowsClockwise size={12} />
               やり直し
@@ -75,12 +75,12 @@ export function RightPanel({
             <>
               <div className="space-y-2.5 p-4">
                 <div className="flex items-center gap-2 rounded-lg bg-(--color-primary-light)/40 px-3 py-1.5">
-                  <Buildings size={13} className="shrink-0 text-(--color-primary)" />
+                  <Buildings size={13} className="shrink-0 text-(--color-primary-text)" />
                   <span className="truncate text-[12px] font-medium">{previewRecipient.company || previewRecipient.email}</span>
                 </div>
                 {generatedEmails[previewRecipient.id].warnings?.length ? (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-500/40 dark:bg-amber-500/10">
-                    <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <Warning size={14} weight="fill" className="mt-0.5 shrink-0 text-(--color-warning-text)" />
                     <div className="space-y-0.5">
                       {generatedEmails[previewRecipient.id].warnings!.map((w, i) => (
                         <p key={i} className="text-[11px] font-medium leading-snug text-amber-800 dark:text-amber-200">{w}</p>
@@ -119,8 +119,8 @@ export function RightPanel({
                 return (
                   <div className="border-t border-(--color-border) bg-(--color-success-light)/30">
                     <div className="flex items-center gap-1.5 px-4 py-2">
-                      <PaperPlaneTilt size={12} weight="fill" className="text-(--color-success)" />
-                      <p className="text-[11px] font-bold text-(--color-success)">
+                      <PaperPlaneTilt size={12} weight="fill" className="text-(--color-success-text)" />
+                      <p className="text-[11px] font-bold text-(--color-success-text)">
                         この宛先に実際に届くメール
                       </p>
                     </div>
@@ -142,7 +142,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
                     disabled={clampedPreviewIndex === 0}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text) disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretLeft size={12} weight="bold" />
                   </button>
@@ -150,7 +150,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.min(previewCount - 1, i + 1))}
                     disabled={clampedPreviewIndex >= previewCount - 1}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text) disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretRight size={12} weight="bold" />
                   </button>
@@ -181,7 +181,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
                     disabled={clampedPreviewIndex === 0}
-                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary) disabled:opacity-30"
+                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary-text) disabled:opacity-30"
                   >
                     <CaretLeft size={11} weight="bold" />
                   </button>
@@ -189,7 +189,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.min(previewCount - 1, i + 1))}
                     disabled={clampedPreviewIndex >= previewCount - 1}
-                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary) disabled:opacity-30"
+                    className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded text-(--color-muted) hover:text-(--color-primary-text) disabled:opacity-30"
                   >
                     <CaretRight size={11} weight="bold" />
                   </button>
@@ -220,7 +220,7 @@ export function RightPanel({
               送信プレビュー
             </h2>
             {previewRecipient && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-light) px-2 py-0.5 text-[10px] font-semibold text-(--color-success)">
+              <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-light) px-2 py-0.5 text-[10px] font-semibold text-(--color-success-text)">
                 <Check size={10} weight="bold" />
                 選択中
               </span>
@@ -257,7 +257,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.max(0, i - 1))}
                     disabled={clampedPreviewIndex === 0}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text) disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretLeft size={12} weight="bold" />
                   </button>
@@ -265,7 +265,7 @@ export function RightPanel({
                     type="button"
                     onClick={() => setPreviewIndex((i) => Math.min(previewCount - 1, i + 1))}
                     disabled={clampedPreviewIndex >= previewCount - 1}
-                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary) disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-(--color-border) bg-(--color-card) text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text) disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretRight size={12} weight="bold" />
                   </button>

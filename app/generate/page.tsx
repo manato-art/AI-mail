@@ -497,12 +497,12 @@ function GeneratePageInner() {
 
       {(missingServices || missingPersonas) && (
         <div className="animate-fade-in flex gap-2.5 rounded-xl border border-(--color-warning) bg-(--color-warning-light) p-4 text-sm">
-          <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={20} weight="fill" />
+          <Warning className="mt-0.5 shrink-0 text-(--color-warning-text)" size={20} weight="fill" />
           <div className="space-y-1 leading-relaxed">
             {missingServices && (
               <p className="text-(--color-foreground)">
                 サービスが未登録です。
-                <Link href="/settings/services" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                <Link href="/settings/services" className="ml-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                   サービスを登録
                 </Link>
               </p>
@@ -510,7 +510,7 @@ function GeneratePageInner() {
             {missingPersonas && (
               <p className="text-(--color-foreground)">
                 人格が未登録です。
-                <Link href="/settings/personas" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                <Link href="/settings/personas" className="ml-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                   人格を登録
                 </Link>
               </p>
@@ -523,7 +523,7 @@ function GeneratePageInner() {
         {/* 左: 基本設定（ここだけ埋めれば作れる） */}
         <div className={`${CARD} space-y-4 p-5`}>
           <h2 className="flex items-center gap-2 border-b border-(--color-border) pb-2.5 text-[15px] font-semibold">
-            <Package size={16} className="text-(--color-primary)" />
+            <Package size={16} className="text-(--color-primary-text)" />
             基本設定
           </h2>
 

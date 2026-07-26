@@ -36,17 +36,17 @@ const STATUS_CONFIG: Record<
   done: {
     label: "完了",
     icon: CheckCircle,
-    className: "text-(--color-success)",
+    className: "text-(--color-success-text)",
   },
   pending: {
     label: "準備中",
     icon: Hourglass,
-    className: "text-(--color-warning)",
+    className: "text-(--color-warning-text)",
   },
   failed: {
     label: "調査できず",
     icon: XCircle,
-    className: "text-(--color-danger)",
+    className: "text-(--color-danger-text)",
   },
   excluded: {
     label: "除外",
@@ -85,16 +85,19 @@ function chipClass(active: boolean) {
   return `${CHIP_BASE} ${
     active
       ? "border-(--color-primary) bg-(--color-primary) text-white"
-      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
   }`;
 }
 
 /**
  * 絞り込み select。幅は中身なり（ui-kit の FIELD は w-full なのでここでは使わない）。
  * appearance も既定のままにして、OS標準の▼が出る＝「選ぶもの」だと一目で分かるようにする。
+ *
+ * select の自動最小幅は「最長の option」なので、min-w-0 / max-w-full を付けないと
+ * 長いキーワードが1件混ざるだけでページ全体が横スクロールする（M7: 384px で 77px はみ出し）。
  */
 const FILTER_SELECT =
-  "h-11 rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 text-[13px] text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25";
+  "h-11 min-w-0 max-w-full rounded-lg border border-(--color-border) bg-(--color-card) px-2.5 text-[13px] text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25";
 
 export default function CompaniesPage() {
   const router = useRouter();
@@ -496,7 +499,7 @@ export default function CompaniesPage() {
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--color-primary) bg-(--color-primary-light) px-4 py-3 animate-fade-in">
           <p className="text-sm font-medium text-(--color-foreground)">
-            <span className="tabular-nums text-(--color-primary)">{selectedIds.size}</span>社を選択中
+            <span className="tabular-nums text-(--color-primary-text)">{selectedIds.size}</span>社を選択中
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -576,7 +579,7 @@ export default function CompaniesPage() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="font-medium">{company.name}</p>
                           {isSent(company) && (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[11px] font-medium text-(--color-primary)">
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[11px] font-medium text-(--color-primary-text)">
                               <PaperPlaneTilt size={11} weight="fill" />
                               送信済み
                             </span>
@@ -623,7 +626,7 @@ export default function CompaniesPage() {
                           <button
                             type="button"
                             onClick={() => { setEditingHpId(company.id); setHpUrlInput(""); }}
-                            className="mt-0.5 flex cursor-pointer items-center gap-1 text-[12px] text-(--color-primary) hover:underline"
+                            className="mt-0.5 flex cursor-pointer items-center gap-1 text-[12px] text-(--color-primary-text) hover:underline"
                           >
                             <GlobeSimple size={13} />
                             HP追加

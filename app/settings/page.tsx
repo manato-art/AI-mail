@@ -345,7 +345,7 @@ export default function SettingsPage() {
     return (
       <div className="animate-fade-in">
         <div className="flex items-center justify-center py-20">
-          <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={24} className="animate-spin text-(--color-primary-text)" />
         </div>
       </div>
     );
@@ -357,9 +357,9 @@ export default function SettingsPage() {
       {/* アクセス保護の状態。未設定だと本番URLを知っている誰でも操作できてしまう */}
       {!authEnabled && (
         <div className="flex gap-2.5 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) px-4 py-3.5 text-sm">
-          <Warning className="mt-0.5 shrink-0 text-(--color-danger)" size={18} weight="fill" />
+          <Warning className="mt-0.5 shrink-0 text-(--color-danger-text)" size={18} weight="fill" />
           <div className="leading-relaxed">
-            <strong className="text-(--color-danger)">このアプリは誰でもアクセスできる状態です。</strong>
+            <strong className="text-(--color-danger-text)">このアプリは誰でもアクセスできる状態です。</strong>
             <br />
             Railway の環境変数に <code className="rounded bg-(--color-card) px-1.5 py-0.5 text-[13px]">APP_PASSWORD</code> を設定すると、
             ログイン画面で保護されます（12文字以上を推奨）。
@@ -368,7 +368,7 @@ export default function SettingsPage() {
       )}
       {authEnabled && authPasswordWeak && (
         <div className="flex gap-2.5 rounded-xl border border-(--color-warning)/30 bg-(--color-warning-light) px-4 py-3.5 text-sm">
-          <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={18} weight="fill" />
+          <Warning className="mt-0.5 shrink-0 text-(--color-warning-text)" size={18} weight="fill" />
           <div className="leading-relaxed">
             設定されているパスワードが短すぎます。12文字以上に変更してください。
           </div>
@@ -377,13 +377,13 @@ export default function SettingsPage() {
 
       {/* Gmail connection feedback */}
       {gmailSuccess && (
-        <div className="flex items-center gap-2 rounded-xl border border-(--color-success)/30 bg-(--color-success-light) px-4 py-3.5 text-sm font-medium text-(--color-success)">
+        <div className="flex items-center gap-2 rounded-xl border border-(--color-success)/30 bg-(--color-success-light) px-4 py-3.5 text-sm font-medium text-(--color-success-text)">
           <Check size={16} weight="bold" className="shrink-0" />
           Gmail アカウントの接続に成功しました
         </div>
       )}
       {gmailError && (
-        <div className="flex items-start gap-2 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) px-4 py-3.5 text-sm font-medium text-(--color-danger)">
+        <div className="flex items-start gap-2 rounded-xl border border-(--color-danger)/30 bg-(--color-danger-light) px-4 py-3.5 text-sm font-medium text-(--color-danger-text)">
           <Warning className="mt-0.5 shrink-0" size={16} weight="bold" />
           <span className="leading-relaxed">
             {GMAIL_ERROR_MESSAGES[gmailError] ?? `Gmail接続に失敗しました（${gmailError}）`}
@@ -412,8 +412,8 @@ export default function SettingsPage() {
                           <span
                             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                               connected
-                                ? "bg-(--color-success-light) text-(--color-success)"
-                                : "bg-(--color-danger-light) text-(--color-danger)"
+                                ? "bg-(--color-success-light) text-(--color-success-text)"
+                                : "bg-(--color-danger-light) text-(--color-danger-text)"
                             }`}
                           >
                             <GoogleLogo size={17} weight="bold" />
@@ -424,8 +424,8 @@ export default function SettingsPage() {
                               <span
                                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${
                                   connected
-                                    ? "bg-(--color-success-light) text-(--color-success)"
-                                    : "bg-(--color-danger-light) text-(--color-danger)"
+                                    ? "bg-(--color-success-light) text-(--color-success-text)"
+                                    : "bg-(--color-danger-light) text-(--color-danger-text)"
                                 }`}
                               >
                                 {connected ? <Check size={11} weight="bold" /> : <Warning size={11} weight="fill" />}
@@ -459,7 +459,7 @@ export default function SettingsPage() {
                             onClick={() => handleDisconnectSender(sender.id)}
                             title="接続を解除"
                             aria-label="接続を解除"
-                            className="ml-1 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) hover:text-(--color-danger) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                            className="ml-1 flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) hover:text-(--color-danger-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
                           >
                             <Trash size={16} />
                           </button>
@@ -684,8 +684,8 @@ export default function SettingsPage() {
             <div
               className={`flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm font-medium ${
                 authEnabled
-                  ? "bg-(--color-success-light) text-(--color-success)"
-                  : "bg-(--color-danger-light) text-(--color-danger)"
+                  ? "bg-(--color-success-light) text-(--color-success-text)"
+                  : "bg-(--color-danger-light) text-(--color-danger-text)"
               }`}
             >
               {authEnabled ? (

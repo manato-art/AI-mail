@@ -38,7 +38,7 @@ export function ProgressCard({ status }: { status: Status }) {
               <div className="mt-0.5">
                 {isDone ? (
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--color-success-light)">
-                    <Check size={16} weight="bold" className="text-(--color-success)" />
+                    <Check size={16} weight="bold" className="text-(--color-success-text)" />
                   </div>
                 ) : isCurrent ? (
                   <div className="relative flex h-6 w-6 items-center justify-center rounded-full bg-(--color-primary-light)">
@@ -84,7 +84,7 @@ export function DuplicateDialog({
   return (
     <div className="animate-fade-in rounded-xl border border-(--color-warning) bg-(--color-warning-light) p-5">
       <div className="flex gap-3">
-        <Warning className="mt-0.5 shrink-0 text-(--color-warning)" size={24} weight="fill" />
+        <Warning className="mt-0.5 shrink-0 text-(--color-warning-text)" size={24} weight="fill" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-(--color-foreground)">
             この企業は生成済みです
@@ -123,7 +123,7 @@ export function LowCompatDialog({
   return (
     <div className="animate-fade-in rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-5">
       <div className="flex gap-3">
-        <Warning className="mt-0.5 shrink-0 text-(--color-danger)" size={24} weight="fill" />
+        <Warning className="mt-0.5 shrink-0 text-(--color-danger-text)" size={24} weight="fill" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-(--color-foreground)">
             相性が低い可能性があります
@@ -160,7 +160,7 @@ export function ErrorCard({
   return (
     <div className="animate-fade-in rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-5">
       <div className="flex gap-3">
-        <Warning className="mt-0.5 shrink-0 text-(--color-danger)" size={24} weight="fill" />
+        <Warning className="mt-0.5 shrink-0 text-(--color-danger-text)" size={24} weight="fill" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-(--color-foreground)">エラーが発生しました</h2>
           <p className="mt-1 text-sm leading-relaxed text-(--color-muted)">{message}</p>

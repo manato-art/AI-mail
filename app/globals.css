@@ -8,13 +8,17 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-light: var(--primary-light);
+  --color-primary-text: var(--primary-text);
   --color-danger: var(--danger);
   --color-danger-hover: var(--danger-hover);
   --color-danger-light: var(--danger-light);
+  --color-danger-text: var(--danger-text);
   --color-success: var(--success);
   --color-success-light: var(--success-light);
+  --color-success-text: var(--success-text);
   --color-warning: var(--warning);
   --color-warning-light: var(--warning-light);
+  --color-warning-text: var(--warning-text);
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-card: var(--card);
@@ -24,10 +28,31 @@
   --color-trait-polite: var(--trait-polite);
   --color-trait-sales: var(--trait-sales);
   --color-trait-length: var(--trait-length);
+  --color-trait-logic-text: var(--trait-logic-text);
+  --color-trait-passion-text: var(--trait-passion-text);
+  --color-trait-polite-text: var(--trait-polite-text);
+  --color-trait-sales-text: var(--trait-sales-text);
+  --color-trait-length-text: var(--trait-length-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * 「面」用トークンと「文字」用トークンの役割分離（M7 視覚QA）。
+ *
+ *   --primary / --danger / --success / --warning
+ *       = 面（ボタン背景・帯・アイコンチップの地）。白文字が乗る前提の濃さ。
+ *         --primary 系はテーマスクリプト（app/layout.tsx）がアクセント切替で
+ *         直接書き換える契約なので、値も設定機構も触らない。
+ *
+ *   --primary-text / --danger-text / --success-text / --warning-text
+ *       = 文字・アイコン（淡色地 *-light やカード地に載る）。
+ *         面と同じ濃さのまま文字に使うと 4.5:1 に届かないため、
+ *         ライトは面より暗く、ダークは面より明るくした派生値を使う。
+ *         面用の値から color-mix で派生させるのでアクセント切替にも追従する。
+ *
+ * 文字色を書くときは必ず *-text 側を使う。面（bg-）には *-text を使わない。
+ */
 :root {
   color-scheme: light;
   --background: #f8fafc;
@@ -42,7 +67,7 @@
   --success-light: #ecfdf5;
   --warning: #d97706;
   --warning-light: #fffbeb;
-  --muted: #6b7280;
+  --muted: #626875;
   --border: #e5e7eb;
   --card: #ffffff;
   --card-hover: #f9fafb;
@@ -51,6 +76,17 @@
   --trait-polite: #10b981;
   --trait-sales: #8b5cf6;
   --trait-length: #f59e0b;
+
+  /* 文字用（ライト）: 淡色地の上で 4.5:1 を満たす濃さまで落とす */
+  --primary-text: var(--primary);
+  --danger-text: color-mix(in oklab, var(--danger), black 12%);
+  --success-text: color-mix(in oklab, var(--success), black 18%);
+  --warning-text: color-mix(in oklab, var(--warning), black 22%);
+  --trait-logic-text: color-mix(in oklab, var(--trait-logic), black 30%);
+  --trait-passion-text: color-mix(in oklab, var(--trait-passion), black 30%);
+  --trait-polite-text: color-mix(in oklab, var(--trait-polite), black 30%);
+  --trait-sales-text: color-mix(in oklab, var(--trait-sales), black 30%);
+  --trait-length-text: color-mix(in oklab, var(--trait-length), black 30%);
 }
 
 :root[data-theme="dark"] {
@@ -61,7 +97,7 @@
   --danger-light: #451a1a;
   --success-light: #14332a;
   --warning-light: #422006;
-  --muted: #94a3b8;
+  --muted: #a0aec0;
   --border: #334155;
   --card: #1e293b;
   --card-hover: #334155;
@@ -70,6 +106,18 @@
   --trait-polite: #34d399;
   --trait-sales: #a78bfa;
   --trait-length: #fbbf24;
+
+  /* 文字用（ダーク）: 暗い地の上で 4.5:1 を満たす明るさまで上げる。
+     面（--primary 等）は明るくしない＝白文字ボタンのコントラストを守る */
+  --primary-text: color-mix(in oklab, var(--primary), white 45%);
+  --danger-text: color-mix(in oklab, var(--danger), white 40%);
+  --success-text: color-mix(in oklab, var(--success), white 40%);
+  --warning-text: color-mix(in oklab, var(--warning), white 20%);
+  --trait-logic-text: var(--trait-logic);
+  --trait-passion-text: var(--trait-passion);
+  --trait-polite-text: var(--trait-polite);
+  --trait-sales-text: var(--trait-sales);
+  --trait-length-text: var(--trait-length);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,7 +129,7 @@
     --danger-light: #451a1a;
     --success-light: #14332a;
     --warning-light: #422006;
-    --muted: #94a3b8;
+    --muted: #a0aec0;
     --border: #334155;
     --card: #1e293b;
     --card-hover: #334155;
@@ -90,6 +138,17 @@
     --trait-polite: #34d399;
     --trait-sales: #a78bfa;
     --trait-length: #fbbf24;
+
+    /* 文字用（ダーク）— :root[data-theme="dark"] と同じ値を保つこと */
+    --primary-text: color-mix(in oklab, var(--primary), white 45%);
+    --danger-text: color-mix(in oklab, var(--danger), white 40%);
+    --success-text: color-mix(in oklab, var(--success), white 40%);
+    --warning-text: color-mix(in oklab, var(--warning), white 20%);
+    --trait-logic-text: var(--trait-logic);
+    --trait-passion-text: var(--trait-passion);
+    --trait-polite-text: var(--trait-polite);
+    --trait-sales-text: var(--trait-sales);
+    --trait-length-text: var(--trait-length);
   }
 }
 

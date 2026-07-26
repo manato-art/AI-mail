@@ -10,7 +10,7 @@ function chipClass(active: boolean) {
   return `inline-flex min-h-11 cursor-pointer items-center rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
     active
       ? "border-(--color-primary) bg-(--color-primary) text-white"
-      : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+      : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
   }`;
 }
 
@@ -81,9 +81,9 @@ export function AdvancedPanel({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex min-h-11 w-full cursor-pointer items-center gap-2 text-left text-[15px] font-semibold transition-colors motion-reduce:transition-none hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+        className="flex min-h-11 w-full cursor-pointer items-center gap-2 text-left text-[15px] font-semibold transition-colors motion-reduce:transition-none hover:text-(--color-primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
       >
-        <Sliders size={16} className="shrink-0 text-(--color-primary)" />
+        <Sliders size={16} className="shrink-0 text-(--color-primary-text)" />
         詳しい設定
         <span className="hidden text-[13px] font-normal text-(--color-muted) sm:inline">
           （テンプレート・文体・固定文。触らなくても作れます）
@@ -126,7 +126,7 @@ export function AdvancedPanel({
             ) : (
               <p className="text-[13px] text-(--color-muted)">
                 テンプレートがありません。
-                <Link href="/settings/templates" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                <Link href="/settings/templates" className="ml-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                   作成する
                 </Link>
               </p>

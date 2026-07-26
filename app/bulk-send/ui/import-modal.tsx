@@ -52,7 +52,7 @@ export function ImportModal({
             type="button"
             onClick={onClose}
             aria-label="閉じる"
-            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger)"
+            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors hover:bg-(--color-danger-light) hover:text-(--color-danger-text)"
           >
             <X size={16} />
           </button>
@@ -63,14 +63,14 @@ export function ImportModal({
             <button
               type="button"
               onClick={() => setImportTab("paste")}
-              className={`flex-1 cursor-pointer border-r border-(--color-border) py-2.5 text-center text-[13px] font-medium transition-colors ${importTab === "paste" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"}`}
+              className={`flex-1 cursor-pointer border-r border-(--color-border) py-2.5 text-center text-[13px] font-medium transition-colors ${importTab === "paste" ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)" : "text-(--color-muted) hover:bg-(--color-card-hover)"}`}
             >
               スプシからコピペ
             </button>
             <button
               type="button"
               onClick={() => setImportTab("csv")}
-              className={`flex-1 cursor-pointer py-2.5 text-center text-[13px] font-medium transition-colors ${importTab === "csv" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"}`}
+              className={`flex-1 cursor-pointer py-2.5 text-center text-[13px] font-medium transition-colors ${importTab === "csv" ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)" : "text-(--color-muted) hover:bg-(--color-card-hover)"}`}
             >
               CSVファイル
             </button>
@@ -165,7 +165,7 @@ export function ImportModal({
                 className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-(--color-border) px-6 py-10 transition-colors hover:border-(--color-primary) hover:bg-(--color-primary-light) disabled:opacity-50"
               >
                 {parsing ? (
-                  <SpinnerGap size={32} className="animate-spin text-(--color-primary)" />
+                  <SpinnerGap size={32} className="animate-spin text-(--color-primary-text)" />
                 ) : (
                   <FileArrowUp size={32} className="text-(--color-muted)" />
                 )}
@@ -182,7 +182,7 @@ export function ImportModal({
           )}
 
           {importError && (
-            <p className="mt-2.5 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[12px] text-(--color-danger)">
+            <p className="mt-2.5 rounded-lg bg-(--color-danger-light) px-3 py-2 text-[12px] text-(--color-danger-text)">
               {importError}
             </p>
           )}

@@ -123,7 +123,7 @@ export function GeneratedPanel({
                 </span>
               </label>
               {gen.generatedChecked.size > 0 && (
-                <span className="text-[13px] font-medium text-(--color-primary)">{gen.generatedChecked.size}件選択中</span>
+                <span className="text-[13px] font-medium text-(--color-primary-text)">{gen.generatedChecked.size}件選択中</span>
               )}
             </div>
             {gen.generatedProspects.map((p) => {
@@ -176,12 +176,12 @@ export function GeneratedPanel({
                           <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">📨 送信済み</span>
                         )}
                         {scheduled && (
-                          <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary)">⏰ 予約済み</span>
+                          <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)">⏰ 予約済み</span>
                         )}
-                        {st?.state === "sending" && <span className="text-(--color-primary)">処理中…</span>}
-                        {st?.state === "sent" && <span className="font-medium text-(--color-success)">✓ 送信しました</span>}
-                        {st?.state === "scheduled" && <span className="font-medium text-(--color-primary)">⏰ 予約しました</span>}
-                        {st?.state === "failed" && <span className="text-(--color-danger)">✕ {st.error}</span>}
+                        {st?.state === "sending" && <span className="text-(--color-primary-text)">処理中…</span>}
+                        {st?.state === "sent" && <span className="font-medium text-(--color-success-text)">✓ 送信しました</span>}
+                        {st?.state === "scheduled" && <span className="font-medium text-(--color-primary-text)">⏰ 予約しました</span>}
+                        {st?.state === "failed" && <span className="text-(--color-danger-text)">✕ {st.error}</span>}
                       </div>
                     </div>
                     <button
@@ -189,8 +189,8 @@ export function GeneratedPanel({
                       onClick={() => gen.toggleGenEdit(p)}
                       className={`shrink-0 cursor-pointer rounded-lg border px-2.5 py-1 text-[13px] font-medium transition-colors ${
                         editing
-                          ? "border-(--color-primary) text-(--color-primary)"
-                          : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                          ? "border-(--color-primary) text-(--color-primary-text)"
+                          : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
                       }`}
                     >
                       {editing ? "閉じる" : "内容"}
@@ -198,7 +198,7 @@ export function GeneratedPanel({
                     <button
                       type="button"
                       onClick={() => onPick(p)}
-                      className="shrink-0 cursor-pointer rounded-lg border border-(--color-border) px-2.5 py-1 text-[13px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+                      className="shrink-0 cursor-pointer rounded-lg border border-(--color-border) px-2.5 py-1 text-[13px] font-medium text-(--color-muted) transition-colors hover:border-(--color-primary) hover:text-(--color-primary-text)"
                     >
                       引用
                     </button>
@@ -270,7 +270,7 @@ export function GeneratedPanel({
                   className="h-11 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10"
                 />
                 {gen.genScheduledAt && (
-                  <button type="button" onClick={() => gen.setGenScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger)" aria-label="予約日時をクリア">
+                  <button type="button" onClick={() => gen.setGenScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger-text)" aria-label="予約日時をクリア">
                     <X size={13} />
                   </button>
                 )}

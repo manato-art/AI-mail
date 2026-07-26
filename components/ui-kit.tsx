@@ -31,7 +31,7 @@ export const BTN_SECONDARY =
 
 /** 取り消し・削除・危険。青と同じ見た目にしない */
 export const BTN_DANGER =
-  `${BTN_BASE} border border-(--color-danger)/40 text-(--color-danger) hover:bg-(--color-danger-light)`;
+  `${BTN_BASE} border border-(--color-danger)/40 text-(--color-danger-text) hover:bg-(--color-danger-light)`;
 
 /**
  * 元に戻せない操作（履歴全削除など）。
@@ -44,7 +44,7 @@ export const ICON_BTN =
   `flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-foreground) disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 
 export const ICON_BTN_DANGER =
-  `flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) hover:text-(--color-danger) disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
+  `flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-danger-light) hover:text-(--color-danger-text) disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 
 export const FIELD =
   "h-11 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25";
@@ -93,8 +93,11 @@ export function Card({
       } ${className}`}
     >
       {(title || action) && (
+        // 見出しと action（検索欄など）は狭い画面では折り返して2段にする。
+        // 1行に押し込むと action 側が shrink-0 のぶん見出しが潰れ、
+        // 日本語が1文字ずつ縦積みになる（M7: /settings/suppressions 384px）。
         <div
-          className={`flex items-start justify-between gap-3 border-b px-5 py-4 ${
+          className={`flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4 ${
             danger ? "border-(--color-danger)/25 bg-(--color-danger-light)" : "border-(--color-border)"
           }`}
         >
@@ -103,8 +106,8 @@ export function Card({
               <span
                 className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
                   danger
-                    ? "bg-(--color-danger)/15 text-(--color-danger)"
-                    : "bg-(--color-primary-light) text-(--color-primary)"
+                    ? "bg-(--color-danger)/15 text-(--color-danger-text)"
+                    : "bg-(--color-primary-light) text-(--color-primary-text)"
                 }`}
               >
                 <Icon size={15} weight="bold" />
@@ -114,7 +117,7 @@ export function Card({
               {title && (
                 <h2
                   className={`text-[15px] font-semibold text-balance ${
-                    danger ? "text-(--color-danger)" : "text-(--color-foreground)"
+                    danger ? "text-(--color-danger-text)" : "text-(--color-foreground)"
                   }`}
                 >
                   {title}
@@ -136,7 +139,7 @@ export function Card({
 /** 件数などを示す小さな丸バッジ */
 export function CountBadge({ count }: { count: number }) {
   return (
-    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-[13px] font-semibold text-(--color-primary)">
+    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-(--color-primary-light) px-2 text-[13px] font-semibold text-(--color-primary-text)">
       {count}
     </span>
   );

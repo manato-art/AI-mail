@@ -418,7 +418,7 @@ export default function KeywordSearchPage() {
             <>
               Serper.dev 経由で検索。登録で2,500クエリ無料。
               {!searchReady && (
-                <Link href="/settings" className="ml-1 font-medium text-(--color-primary) underline underline-offset-2">
+                <Link href="/settings" className="ml-1 whitespace-nowrap font-medium text-(--color-primary-text) underline underline-offset-2">
                   APIキーを設定
                 </Link>
               )}
@@ -535,7 +535,7 @@ export default function KeywordSearchPage() {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-danger) hover:text-(--color-danger) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-danger) hover:text-(--color-danger-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-danger)"
                 >
                   <X size={12} weight="bold" />
                   中止
@@ -551,7 +551,7 @@ export default function KeywordSearchPage() {
           </div>
           {decidedSite && (
             <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[13px] text-(--color-muted)">
-              <Sparkle size={14} className="text-(--color-primary)" />
+              <Sparkle size={14} className="text-(--color-primary-text)" />
               AIの判断: <span className="font-semibold text-(--color-foreground)">{decidedSite.site}</span>
               {decidedSite.reason && ` — ${decidedSite.reason}`}
             </p>
@@ -561,7 +561,7 @@ export default function KeywordSearchPage() {
 
       {runError && (
         <div className="animate-fade-in flex gap-2.5 rounded-xl border border-(--color-danger) bg-(--color-danger-light) p-4 text-sm">
-          <Warning className="mt-0.5 shrink-0 text-(--color-danger)" size={20} weight="fill" />
+          <Warning className="mt-0.5 shrink-0 text-(--color-danger-text)" size={20} weight="fill" />
           <p className="leading-relaxed text-(--color-foreground)">{runError}</p>
         </div>
       )}
@@ -573,7 +573,7 @@ export default function KeywordSearchPage() {
             <h2 className="flex items-center gap-2 text-[15px] font-semibold">
               <Buildings size={16} />
               検索結果
-              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-1.5 text-[13px] font-bold text-(--color-primary)">
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-(--color-primary-light) px-1.5 text-[13px] font-bold text-(--color-primary-text)">
                 {displayRows.length}
               </span>
               {decidedSite && !isBusy && (
@@ -593,7 +593,7 @@ export default function KeywordSearchPage() {
               <button
                 type="button"
                 onClick={() => handleToggleAll(true)}
-                className={`inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${allDisplayChecked ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)" : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"}`}
+                className={`inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg border px-3 text-[13px] font-medium transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${allDisplayChecked ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary-text)" : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"}`}
               >
                 <Check size={13} weight="bold" />
                 全選択
@@ -601,7 +601,7 @@ export default function KeywordSearchPage() {
               <button
                 type="button"
                 onClick={() => handleToggleAll(false)}
-                className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-(--color-border) px-3 text-[13px] font-medium text-(--color-muted) transition-colors motion-reduce:transition-none hover:border-(--color-primary) hover:text-(--color-primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
               >
                 全解除
               </button>
@@ -640,10 +640,10 @@ export default function KeywordSearchPage() {
                             HP解析中...
                           </span>
                         )}
-                        {r.status === "failed" && <span className="text-(--color-danger)">取得失敗</span>}
-                        {r.status === "done" && r.email && <span className="text-(--color-primary)">{r.email}</span>}
+                        {r.status === "failed" && <span className="text-(--color-danger-text)">取得失敗</span>}
+                        {r.status === "done" && r.email && <span className="text-(--color-primary-text)">{r.email}</span>}
                         {r.status === "done" && !r.email && r.formUrl && (
-                          <span className="text-(--color-warning)">フォームのみ（メール送信不可）</span>
+                          <span className="text-(--color-warning-text)">フォームのみ（メール送信不可）</span>
                         )}
                         {r.status === "done" && !r.email && !r.formUrl && (
                           <span className="text-(--color-muted)">メール未検出</span>
@@ -701,10 +701,10 @@ export default function KeywordSearchPage() {
                       <td className="px-3 py-3">
                         {r.status === "pending" && <span className="text-(--color-muted)">-</span>}
                         {r.status === "resolving" && <SpinnerGap size={14} className="animate-spin text-(--color-muted)" />}
-                        {r.status === "failed" && <span className="text-(--color-danger)">取得失敗</span>}
-                        {r.status === "done" && r.email && <span className="text-(--color-primary)">{r.email}</span>}
+                        {r.status === "failed" && <span className="text-(--color-danger-text)">取得失敗</span>}
+                        {r.status === "done" && r.email && <span className="text-(--color-primary-text)">{r.email}</span>}
                         {r.status === "done" && !r.email && r.formUrl && (
-                          <span className="inline-flex items-center gap-1 text-(--color-warning)">
+                          <span className="inline-flex items-center gap-1 text-(--color-warning-text)">
                             <Warning size={13} weight="fill" />
                             フォームのみ（メール送信不可）
                           </span>
@@ -722,7 +722,7 @@ export default function KeywordSearchPage() {
                               rel="noopener noreferrer"
                               title="公式HP"
                               aria-label="公式HPを開く"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary-text)"
                             >
                               <Globe size={15} />
                             </a>
@@ -734,7 +734,7 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="採用ページあり（採用活動中の可能性）"
-                              className="inline-flex h-9 items-center rounded-md bg-(--color-success-light) px-2 text-[11px] font-semibold text-(--color-success) transition-opacity hover:opacity-80"
+                              className="inline-flex h-9 items-center rounded-md bg-(--color-success-light) px-2 text-[11px] font-semibold text-(--color-success-text) transition-opacity hover:opacity-80"
                             >
                               採用中
                             </a>
@@ -746,7 +746,7 @@ export default function KeywordSearchPage() {
                               rel="noopener noreferrer"
                               title="問い合わせフォーム"
                               aria-label="問い合わせフォームを開く"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary-text)"
                             >
                               <ArrowSquareOut size={15} />
                             </a>
@@ -757,7 +757,7 @@ export default function KeywordSearchPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="出典"
-                              className="inline-flex h-9 items-center rounded-md px-2 text-[11px] text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary)"
+                              className="inline-flex h-9 items-center rounded-md px-2 text-[11px] text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-primary-light) hover:text-(--color-primary-text)"
                             >
                               出典
                             </a>
@@ -770,7 +770,7 @@ export default function KeywordSearchPage() {
                             送信済み
                           </span>
                         ) : r.status === "done" ? (
-                          <span className="whitespace-nowrap rounded-full bg-(--color-success-light) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
+                          <span className="whitespace-nowrap rounded-full bg-(--color-success-light) px-2 py-0.5 text-[11px] font-medium text-(--color-success-text)">
                             取得済み
                           </span>
                         ) : (

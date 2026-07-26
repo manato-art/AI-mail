@@ -40,7 +40,7 @@ function modeTabClass(active: boolean): string {
   return `inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-4 text-[13px] font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
     active
       ? "border-(--color-primary) bg-(--color-primary) text-white"
-      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+      : "border-(--color-border) bg-(--color-card) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
   }`;
 }
 
@@ -344,7 +344,7 @@ export default function BulkSendPage() {
         type="button"
         onClick={() => { setInputMode("template"); setStepTwoOpen(true); }}
         className={`min-h-11 cursor-pointer px-3 text-center text-[13px] font-medium transition-colors motion-reduce:transition-none ${
-          inputMode === "template" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+          inputMode === "template" ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
         }`}
       >
         テンプレートから送信
@@ -353,7 +353,7 @@ export default function BulkSendPage() {
         type="button"
         onClick={() => { setInputMode("direct"); setStepTwoOpen(true); }}
         className={`min-h-11 cursor-pointer border-l border-(--color-border) px-3 text-center text-[13px] font-medium transition-colors motion-reduce:transition-none ${
-          inputMode === "direct" ? "bg-(--color-primary-light) font-semibold text-(--color-primary)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
+          inputMode === "direct" ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)" : "text-(--color-muted) hover:bg-(--color-card-hover)"
         }`}
       >
         直接入力して送信
@@ -366,7 +366,7 @@ export default function BulkSendPage() {
       <div className="animate-fade-in">
         <h1 className="mb-6 text-xl font-bold tracking-tight">メール一括送信</h1>
         <div className="flex items-center justify-center py-20">
-          <SpinnerGap size={24} className="animate-spin text-(--color-primary)" />
+          <SpinnerGap size={24} className="animate-spin text-(--color-primary-text)" />
         </div>
       </div>
     );
@@ -390,7 +390,7 @@ export default function BulkSendPage() {
 
       {/* Test mode badge */}
       {testMode && (
-        <div className="mt-5 rounded-xl border border-(--color-border) bg-(--color-primary-light) px-4 py-3 text-[13px] font-medium text-(--color-primary)">
+        <div className="mt-5 rounded-xl border border-(--color-border) bg-(--color-primary-light) px-4 py-3 text-[13px] font-medium text-(--color-primary-text)">
           テストモード中: すべてのメールはテストアドレス宛に送信されます
         </div>
       )}
@@ -417,7 +417,7 @@ export default function BulkSendPage() {
             生成済みメールを送る
             <span
               className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[12px] font-bold ${
-                activeMode === "generated" ? "bg-white/20 text-white" : "bg-(--color-primary-light) text-(--color-primary)"
+                activeMode === "generated" ? "bg-white/20 text-white" : "bg-(--color-primary-light) text-(--color-primary-text)"
               }`}
             >
               {gen.genSelectable.length}
@@ -486,7 +486,7 @@ export default function BulkSendPage() {
                   <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
                   <div className="text-gray-700 dark:text-gray-300">
                     一括送信にはテンプレートが必要です。
-                    <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                    <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                       テンプレート
                     </Link>
                     で作成してください。企業名は
@@ -537,7 +537,7 @@ export default function BulkSendPage() {
                 <p className="text-[12px] text-(--color-muted)">
                   このテンプレートでは資料を添付できません（初回メールへの添付は既定で禁止）。
                   添付したい場合は
-                  <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                  <Link href="/settings/templates" className="mx-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                     テンプレート
                   </Link>
                   で「資料の添付を許可」をONにしてください。
@@ -568,8 +568,8 @@ export default function BulkSendPage() {
                           }}
                           className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
                             selected
-                              ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary)"
-                              : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary)"
+                              ? "border-(--color-primary) bg-(--color-primary-light) text-(--color-primary-text)"
+                              : "border-(--color-border) text-(--color-muted) hover:border-(--color-primary) hover:text-(--color-primary-text)"
                           }`}
                         >
                           {selected ? <Check size={12} weight="bold" /> : <Paperclip size={12} />}
@@ -616,7 +616,7 @@ export default function BulkSendPage() {
               <Warning className="mt-0.5 shrink-0" size={20} weight="fill" style={{ color: "var(--color-warning)" }} />
               <p className="text-gray-700 dark:text-gray-300">
                 Gmailアカウントが未接続です。一括送信には
-                <Link href="/settings" className="mx-1 font-medium text-(--color-primary) underline underline-offset-2">
+                <Link href="/settings" className="mx-1 font-medium text-(--color-primary-text) underline underline-offset-2">
                   設定ページ
                 </Link>
                 からGmail接続が必要です。

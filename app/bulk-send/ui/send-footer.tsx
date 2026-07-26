@@ -101,7 +101,7 @@ export function SendFooter({
             <button
               type="button"
               onClick={isSending ? onCancelSending : onCancelGenerating}
-              className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-4 text-sm font-semibold text-(--color-danger) transition-colors hover:bg-(--color-danger-light)"
+              className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-danger)/40 px-4 text-sm font-semibold text-(--color-danger-text) transition-colors hover:bg-(--color-danger-light)"
             >
               <X size={15} weight="bold" />
               中断
@@ -138,7 +138,7 @@ export function SendFooter({
                   className="h-11 rounded-lg border border-(--color-border) bg-(--color-card) px-2 text-[12px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 disabled:opacity-50"
                 />
                 {bulkScheduledAt && (
-                  <button type="button" onClick={() => setBulkScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger)" aria-label="予約日時をクリア">
+                  <button type="button" onClick={() => setBulkScheduledAt("")} className="cursor-pointer text-(--color-muted) hover:text-(--color-danger-text)" aria-label="予約日時をクリア">
                     <X size={14} />
                   </button>
                 )}

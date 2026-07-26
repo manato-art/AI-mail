@@ -88,7 +88,7 @@ export function ServiceSwitcher() {
   if (services.length === 0) return null;
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative min-w-0">
       <button
         ref={buttonRef}
         type="button"
@@ -133,7 +133,7 @@ export function ServiceSwitcher() {
                 onClick={() => choose(option.id)}
                 className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-(--color-primary) ${
                   selected
-                    ? "bg-(--color-primary-light) font-semibold text-(--color-primary)"
+                    ? "bg-(--color-primary-light) font-semibold text-(--color-primary-text)"
                     : "text-(--color-foreground) hover:bg-(--color-card-hover)"
                 }`}
               >
