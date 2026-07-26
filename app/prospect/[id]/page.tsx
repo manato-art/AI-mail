@@ -529,7 +529,7 @@ export default function ProspectPage() {
                   <li key={i} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">・{issue}</li>
                 ))}
               </ul>
-              <p className="mt-1.5 text-[11px] text-(--color-warning-text)/80">
+              <p className="mt-1.5 text-[11px] text-(--color-warning-text)">
                 送信はブロックしません。気になる項目は本文を直すか再生成してください。
               </p>
             </div>
