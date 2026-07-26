@@ -180,6 +180,27 @@ input, textarea, select {
   }
 }
 
+/*
+ * 横スクロールできる表の「まだ右に続きがある」合図（M7 P5）。
+ *
+ * JS もアニメも使わない。背景を2枚重ね、
+ *   ・上の1枚 = カード地の目隠し（background-attachment: local ＝ 中身と一緒に動く）
+ *   ・下の1枚 = 右端の影（background-attachment: scroll ＝ 枠に貼り付いて動かない）
+ * とすることで、右端まで見えている（＝そもそもスクロール不要／右端まで送った）ときは
+ * 目隠しが影の上に重なって影が消える。まだ右が隠れているときだけ影が見える。
+ *
+ * 表の行は地色を持たない前提。thead など不透明な地の下では影は見えない（意図どおり）。
+ */
+.scroll-hint-x {
+  background-image:
+    linear-gradient(to left, var(--card), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0));
+  background-position: right center, right center;
+  background-size: 28px 100%, 14px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, scroll;
+}
+
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }

@@ -101,7 +101,7 @@ const FILTER_SELECT =
 
 export default function CompaniesPage() {
   const router = useRouter();
-  const { activeServiceId } = useActiveService();
+  const { activeServiceId, services: allServices } = useActiveService();
   const [companies, setCompanies] = useState<CompanyWithTag[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   // 送信済みドメイン（send_log由来・正規化済み）。企業に「送信済み」を分かりやすく出すために使う
@@ -288,10 +288,18 @@ export default function CompaniesPage() {
         map.set(c.collection_service_id, c.collection_service_name);
       }
     }
+    // 上部バーで選んでいる商材は、その商材の企業がまだ1社も無くても選択肢に残す。
+    // 残さないと select の表示値だけ「すべての商材」に落ちて、上部バーの表示（商材A）と
+    // 実際に出ている一覧（全商材）が食い違う＝切り替えても無反応に見える。
+    if (activeServiceId !== null && !map.has(activeServiceId)) {
+      const name = allServices.find((s) => s.id === activeServiceId)?.name;
+      if (name) map.set(activeServiceId, name);
+    }
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], "ja"));
-  }, [companies]);
+  }, [companies, activeServiceId, allServices]);
 
-  // 上部バーの商材を初期値にする。画面の select で手動上書きできる（すべて＝従来どおり）
+  // 上部バーの商材を初期値にする。画面の select で手動上書きできる（すべて＝従来どおり）。
+  // この1つの値が「selectの表示値」であり「絞り込みに使う値」でもある（照合は商材の数値ID）。
   const serviceFilterValue =
     serviceFilter ??
     (activeServiceId !== null && serviceOptions.some(([id]) => id === activeServiceId)
@@ -304,10 +312,24 @@ export default function CompaniesPage() {
     return !!d && sentDomains.has(d);
   };
 
-  const filtered = companies.filter((c) => {
+  /**
+   * キーワード・商材のタグ絞り込みだけを掛けた集合。
+   * 状態タブ／送信済みタブの件数はここから数えるので、上部バーで商材を切り替えると
+   * テーブルと件数が同時に追従する（片方だけ動いて食い違うことがない）。
+   * 商材の照合は数値ID（collection_service_id）。名前では突き合わせない。
+   */
+  const scoped = useMemo(
+    () =>
+      companies.filter((c) => {
+        if (keywordFilter !== "all" && c.collection_keyword !== keywordFilter) return false;
+        if (serviceFilterValue !== "all" && String(c.collection_service_id) !== serviceFilterValue) return false;
+        return true;
+      }),
+    [companies, keywordFilter, serviceFilterValue],
+  );
+
+  const filtered = scoped.filter((c) => {
     if (filter !== "all" && c.enrichment_status !== filter) return false;
-    if (keywordFilter !== "all" && c.collection_keyword !== keywordFilter) return false;
-    if (serviceFilterValue !== "all" && String(c.collection_service_id) !== serviceFilterValue) return false;
     if (sentFilter === "sent" && !isSent(c)) return false;
     if (sentFilter === "unsent" && isSent(c)) return false;
     return true;
@@ -348,12 +370,22 @@ export default function CompaniesPage() {
     router.push("/generate?mode=batch");
   }
 
+  /** 状態タブに出す件数。いま掛かっているタグ絞り込み（キーワード・商材）の中で数える */
   const counts = {
-    all: companies.length,
+    all: scoped.length,
+    done: scoped.filter((c) => c.enrichment_status === "done").length,
+    pending: scoped.filter((c) => c.enrichment_status === "pending").length,
+    failed: scoped.filter((c) => c.enrichment_status === "failed").length,
+    sent: scoped.filter(isSent).length,
+  };
+
+  /**
+   * 一括操作（準備中の調査・整合チェック）はサーバ側で全企業を対象にするため、
+   * ボタンの表示件数は絞り込み前の総数で出す（ボタンの数字と実際の対象がずれないように）。
+   */
+  const totals = {
     done: companies.filter((c) => c.enrichment_status === "done").length,
     pending: companies.filter((c) => c.enrichment_status === "pending").length,
-    failed: companies.filter((c) => c.enrichment_status === "failed").length,
-    sent: companies.filter(isSent).length,
   };
 
   if (loading) {
@@ -371,7 +403,7 @@ export default function CompaniesPage() {
           自動収集・キーワード検索・CSV取込で集めた企業の一覧です。
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {counts.pending > 0 && (
+          {totals.pending > 0 && (
             <button
               type="button"
               onClick={handleEnrichPending}
@@ -384,7 +416,7 @@ export default function CompaniesPage() {
               ) : (
                 <GlobeSimple size={16} />
               )}
-              {enrichingPending ? "調査を開始中..." : `準備中${counts.pending}社を調査`}
+              {enrichingPending ? "調査を開始中..." : `準備中${totals.pending}社を調査`}
             </button>
           )}
           {noEmailCount > 0 && (
@@ -404,7 +436,7 @@ export default function CompaniesPage() {
                 : `${noEmailCount}社のメールを再取得`}
             </button>
           )}
-          {counts.done > 0 && (
+          {totals.done > 0 && (
             <button
               type="button"
               onClick={handleReconcile}
@@ -528,7 +560,8 @@ export default function CompaniesPage() {
         </div>
       ) : (
         <div className={`${CARD} overflow-hidden`}>
-          <div className="overflow-x-auto">
+          {/* 右端フェード = 「まだ右に続きがある」合図（スクロール不要な幅では自動的に消える） */}
+          <div className="scroll-hint-x overflow-x-auto">
             <table className="w-full min-w-[760px] text-[13px]">
               <thead>
                 <tr className="border-b border-(--color-border) bg-(--color-card-hover) text-left">

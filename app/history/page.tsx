@@ -522,7 +522,9 @@ export default function HistoryPage() {
           {/* Desktop table */}
           <div className="hidden md:block">
             <div className={`${CARD} overflow-hidden`}>
-              <div className="overflow-x-auto">
+              {/* 右端の操作列は sticky で常に見える位置に固定する（横スクロールに気づかず
+                  「予約取消」に手が届かなくなるのを防ぐ・M7 P1）。列幅は下の truncate で抑える */}
+              <div className="scroll-hint-x overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-(--color-border) bg-(--color-card-hover) text-left">
@@ -532,17 +534,23 @@ export default function HistoryPage() {
                       <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">相性</th>
                       <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">ステータス</th>
                       <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-(--color-muted)">件名</th>
-                      <th className="whitespace-nowrap px-4 py-3" />
+                      <th className="sticky right-0 z-10 whitespace-nowrap bg-(--color-card-hover) px-4 py-3 shadow-[-8px_0_10px_-8px_rgba(15,23,42,0.28)]" />
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((prospect) => (
-                      <tr key={prospect.id} className="border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)">
+                      <tr key={prospect.id} className="group border-b border-(--color-border) last:border-0 hover:bg-(--color-card-hover)">
                         <td className="whitespace-nowrap px-4 py-3 text-(--color-muted)">
                           {formatDate(prospect.created_at)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 font-medium">
-                          {prospect.company_name || prospect.domain}
+                          {/* 長い社名で列が広がり、表全体が画面外へはみ出すのを防ぐ（全文は title で読める） */}
+                          <span
+                            title={prospect.company_name || prospect.domain}
+                            className="inline-block max-w-[200px] truncate align-middle"
+                          >
+                            {prospect.company_name || prospect.domain}
+                          </span>
                           {sentCountFor(prospect.domain) > 0 && (
                             <span
                               title="この会社へ実際に送信した通算回数"
@@ -553,7 +561,12 @@ export default function HistoryPage() {
                           )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-(--color-muted)">
-                          {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
+                          <span
+                            title={serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
+                            className="inline-block max-w-[90px] truncate align-middle"
+                          >
+                            {serviceNameMap.get(prospect.service_id) ?? `#${prospect.service_id}`}
+                          </span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${COMPATIBILITY_STYLES[prospect.compatibility_score] ?? "bg-(--color-card-hover) text-(--color-muted)"}`}>
@@ -576,15 +589,21 @@ export default function HistoryPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-(--color-muted)">
-                          {prospect.send_status === "scheduled" && prospect.scheduled_at && (
-                            <span className="mr-1.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)">
-                              <CalendarCheck size={11} weight="fill" />
-                              {formatScheduledAt(prospect.scheduled_at)}
+                          {/* 1行に収める。幅が足りないと日本語は1文字ずつ縦に割れて行が異様に高くなる */}
+                          <div className="flex min-w-[130px] max-w-[190px] items-center gap-1.5">
+                            {prospect.send_status === "scheduled" && prospect.scheduled_at && (
+                              <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)">
+                                <CalendarCheck size={11} weight="fill" />
+                                {formatScheduledAt(prospect.scheduled_at)}
+                              </span>
+                            )}
+                            <span title={prospect.subject} className="truncate">
+                              {truncate(prospect.subject, 40)}
                             </span>
-                          )}
-                          {truncate(prospect.subject, 40)}
+                          </div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                        {/* 操作列は sticky right で固定（横スクロールしても常に押せる） */}
+                        <td className="sticky right-0 z-10 whitespace-nowrap bg-(--color-card) px-4 py-3 text-right shadow-[-8px_0_10px_-8px_rgba(15,23,42,0.28)] group-hover:bg-(--color-card-hover)">
                           <div className="inline-flex items-center gap-1.5">
                             {prospect.send_status === "scheduled" && (
                               <button

@@ -372,6 +372,17 @@ export default function BulkSendPage() {
     );
   }
 
+  /**
+   * 「要確認」の指摘で止まって送られなかった行の数。
+   * rowStatus の失敗理由から数えるだけで、送信ロジックには一切触れない。
+   * 送信ループが終わったあとにだけ数える（送信中は行のスピナーで進行が分かるため）。
+   */
+  const warningBlockedCount = run.isSending
+    ? 0
+    : Object.values(run.rowStatus).filter(
+        (s) => s.state === "failed" && (s.error ?? "").includes("要確認"),
+      ).length;
+
   const showTemplateBar = activeMode === "template" && hasRecipients;
   const showGeneratedBar = activeMode === "generated" && gen.generatedProspects.length > 0;
   const barVisible = showTemplateBar || showGeneratedBar;
@@ -667,6 +678,7 @@ export default function BulkSendPage() {
           onCancelGenerating={run.handleCancelGenerating}
           onGenerate={run.handleGenerateAll}
           onSend={run.handleSendAll}
+          warningBlockedCount={warningBlockedCount}
           onHeightChange={setFooterHeight}
         />
       )}

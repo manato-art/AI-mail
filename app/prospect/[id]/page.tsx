@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowCounterClockwise,
+  ArrowSquareOut,
   BookmarkSimple,
   CaretDown,
   Check,
@@ -483,6 +484,25 @@ export default function ProspectPage() {
           </button>
         </div>
       </div>
+
+      {/*
+        返信あり・商談中のときの「で、返信の中身はどこ？」に答える導線。
+        本文はこのアプリに取り込んでいないので、Gmail の検索を開くだけ（表示のみ・送信には無関係）。
+      */}
+      {(currentStatus === "replied" || currentStatus === "meeting") && emailsFound.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-(--color-border) bg-(--color-card-hover) px-3 py-2.5 text-[13px] text-(--color-muted)">
+          <span>相手からの返信は Gmail で確認できます</span>
+          <a
+            href={`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`from:(${emailsFound[0]})`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-md font-medium text-(--color-primary-text) underline underline-offset-2 hover:text-(--color-primary-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+          >
+            Gmailで開く
+            <ArrowSquareOut size={13} weight="bold" />
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
         {/* Left: Mail Editor（主役） */}

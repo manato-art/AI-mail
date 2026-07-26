@@ -90,7 +90,8 @@ export function RecipientTable({
       </div>
 
       {recipients.length > 0 && (
-        <div className="overflow-x-auto">
+        // 右端フェード = 「まだ右に続きがある」合図（スクロール不要な幅では自動的に消える）
+        <div className="scroll-hint-x overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-(--color-border) bg-gray-50 text-left dark:bg-slate-700/50">

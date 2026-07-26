@@ -163,24 +163,41 @@ export function CompaniesModal({
                       <p className="truncate text-[12px] text-(--color-muted)">
                         {contacts.map((c) => c.email).join(", ")}
                       </p>
+                      {/*
+                        バッジは行の折返しだけ許し、文字の途中では折らない（whitespace-nowrap）。
+                        入りきらないバッジは省略記号で切る（max-w-full + truncate）。
+                        これが無いと狭い画面で1文字ずつ縦に割れて読めなくなる。
+                      */}
                       <div className="mt-1.5 flex flex-wrap items-center gap-1">
                         {company.collection_keyword && (
-                          <span className="rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)">
+                          <span
+                            title={company.collection_keyword}
+                            className="max-w-full shrink-0 truncate whitespace-nowrap rounded bg-(--color-primary-light) px-1.5 py-0.5 text-[10px] font-medium text-(--color-primary-text)"
+                          >
                             🔍 {company.collection_keyword}
                           </span>
                         )}
                         {company.collection_service_name && (
-                          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          <span
+                            title={company.collection_service_name}
+                            className="max-w-full shrink-0 truncate whitespace-nowrap rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                          >
                             📦 {company.collection_service_name}
                           </span>
                         )}
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
+                        <span className="max-w-full shrink-0 truncate whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-(--color-muted) dark:bg-slate-700">
                           {sourceLabel(company.source)}
                         </span>
                       </div>
                     </div>
+                    {/* ドメインは補助情報。長くても行の幅を食い尽くさないよう上限を決めて省略する */}
                     {company.domain && (
-                      <span className="shrink-0 self-start text-[11px] text-(--color-muted)">{company.domain}</span>
+                      <span
+                        title={company.domain}
+                        className="max-w-[38%] shrink-0 self-start truncate text-[11px] text-(--color-muted)"
+                      >
+                        {company.domain}
+                      </span>
                     )}
                   </label>
                 );

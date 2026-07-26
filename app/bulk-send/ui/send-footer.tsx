@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MagicWand, PaperPlaneTilt, SpinnerGap, X } from "@phosphor-icons/react";
+import { MagicWand, PaperPlaneTilt, SpinnerGap, Warning, X } from "@phosphor-icons/react";
 
 /**
  * 画面下に貼り付く送信バー。hasGenerated で二段に切り替わる:
@@ -32,6 +32,11 @@ interface SendFooterProps {
   onCancelGenerating: () => void;
   onGenerate: () => void;
   onSend: () => void;
+  /**
+   * 「要確認」の指摘で送られなかった行の数。1件以上あるとバーの上に案内を出す。
+   * 行ごとの小さな注意書きだけだと、何も起きなかったように見えてしまうため。
+   */
+  warningBlockedCount?: number;
   /** このバーの実高さ（px）が変わるたびに呼ばれる。page 側で paddingBottom に使う */
   onHeightChange?: (height: number) => void;
 }
@@ -53,6 +58,7 @@ export function SendFooter({
   onCancelGenerating,
   onGenerate,
   onSend,
+  warningBlockedCount = 0,
   onHeightChange,
 }: SendFooterProps) {
   const footerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +75,17 @@ export function SendFooter({
 
   return (
     <div ref={footerRef} className="fixed inset-x-0 bottom-0 z-20 border-t border-(--color-border) bg-(--color-card)/95 backdrop-blur-sm md:pl-16 xl:pl-60">
+      {/* 要確認の指摘で1件も送られなかったときに「無言で終わった」ように見せないための案内 */}
+      {warningBlockedCount > 0 && (
+        <div className="border-b border-(--color-warning)/40 bg-(--color-warning-light) px-4 py-2.5 md:px-6">
+          <p className="mx-auto flex max-w-[1200px] items-start gap-2 text-[13px] leading-relaxed text-(--color-warning-text)">
+            <Warning size={16} weight="fill" className="mt-0.5 shrink-0" />
+            <span>
+              送信されなかった宛先があります。各行の注意書きを確認し、内容に問題がなければ「要確認の指摘があっても送信する」にチェックして、もう一度送信してください
+            </span>
+          </p>
+        </div>
+      )}
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 md:px-6">
         <div className="min-w-0">
           <p className="text-[13px] text-(--color-muted)">
