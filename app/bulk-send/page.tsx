@@ -76,6 +76,10 @@ export default function BulkSendPage() {
 
   const [toast, setToast] = useState<string | null>(null);
 
+  // 下部固定送信バーの実高さ（px）。SendFooter からの ResizeObserver 計測を受け取り、
+  // 本文ラッパーの paddingBottom に反映する（固定バーがコンテンツを隠さないようにする）
+  const [footerHeight, setFooterHeight] = useState(0);
+
   const showToast = useCallback((msg: string) => {
     setToast(null);
     setTimeout(() => setToast(msg), 0);
@@ -279,8 +283,9 @@ export default function BulkSendPage() {
 
   /** 生成済みメールのタブへ切り替える（「引用」からも呼ぶ） */
   function openGenerated() {
+    // 既に生成済みタブが開いているときの再クリックでは検索文字列を消さない
+    if (activeMode !== "generated") gen.setGeneratedSearch("");
     setMode("generated");
-    gen.setGeneratedSearch("");
   }
 
   /**
@@ -369,9 +374,15 @@ export default function BulkSendPage() {
 
   const showTemplateBar = activeMode === "template" && hasRecipients;
   const showGeneratedBar = activeMode === "generated" && gen.generatedProspects.length > 0;
+  const barVisible = showTemplateBar || showGeneratedBar;
+  // 実測が届くまでは従来の固定値(pb-48=192px)相当をフォールバックにする
+  const wrapperPaddingBottom = barVisible ? `${(footerHeight || 192) + 24}px` : undefined;
 
   return (
-    <div className={`animate-fade-in ${showTemplateBar || showGeneratedBar ? "pb-48" : "pb-10"}`}>
+    <div
+      className={`animate-fade-in ${barVisible ? "" : "pb-10"}`}
+      style={wrapperPaddingBottom ? { paddingBottom: wrapperPaddingBottom } : undefined}
+    >
       <div className="mb-1">
         <h1 className="text-xl font-bold tracking-tight">メール一括送信</h1>
         <p className="text-[13px] text-(--color-muted)">宛先リストを作成し、メールを一括送信します</p>
@@ -656,6 +667,7 @@ export default function BulkSendPage() {
           onCancelGenerating={run.handleCancelGenerating}
           onGenerate={run.handleGenerateAll}
           onSend={run.handleSendAll}
+          onHeightChange={setFooterHeight}
         />
       )}
 

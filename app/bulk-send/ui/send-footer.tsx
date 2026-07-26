@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { MagicWand, PaperPlaneTilt, SpinnerGap, X } from "@phosphor-icons/react";
 
 /**
@@ -9,6 +10,10 @@ import { MagicWand, PaperPlaneTilt, SpinnerGap, X } from "@phosphor-icons/react"
  *
  * 左の padding は左サイドバーの幅ぶん空ける（md:pl-16 xl:pl-60）。
  * これを忘れるとボタンがサイドバーの下に潜って押せなくなる。
+ *
+ * 実高さは内容量（折返し等）で変わるため ResizeObserver で計測し、
+ * page 側に伝えて本文のラッパー padding に反映してもらう（下に固定されたこのバーが
+ * ページ内容を覆い隠さないようにするため）。
  */
 interface SendFooterProps {
   checkedCount: number;
@@ -27,6 +32,8 @@ interface SendFooterProps {
   onCancelGenerating: () => void;
   onGenerate: () => void;
   onSend: () => void;
+  /** このバーの実高さ（px）が変わるたびに呼ばれる。page 側で paddingBottom に使う */
+  onHeightChange?: (height: number) => void;
 }
 
 export function SendFooter({
@@ -46,9 +53,22 @@ export function SendFooter({
   onCancelGenerating,
   onGenerate,
   onSend,
+  onHeightChange,
 }: SendFooterProps) {
+  const footerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el || !onHeightChange) return;
+    const report = () => onHeightChange(el.getBoundingClientRect().height);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
+
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-(--color-border) bg-(--color-card)/95 backdrop-blur-sm md:pl-16 xl:pl-60">
+    <div ref={footerRef} className="fixed inset-x-0 bottom-0 z-20 border-t border-(--color-border) bg-(--color-card)/95 backdrop-blur-sm md:pl-16 xl:pl-60">
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 md:px-6">
         <div className="min-w-0">
           <p className="text-[13px] text-(--color-muted)">

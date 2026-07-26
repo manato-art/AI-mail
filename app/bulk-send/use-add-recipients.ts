@@ -157,10 +157,9 @@ export function useAddRecipients({
     return [...set].sort();
   }, [companiesList]);
 
-  // 上部バーの商材が選択肢に無いときは「すべての商材」のまま
-  const companiesServiceFilter =
-    companiesServiceFilterState ??
-    (activeServiceName && companyServiceOptions.includes(activeServiceName) ? activeServiceName : "");
+  // 企業一覧モーダルの商材フィルタは常に「すべての商材」から始める
+  // （名前一致でアクティブ商材に連動させると、別テナント/別表記の商材名が誤って選ばれる事故のもと）
+  const companiesServiceFilter = companiesServiceFilterState ?? "";
 
   const filteredCompanies = useMemo(() => {
     let list = companiesList.filter(
