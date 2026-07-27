@@ -58,20 +58,34 @@ function foldName(s: string): string {
  * - クロールでページが1つも取れなかった（サイト側の一時障害かもしれない）
  * - 拠点・部署の後置語を剥がせば一致する（収集時に付いた表記ノイズ）
  */
-export function companyNameAppearsOnSite(companyName: string, pages: CrawlPage[]): boolean {
+/** 1つの社名表記がページ本文に現れているか。短すぎる表記は判定材料にしない */
+function nameAppearsIn(haystack: string, name: string): boolean {
+  const target = foldName(name);
+  if (target.length < MIN_DISTINCTIVE_NAME_LEN) return false;
+  if (haystack.includes(target)) return true;
+
+  // 「株式会社ABC 東京本社」等、登録名だけに拠点・部署の後置語が付くケースを救済
+  const stripped = foldName(name.normalize("NFKC").replace(NAME_NOISE_SUFFIX, ""));
+  return stripped.length >= MIN_DISTINCTIVE_NAME_LEN && haystack.includes(stripped);
+}
+
+export function companyNameAppearsOnSite(
+  companyName: string,
+  pages: CrawlPage[],
+  /**
+   * 同一企業の別表記（掲載元から分かった正式社名など）。
+   * 登録名が一致しなかった時の救済にだけ使う（判定を緩めるのではなく候補を増やす）。
+   */
+  aliases: string[] = []
+): boolean {
   if (pages.length === 0) return true; // 取得できず → 判定不能
   const haystack = foldName(pages.map((p) => `${p.title} ${p.text}`).join(" "));
   if (haystack.length < MIN_HAYSTACK_LEN) return true; // 本文が薄すぎ（画像主体等）→ 判定不能で消さない
 
-  const target = foldName(companyName);
-  if (target.length < MIN_DISTINCTIVE_NAME_LEN) return true; // 短すぎ → 誤爆回避
-  if (haystack.includes(target)) return true;
+  if (foldName(companyName).length < MIN_DISTINCTIVE_NAME_LEN) return true; // 短すぎ → 誤爆回避
+  if (nameAppearsIn(haystack, companyName)) return true;
 
-  // 「株式会社ABC 東京本社」等、登録名だけに拠点・部署の後置語が付くケースを救済
-  const stripped = foldName(companyName.normalize("NFKC").replace(NAME_NOISE_SUFFIX, ""));
-  if (stripped.length >= MIN_DISTINCTIVE_NAME_LEN && haystack.includes(stripped)) return true;
-
-  return false;
+  return aliases.some((alias) => nameAppearsIn(haystack, alias));
 }
 
 export interface IntegrityCheckResult {

@@ -12,7 +12,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function nextCrawlDelay(): number {
+/**
+ * 相手ホストへの連続アクセスの間隔（ゆらぎ付き）。
+ * クロール以外（媒体の企業ページを1枚取る等）からも同じウェイトを使うため公開する。
+ */
+export function nextCrawlDelay(): number {
   return CRAWL_DELAY_BASE_MS + Math.floor(Math.random() * CRAWL_DELAY_JITTER_MS);
 }
 const USER_AGENT =

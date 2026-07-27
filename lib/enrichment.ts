@@ -17,6 +17,7 @@ import { logActivity } from "@/lib/activity-log";
 import { analyzeCompany } from "@/lib/analyze";
 import { companyNameAppearsOnSite } from "@/lib/data-integrity";
 import { crawlKnownHomepage, resolveCompanyHomepage, type ResolvedCompany } from "@/lib/company-resolve";
+import { resolveHomepageFromListing } from "@/lib/listing-resolve";
 import { SearchBlockedError, SearchConfigError, extractContactName } from "@/lib/keyword-search";
 import { describeErrorKind, isInfrastructureErrorKind } from "@/lib/enrichment-errors";
 import type { Company, EnrichmentErrorKind, FitScore, Service } from "@/lib/types";
@@ -131,21 +132,43 @@ interface EnrichResult {
   errorKind?: EnrichmentErrorKind;
 }
 
+/**
+ * 公式サイトを次の順に特定する。手前で決まれば後ろは呼ばない。
+ *   ① 既知のHP（hp_url）        … 収集済みの正準情報。検索も媒体アクセスも不要
+ *   ② 掲載URL（listing_url）から … 媒体の企業ページから公式サイトURLを直接読む（検索なし）
+ *   ③ 社名で検索                 … 上2つが無い/取れなかった時だけのフォールバック
+ *
+ * ①②は「手元にある正準キー」を使うので、検索が壊れていても進められ、
+ * 同名の別会社を掴む誤りも起きない（KB: entity-name-match-unreliable-use-canonical-key）。
+ */
+async function resolveCompanySite(company: Company): Promise<ResolvedCompany | null> {
+  const knownHpUrl = (company.hp_url ?? "").trim();
+  if (knownHpUrl) {
+    logActivity(`🔁 ${company.name}: 既知のHPから再開します（検索はしません）`);
+    return crawlKnownHomepage(knownHpUrl);
+  }
+
+  const listingUrl = (company.listing_url ?? "").trim();
+  if (listingUrl) {
+    logActivity(`🔗 ${company.name}: 掲載ページから公式サイトを特定します（検索はしません）`);
+    const fromListing = await resolveHomepageFromListing(listingUrl);
+    if (fromListing) return fromListing;
+    logActivity(
+      `↩️ ${company.name}: 掲載ページから公式サイトを特定できず、社名検索に切り替えます`,
+      "warn"
+    );
+  }
+
+  logActivity(`🔍 ${company.name} の公式サイトを検索中...`);
+  return resolveCompanyHomepage(company.name, "");
+}
+
 async function enrichCompany(
   company: Company,
   service: Service | null
 ): Promise<EnrichResult> {
-  // 既にHPが分かっているなら社名で検索し直さない。検索が壊れていても調査を進められるうえ、
-  // 「別会社の公式サイトを掴む」誤りも起きない（KB: entity-name-match-unreliable-use-canonical-key）
   const knownHpUrl = (company.hp_url ?? "").trim();
-  let resolved: ResolvedCompany | null;
-  if (knownHpUrl) {
-    logActivity(`🔁 ${company.name}: 既知のHPから再開します（検索はしません）`);
-    resolved = await crawlKnownHomepage(knownHpUrl);
-  } else {
-    logActivity(`🔍 ${company.name} の公式サイトを検索中...`);
-    resolved = await resolveCompanyHomepage(company.name, "");
-  }
+  const resolved = await resolveCompanySite(company);
 
   if (!resolved) {
     // 「見つからなかった」のか「分かっているのに読めなかった」のかを混ぜない
@@ -186,7 +209,10 @@ async function enrichCompany(
   // 誤紐付けの疑いとして連絡先を保存せず failed にする（誤メアドを在庫に入れない）。
   // 判定は保守的（NFKC吸収・拠点後置語救済・本文が薄い/短い社名は"消さない側")なので、
   // 正常企業を過剰に弾かない。弾かれた企業は failed で残り、再調査で戻せる。
-  if (!companyNameAppearsOnSite(company.name, resolved.crawl.pages)) {
+  // 掲載元から正式社名が分かっている場合は照合候補に加える（媒体表記と正式社名のズレで
+  // 正しい企業を「別会社の疑い」として弾かないため）。判定の厳しさ自体は変えていない
+  const legalName = (resolved.legalName ?? "").trim();
+  if (!companyNameAppearsOnSite(company.name, resolved.crawl.pages, legalName ? [legalName] : [])) {
     logActivity(`❌ ${company.name}: HPに社名が見当たらず別会社の疑い（${resolved.domain}）`, "error");
     markCompanyEnrichmentFailed(
       company.id,

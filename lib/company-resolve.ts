@@ -13,6 +13,9 @@ import type { CrawlResult } from "@/lib/types";
  */
 const EXCLUDED_DOMAINS = [
   "wantedly.com",
+  // 媒体運営会社の自社サイト。媒体ページのJSON-LDには運営会社のOrganizationも同居しており、
+  // 取り違えると全企業が同じ会社（媒体の運営会社）に紐づく
+  "wantedlyinc.com",
   "green-japan.com",
   "en-gage.net",
   "prtimes.jp",
@@ -42,10 +45,28 @@ function isExcludedDomain(displayLink: string, sourceSite: string): boolean {
   return EXCLUDED_DOMAINS.some((ex) => domain === ex || domain.endsWith(`.${ex}`));
 }
 
+/**
+ * URL が「公式サイトとして採用してはいけない」ドメインか。
+ * 掲載URL由来の候補（lib/listing-resolve.ts）も検索由来と同じ除外リストを通す。
+ * 解釈できないURLは採用しない側（true）に倒す。
+ */
+export function isExcludedHomepageDomain(rawUrl: string): boolean {
+  try {
+    return isExcludedDomain(new URL(rawUrl).hostname, "");
+  } catch {
+    return true;
+  }
+}
+
 export interface ResolvedCompany {
   homepage: string;
   domain: string;
   crawl: CrawlResult;
+  /**
+   * 掲載元から分かった正式社名（あれば）。
+   * 媒体表記と正式社名がずれている企業を「別会社の疑い」で弾かないための照合候補に使う。
+   */
+  legalName?: string;
 }
 
 /**
@@ -55,7 +76,10 @@ export interface ResolvedCompany {
  * 手元にある正準な情報（HPのURL）があるならそれを使う（KB: entity-name-match-unreliable-use-canonical-key）。
  * URLが壊れている・内部宛て等でクロールできない場合は null（＝「見つからない」は正常な結果）。
  */
-export async function crawlKnownHomepage(hpUrl: string): Promise<ResolvedCompany | null> {
+export async function crawlKnownHomepage(
+  hpUrl: string,
+  note: string = "既知のHP・検索なし"
+): Promise<ResolvedCompany | null> {
   // 保存済みのURLでも、そのまま叩かずSSRF検証を通す（DBが書き換わっている可能性を想定する）
   const validated = validateUrl(hpUrl);
   if (!validated.valid) return null;
@@ -67,7 +91,7 @@ export async function crawlKnownHomepage(hpUrl: string): Promise<ResolvedCompany
     return null;
   }
 
-  logActivity(`🕷️ ${validated.normalized} をクロール中...（既知のHP・検索なし）`);
+  logActivity(`🕷️ ${validated.normalized} をクロール中...（${note}）`);
   const crawl = await crawlWebsite(validated.normalized);
   logActivity(
     `  → ${crawl.pages.length}ページ取得 / メール${crawl.contactEmails.length}件${crawl.formUrl ? " / フォームあり" : ""}`

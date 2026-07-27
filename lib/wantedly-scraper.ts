@@ -1,8 +1,11 @@
 import * as cheerio from "cheerio";
 import { SearchBlockedError, BLOCKED_STATUSES } from "@/lib/keyword-search";
+import { nextCrawlDelay } from "@/lib/crawl";
+import { validateUrl } from "@/lib/ssrf";
 
 const WANTEDLY_BASE = "https://www.wantedly.com";
 const LISTING_PATH = "/projects";
+const COMPANY_PATH_PATTERN = /^\/companies\/([^/?#]+)/;
 const FETCH_TIMEOUT_MS = 15000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -16,6 +19,8 @@ const REQUEST_DELAY_JITTER_MS = 5000;
 export interface WantedlyListing {
   companyName: string;
   listingUrl: string;
+  /** 一覧カード内の企業ページURL（/companies/{slug}）。取れなければ空文字 */
+  companyUrl: string;
   listingTitle: string;
 }
 
@@ -37,6 +42,61 @@ export function isWantedlyUrl(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * `/companies/{slug}`（企業ページ）を指すURLなら、正規化した企業ページURLを返す。
+ * `/companies/{slug}/post_articles/123` のような下位ページも {slug} まで畳む。
+ * 企業ページでなければ null（＝募集ページ等）。
+ */
+export function toCompanyPageUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw, WANTEDLY_BASE);
+  } catch {
+    return null;
+  }
+  if (!isWantedlyUrl(parsed.toString())) return null;
+
+  const matched = COMPANY_PATH_PATTERN.exec(parsed.pathname);
+  if (!matched) return null;
+  return `${WANTEDLY_BASE}/companies/${matched[1]}`;
+}
+
+/** 企業ページURLから slug を取り出す（JSON-LDのどのノードが当該企業かの照合に使う） */
+export function companySlugFromUrl(raw: string): string {
+  const normalized = toCompanyPageUrl(raw);
+  if (!normalized) return "";
+  return COMPANY_PATH_PATTERN.exec(new URL(normalized).pathname)?.[1] ?? "";
+}
+
+/** 募集ページ等のHTMLから、最初に見つかる企業ページURLを返す。無ければ null */
+export function findCompanyPageUrl(html: string): string | null {
+  const $ = cheerio.load(html);
+  for (const el of $('a[href*="/companies/"]').toArray()) {
+    const href = $(el).attr("href");
+    if (!href) continue;
+    const companyUrl = toCompanyPageUrl(href);
+    if (companyUrl) return companyUrl;
+  }
+  return null;
+}
+
+/**
+ * Wantedlyの単一ページ（企業ページ等）を取得する。
+ *
+ * 媒体への負荷を最小にするため、呼び出しごとにクロールと同じウェイト（CRAWL_DELAY_BASE_MS/JITTER）を
+ * 必ず入れる。並列に呼ばないこと（調査は1社ずつの直列処理に乗せる）。
+ * 拒否（202/403/429/503）は SearchBlockedError として送出し、呼び出し元の回路遮断に伝える
+ * （握り潰すと拒否された状態のまま叩き続けることになる）。
+ */
+export async function fetchWantedlyPage(url: string): Promise<string | null> {
+  if (!isWantedlyUrl(url)) return null;
+  const validated = validateUrl(url);
+  if (!validated.valid) return null;
+
+  await sleep(nextCrawlDelay());
+  return fetchHtmlPage(validated.normalized);
 }
 
 /** ベースURLの page クエリを差し替えてページ送りURLを作る */
@@ -129,7 +189,12 @@ export function parseListings(html: string): WantedlyListing[] {
 
     if (!companyName) return;
 
-    results.push({ companyName, listingUrl, listingTitle });
+    // 企業ページURL: カード内には /projects/{id} と /companies/{slug} が併存する。
+    // 企業ページ側は公式サイトURLを持つため、後段の「検索なしでの公式サイト特定」の正準キーになる
+    const companyHref = $card.find('a[href*="/companies/"]').first().attr("href");
+    const companyUrl = companyHref ? toCompanyPageUrl(companyHref) ?? "" : "";
+
+    results.push({ companyName, listingUrl, companyUrl, listingTitle });
   });
 
   return results;

@@ -18,6 +18,7 @@ import {
   type SearchResultItem,
 } from "@/lib/keyword-search";
 import { scrapeSearch } from "@/lib/keyword-search-scrape";
+import { validateUrl } from "@/lib/ssrf";
 import {
   fetchWantedlyListings,
   fetchWantedlyListingsFromUrl,
@@ -135,8 +136,22 @@ interface SourceOutcome {
 }
 
 /**
+ * 掲載URLは外部（媒体HTML・AI抽出）由来なので、保存する前に必ず検証する。
+ * 保存したURLは後段で実際にアクセスするため、ここを素通しにするとSSRFの入口になる。
+ */
+function sanitizeListingUrl(raw: string): string | null {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return null;
+  const validated = validateUrl(trimmed);
+  return validated.valid ? validated.normalized : null;
+}
+
+/**
  * 収集した企業名を登録する。この段階では企業名しか無いので名前でしか重複判定できない。
  * 送信済み・抑止対象との照合はドメインが要るため、裏処理（lib/enrichment.ts）で行う。
+ *
+ * 掲載URL（sourceUrl）は「その企業がどのページに載っていたか」の正準キー。
+ * 捨てると裏処理が毎回社名で検索し直すことになり、検索が止まると全社が調査不能になる。
  */
 function registerCompanies(
   companies: { name: string; sourceUrl: string }[],
@@ -160,6 +175,7 @@ function registerCompanies(
       hp_url: null,
       lp_url: null,
       recruit_page_url: null,
+      listing_url: sanitizeListingUrl(company.sourceUrl),
       collection_source_id: source.id,
     });
     newCount += 1;
@@ -259,9 +275,11 @@ async function runListingSource(
       return { status: "no_result", newCount: 0, pausedReason: null };
     }
 
+    // 企業ページURL（/companies/{slug}）は公式サイトURLを持つため、募集ページより優先して残す。
+    // 取れなかった場合だけ募集ページURLを保存する（募集ページからでも企業ページを辿れる）
     const companies = listings.map((l) => ({
       name: l.companyName,
-      sourceUrl: l.listingUrl,
+      sourceUrl: l.companyUrl || l.listingUrl,
     }));
     const { newCount, breakdown } = registerCompanies(
       companies,
@@ -360,7 +378,14 @@ async function runKeywordSource(source: CollectionSource): Promise<SourceOutcome
       items,
       MAX_COMPANIES_PER_RUN
     );
-    const { newCount, breakdown } = registerCompanies(extraction.companies, source, site);
+    // AIが返す掲載URLは検索結果に無いものを創作しうる。実在したリンクと一致しない場合は
+    // 保存しない（保存したURLは後段で実際にアクセスするため、出所を機械的に保証する）
+    const actualLinks = new Set(items.map((item) => item.link).filter(Boolean));
+    const companies = extraction.companies.map((c) => ({
+      name: c.name,
+      sourceUrl: actualLinks.has(c.sourceUrl) ? c.sourceUrl : "",
+    }));
+    const { newCount, breakdown } = registerCompanies(companies, source, site);
 
     const noNewRuns = newCount > 0 ? 0 : source.consecutive_no_new_runs + 1;
     updateCollectionCursor(source.id, {
