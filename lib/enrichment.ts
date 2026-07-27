@@ -10,19 +10,77 @@ import {
   markCompanyEnriched,
   markCompanyExcluded,
   setCompanyDomain,
+  setSetting,
   upsertContact,
 } from "@/lib/db";
 import { logActivity } from "@/lib/activity-log";
 import { analyzeCompany } from "@/lib/analyze";
 import { companyNameAppearsOnSite } from "@/lib/data-integrity";
-import { resolveCompanyHomepage } from "@/lib/company-resolve";
-import { extractContactName } from "@/lib/keyword-search";
-import type { Company, FitScore, Service } from "@/lib/types";
+import { crawlKnownHomepage, resolveCompanyHomepage, type ResolvedCompany } from "@/lib/company-resolve";
+import { SearchBlockedError, SearchConfigError, extractContactName } from "@/lib/keyword-search";
+import { describeErrorKind, isInfrastructureErrorKind } from "@/lib/enrichment-errors";
+import type { Company, EnrichmentErrorKind, FitScore, Service } from "@/lib/types";
 
 /** 1サイクルで裏処理する件数。1社あたり検索1回＋クロール＋AI2回かかるので少しずつ進める */
 const ENRICH_BATCH_SIZE = 10;
 const ENRICH_DELAY_BASE_MS = 2000;
 const ENRICH_DELAY_JITTER_MS = 3000;
+
+/**
+ * 同じ理由の失敗がこの回数続いたらバッチを打ち切る。
+ * 単発の失敗では止めない（1社が一時的にコケただけで正常なバッチを止めないため）。
+ */
+const CONSECUTIVE_FAILURE_LIMIT = 3;
+
+/**
+ * 基盤起因（検索ブロック・設定不足）を検知したときに、自動の調査見回りを止める時間。
+ * 収集側の pauseCollectionSource に相当する停止シグナルで、
+ * 解除は画面の「やり直す」（/api/companies/retry-failed）から行う。
+ */
+const ENRICHMENT_PAUSE_MINUTES = 30;
+
+/** 調査の自動見回りを止める期限（ISO風のローカル時刻文字列）。設定が空なら停止していない */
+export const ENRICHMENT_PAUSED_UNTIL_KEY = "enrichment_paused_until";
+
+function formatLocalDateTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
+/** 自動の調査見回りを一定時間止める。手動実行（画面のボタン）はこの停止を見ない */
+export function pauseEnrichment(minutes: number = ENRICHMENT_PAUSE_MINUTES): string {
+  const until = formatLocalDateTime(new Date(Date.now() + minutes * 60 * 1000));
+  setSetting(ENRICHMENT_PAUSED_UNTIL_KEY, until);
+  return until;
+}
+
+/** 停止を解除する（画面の「やり直す」導線から呼ぶ手動リセット） */
+export function resumeEnrichment(): void {
+  setSetting(ENRICHMENT_PAUSED_UNTIL_KEY, "");
+}
+
+/** いま自動の調査見回りを止めているか。止めているなら解除予定時刻を返す */
+export function getEnrichmentPausedUntil(): string | null {
+  const raw = (getSetting(ENRICHMENT_PAUSED_UNTIL_KEY) || "").trim();
+  if (!raw) return null;
+  const until = new Date(raw.replace(" ", "T"));
+  if (Number.isNaN(until.getTime())) return null;
+  return until.getTime() > Date.now() ? raw : null;
+}
+
+/**
+ * 例外を「原因の種類」に落とす。
+ * ここで基盤起因（search_blocked / config_missing）と企業固有を分けられないと、
+ * 障害1件が数百社分の「調査できず」として記録され続ける。
+ */
+export function classifyEnrichmentError(error: unknown): EnrichmentErrorKind {
+  if (error instanceof SearchBlockedError) return "search_blocked";
+  if (error instanceof SearchConfigError) return "config_missing";
+  return "unknown";
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,16 +125,37 @@ function normalizeFitScore(value: unknown): FitScore {
 
 type EnrichOutcome = "done" | "excluded" | "failed";
 
+interface EnrichResult {
+  outcome: EnrichOutcome;
+  /** failed のときの分類。打ち切り判定（同一理由の連続）に使う */
+  errorKind?: EnrichmentErrorKind;
+}
+
 async function enrichCompany(
   company: Company,
   service: Service | null
-): Promise<EnrichOutcome> {
-  logActivity(`🔍 ${company.name} の公式サイトを検索中...`);
-  const resolved = await resolveCompanyHomepage(company.name, "");
+): Promise<EnrichResult> {
+  // 既にHPが分かっているなら社名で検索し直さない。検索が壊れていても調査を進められるうえ、
+  // 「別会社の公式サイトを掴む」誤りも起きない（KB: entity-name-match-unreliable-use-canonical-key）
+  const knownHpUrl = (company.hp_url ?? "").trim();
+  let resolved: ResolvedCompany | null;
+  if (knownHpUrl) {
+    logActivity(`🔁 ${company.name}: 既知のHPから再開します（検索はしません）`);
+    resolved = await crawlKnownHomepage(knownHpUrl);
+  } else {
+    logActivity(`🔍 ${company.name} の公式サイトを検索中...`);
+    resolved = await resolveCompanyHomepage(company.name, "");
+  }
+
   if (!resolved) {
-    logActivity(`❌ ${company.name}: 公式サイトを特定できず`, "error");
-    markCompanyEnrichmentFailed(company.id, "公式サイトを特定できませんでした");
-    return "failed";
+    // 「見つからなかった」のか「分かっているのに読めなかった」のかを混ぜない
+    const kind: EnrichmentErrorKind = knownHpUrl ? "crawl_empty" : "hp_not_found";
+    const message = knownHpUrl
+      ? `登録済みのHP（${knownHpUrl}）を読み取れませんでした`
+      : "公式サイトを特定できませんでした";
+    logActivity(`❌ ${company.name}: ${message}`, "error");
+    markCompanyEnrichmentFailed(company.id, message, kind);
+    return { outcome: "failed", errorKind: kind };
   }
 
   logActivity(`🌐 ${company.name} → ${resolved.domain}`);
@@ -86,14 +165,18 @@ async function enrichCompany(
   if (exclusion) {
     logActivity(`⏭️ ${company.name}: ${exclusion}`, "warn");
     markCompanyExcluded(company.id, exclusion);
-    return "excluded";
+    return { outcome: "excluded" };
   }
   setCompanyDomain(company.id, resolved.domain);
 
   if (resolved.crawl.pages.length === 0) {
     logActivity(`❌ ${company.name}: ページ内容を取得できず`, "error");
-    markCompanyEnrichmentFailed(company.id, "公式サイトの内容を取得できませんでした");
-    return "failed";
+    markCompanyEnrichmentFailed(
+      company.id,
+      "公式サイトの内容を取得できませんでした",
+      "crawl_empty"
+    );
+    return { outcome: "failed", errorKind: "crawl_empty" };
   }
 
   logActivity(`📄 ${company.name}: ${resolved.crawl.pages.length}ページをクロール済み`);
@@ -107,9 +190,10 @@ async function enrichCompany(
     logActivity(`❌ ${company.name}: HPに社名が見当たらず別会社の疑い（${resolved.domain}）`, "error");
     markCompanyEnrichmentFailed(
       company.id,
-      `社名「${company.name}」がHP（${resolved.domain}）に見当たりません（別会社サイトの誤検出の疑い・要確認）`
+      `社名「${company.name}」がHP（${resolved.domain}）に見当たりません（別会社サイトの誤検出の疑い・要確認）`,
+      "name_mismatch"
     );
-    return "failed";
+    return { outcome: "failed", errorKind: "name_mismatch" };
   }
 
   const email = resolved.crawl.contactEmails[0] ?? null;
@@ -132,20 +216,43 @@ async function enrichCompany(
     logActivity(`⚠️ ${company.name}: メールアドレスが見つからず`, "warn");
   }
 
+  // フォームURLは「メールが取れない企業に人が連絡する」ための唯一の手段になることが多い。
+  // 保存先が無く捨てていたぶん、連絡可能な企業が実態より大幅に少なく見えていた（自動送信はしない）
+  const formUrl = resolved.crawl.formUrl;
+
   if (!service) {
     markCompanyEnriched(company.id, {
       hp_url: resolved.homepage,
       recruit_page_url: resolved.crawl.recruitPageUrl,
+      form_url: formUrl,
     });
     logActivity(`✅ ${company.name}: 調査完了`, "success");
-    return "done";
+    return { outcome: "done" };
   }
 
   logActivity(`🤖 ${company.name}: AI分析中...`);
-  const analysis = await analyzeCompany(resolved.crawl, service);
+  let analysis;
+  try {
+    analysis = await analyzeCompany(resolved.crawl, service);
+  } catch (error) {
+    // AI分析がコケただけで、取得済みの連絡先・HP・フォームまで巻き戻さない。
+    // 相性スコアは空のままにして「未評価」と分かるようにする
+    const message = error instanceof Error ? error.message : "AI分析に失敗しました";
+    logActivity(`⚠️ ${company.name}: AI分析に失敗（連絡先は保持）: ${message}`, "warn");
+    markCompanyEnriched(company.id, {
+      hp_url: resolved.homepage,
+      recruit_page_url: resolved.crawl.recruitPageUrl,
+      form_url: formUrl,
+      enrichment_error: `AI分析に失敗しました: ${message}`,
+      error_kind: "analyze_failed",
+    });
+    return { outcome: "done" };
+  }
+
   markCompanyEnriched(company.id, {
     hp_url: resolved.homepage,
     recruit_page_url: resolved.crawl.recruitPageUrl,
+    form_url: formUrl,
     business_summary: analysis.business_summary ?? "",
     fit_score: normalizeFitScore(analysis.compatibility?.score),
     fit_reason: analysis.compatibility?.reason ?? "",
@@ -153,13 +260,17 @@ async function enrichCompany(
     analysis_json: JSON.stringify(analysis),
   });
   logActivity(`✅ ${company.name}: 調査完了（相性: ${analysis.compatibility?.score ?? "—"}）`, "success");
-  return "done";
+  return { outcome: "done" };
 }
 
 export interface EnrichmentBatchResult {
   processed: number;
   failed: number;
   excluded: number;
+  /** 回路遮断で残した未処理件数（pending のまま。0なら最後まで回した） */
+  stoppedRemaining?: number;
+  /** 打ち切りの理由分類（打ち切っていなければ undefined） */
+  stoppedKind?: EnrichmentErrorKind;
 }
 
 /**
@@ -180,24 +291,71 @@ export async function runEnrichmentBatch(
 
   logActivity(`📋 ${companies.length}社の調査を開始します`);
 
+  // 同じ理由で失敗し続けるなら、それは企業ごとの事情ではなく共通の障害。
+  // 気づかないまま5分おきに20社ずつ焼き切るのを止めるための打ち切り判定に使う
+  let lastKind: EnrichmentErrorKind | null = null;
+  let sameKindStreak = 0;
+  let stoppedKind: EnrichmentErrorKind | undefined;
+  let stoppedRemaining = 0;
+
   for (const [index, company] of companies.entries()) {
     if (index > 0) await sleep(nextDelay());
 
     logActivity(`— [${index + 1}/${companies.length}] ${company.name}`);
+
+    let kind: EnrichmentErrorKind | undefined;
     try {
-      tally[await enrichCompany(company, service)] += 1;
+      const result = await enrichCompany(company, service);
+      tally[result.outcome] += 1;
+      kind = result.errorKind;
     } catch (error) {
       const message = error instanceof Error ? error.message : "裏処理に失敗しました";
-      console.error("enrichment failed:", company.name, message);
+      kind = classifyEnrichmentError(error);
+      console.error("enrichment failed:", company.name, message, `(${kind})`);
       logActivity(`💥 ${company.name}: ${message}`, "error");
-      markCompanyEnrichmentFailed(company.id, message);
+      markCompanyEnrichmentFailed(company.id, message, kind);
       tally.failed += 1;
     }
+
+    if (!kind) {
+      lastKind = null;
+      sameKindStreak = 0;
+      continue;
+    }
+
+    sameKindStreak = kind === lastKind ? sameKindStreak + 1 : 1;
+    lastKind = kind;
+
+    // 基盤起因は1件でも即打ち切り（残りは pending のまま復旧後に自動再開する）。
+    // 企業固有でも同じ理由が続くなら共通原因を疑って一旦止める（単発では止めない）。
+    const infrastructure = isInfrastructureErrorKind(kind);
+    if (infrastructure || sameKindStreak >= CONSECUTIVE_FAILURE_LIMIT) {
+      stoppedKind = kind;
+      stoppedRemaining = companies.length - (index + 1);
+      break;
+    }
+  }
+
+  if (stoppedKind) {
+    // 1社ずつ×印を並べるのではなく、集約した1行で「基盤が止まっている」と伝える
+    const paused = isInfrastructureErrorKind(stoppedKind) ? pauseEnrichment() : null;
+    logActivity(
+      `⛔ 調査を中断しました（${describeErrorKind(stoppedKind)}）。` +
+        `残り${stoppedRemaining}社は未処理のまま残しています` +
+        (paused ? `。${paused} まで自動調査を止めます（画面の「やり直す」で再開できます）` : ""),
+      "error"
+    );
   }
 
   logActivity(
     `🏁 調査完了: 成功${tally.done} / 除外${tally.excluded} / 失敗${tally.failed}`,
     tally.failed > 0 ? "warn" : "success"
   );
-  return { processed: tally.done, failed: tally.failed, excluded: tally.excluded };
+  return {
+    processed: tally.done,
+    failed: tally.failed,
+    excluded: tally.excluded,
+    stoppedRemaining,
+    stoppedKind,
+  };
 }

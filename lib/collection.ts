@@ -11,6 +11,7 @@ import {
 } from "@/lib/db";
 import {
   SearchBlockedError,
+  SearchConfigError,
   decideSearchSite,
   extractCompanies,
   webSearch,
@@ -105,7 +106,8 @@ async function fetchPages(source: CollectionSource, site: string): Promise<Fetch
 
   const apiKey = getSetting("serper_api_key") || process.env.SERPER_API_KEY;
   if (!apiKey) {
-    throw new Error("検索APIが未設定です。設定ページからAPIキーを登録してください");
+    // 設定エラーとして型で区別する（「HTML構造が変わった可能性」と表示して誤った調査に誘導しない）
+    throw new SearchConfigError("検索APIが未設定です。設定ページからAPIキーを登録してください");
   }
 
   const items: SearchResultItem[] = [];
@@ -164,6 +166,31 @@ function registerCompanies(
   }
 
   return { newCount, breakdown };
+}
+
+/**
+ * 例外の型から「原因が分かっている停止理由」を作る。
+ *
+ * これが無いと、APIキー未設定も検索元のブロックも、連続0件として同じ文言
+ * （「HTML構造が変わった可能性」）で表示され、運用者を誤った調査に誘導する。
+ * 原因が分かっている場合は1サイクル目で正しい理由を出して止める。
+ */
+function describePauseForError(
+  error: unknown
+): { kind: "blocked"; reason: string } | null {
+  if (error instanceof SearchConfigError) {
+    return {
+      kind: "blocked",
+      reason: `検索APIの設定に問題があります（${error.message}）。設定ページで確認してください`,
+    };
+  }
+  if (error instanceof SearchBlockedError) {
+    return {
+      kind: "blocked",
+      reason: `検索元からアクセスを拒否されました（${error.status}）。時間を置いてから再開してください`,
+    };
+  }
+  return null;
 }
 
 /** 連続カウンタが閾値に達したかを見て、停止すべきなら理由を返す */
@@ -273,6 +300,13 @@ async function runListingSource(
       error: message,
     });
 
+    // 原因が分かっている失敗（拒否・設定不備）は連続カウンタを待たずに正しい理由で止める
+    const known = describePauseForError(error);
+    if (known) {
+      pauseCollectionSource(source.id, known.kind, known.reason);
+      return { status: "error", newCount: 0, pausedReason: known.reason };
+    }
+
     const noResultRuns = source.consecutive_no_result_runs + 1;
     updateCollectionCursor(source.id, {
       nextPage: source.next_page,
@@ -359,11 +393,11 @@ async function runKeywordSource(source: CollectionSource): Promise<SourceOutcome
       error: message,
     });
 
-    // 叩き過ぎ・拒否は再試行せず即座に止める。続けると状況が悪化する
-    if (error instanceof SearchBlockedError) {
-      const reason = `検索元から拒否されました（${error.status}）。時間を置いてから再開してください`;
-      pauseCollectionSource(source.id, "blocked", reason);
-      return { status: "error", newCount: 0, pausedReason: reason };
+    // 原因が分かっている失敗（拒否・設定不備）は再試行せず即座に、正しい理由で止める
+    const known = describePauseForError(error);
+    if (known) {
+      pauseCollectionSource(source.id, known.kind, known.reason);
+      return { status: "error", newCount: 0, pausedReason: known.reason };
     }
 
     const noResultRuns = source.consecutive_no_result_runs + 1;

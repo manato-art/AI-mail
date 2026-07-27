@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { isInfrastructureErrorKind } from "@/lib/enrichment-errors";
 import type {
   CompanyWithTag,
   Attachment,
@@ -13,6 +14,8 @@ import type {
   Company,
   ComposeMode,
   Contact,
+  EnrichmentErrorKind,
+  EnrichmentStatus,
   FitScore,
   Persona,
   PersonaInput,
@@ -341,6 +344,16 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "companies", "enrichment_status", "TEXT NOT NULL DEFAULT 'pending'");
   addColumnIfMissing(instance, "companies", "enriched_at", "TEXT");
   addColumnIfMissing(instance, "companies", "enrichment_error", "TEXT NOT NULL DEFAULT ''");
+
+  // 調査パイプラインの止血（3列を1バッチで追加。以降のStageは列追加なしで進む）:
+  //  - error_kind : 失敗理由の分類。基盤起因（検索ブロック・設定不足）と企業固有を区別する。
+  //                 既存行は NULL（＝分類なし）で残す。文字列マッチでの後付け分類は救済SQL側で行う。
+  //  - form_url   : クロールで見つけた問い合わせフォーム。今までは保存先が無く毎回捨てていた。
+  //                 メールが取れない企業へ「人が」連絡するためのリストに使う（自動送信はしない）。
+  //  - listing_url: 収集元での掲載ページURL。社名で検索し直さないための正準キー。列だけ先に用意する。
+  addColumnIfMissing(instance, "companies", "error_kind", "TEXT");
+  addColumnIfMissing(instance, "companies", "form_url", "TEXT");
+  addColumnIfMissing(instance, "companies", "listing_url", "TEXT");
   // データ整合（HP再クロールで社名照合）を最後に行った時刻。同じ企業を毎tick再クロールしないための間引きに使う
   addColumnIfMissing(instance, "companies", "integrity_checked_at", "TEXT");
   // F3 相性スコア。どの商材に対するスコアかを持たないと、商材を変えた後に古い判定が残る
@@ -1138,8 +1151,16 @@ export interface CompanyInput {
   hp_url?: string | null;
   lp_url?: string | null;
   recruit_page_url?: string | null;
+  /** 収集元での掲載ページURL（次段で「社名再検索」を避ける正準キーに使う） */
+  listing_url?: string | null;
   /** F1 タグ付け: どの収集キーワード（=collection_sources）由来かの構造化リンク */
   collection_source_id?: number | null;
+  /**
+   * 明示しない場合は hp_url の有無から決める（hp_url あり=調査済み扱いの done / 無し=pending）。
+   * 既にHPが分かっている企業を pending にすると、裏処理が社名で検索し直し、
+   * その検索が失敗したときに元々持っていた情報ごと「調査できず」に落ちる。
+   */
+  enrichment_status?: EnrichmentStatus;
 }
 
 export interface ContactInput {
@@ -1205,20 +1226,29 @@ export function upsertCompany(data: CompanyInput): Company {
     if (existing) return existing;
   }
 
+  // 既にHPが分かっている企業は「調べ直す対象」ではない。列を書かずに既定の 'pending' に
+  // 落とすと、裏処理が社名で検索し直し、検索が壊れている間はその企業ごと failed になる。
+  // 「メールはあるがHPは未特定」は pending のまま＝HP特定の余地があるので調査対象に残す。
+  const hpUrl = data.hp_url ?? null;
+  const enrichmentStatus: EnrichmentStatus =
+    data.enrichment_status ?? (hpUrl ? "done" : "pending");
+
   const result = instance
     .prepare(
-      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url, recruit_page_url, collection_source_id)
-       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url, @recruit_page_url, @collection_source_id)`
+      `INSERT INTO companies (name, domain, source, source_detail, hp_url, lp_url, recruit_page_url, listing_url, collection_source_id, enrichment_status)
+       VALUES (@name, @domain, @source, @source_detail, @hp_url, @lp_url, @recruit_page_url, @listing_url, @collection_source_id, @enrichment_status)`
     )
     .run({
       name: data.name,
       domain,
       source: data.source,
       source_detail: data.source_detail ?? "",
-      hp_url: data.hp_url ?? null,
+      hp_url: hpUrl,
       lp_url: data.lp_url ?? null,
       recruit_page_url: data.recruit_page_url ?? null,
+      listing_url: data.listing_url ?? null,
       collection_source_id: data.collection_source_id ?? null,
+      enrichment_status: enrichmentStatus,
     });
 
   return instance
@@ -1798,11 +1828,16 @@ export function countCompaniesPendingEnrichment(): number {
 export interface CompanyEnrichmentUpdate {
   hp_url?: string | null;
   recruit_page_url?: string | null;
+  /** 問い合わせフォームのURL。メールが取れない企業への人力アプローチ用（自動送信はしない） */
+  form_url?: string | null;
   business_summary?: string;
   fit_score?: FitScore;
   fit_reason?: string;
   fit_service_id?: number | null;
   analysis_json?: string;
+  /** 部分成功（AI分析だけ失敗 等）を done のまま記録するための備考。既定は空＝成功 */
+  enrichment_error?: string;
+  error_kind?: EnrichmentErrorKind | null;
 }
 
 export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate): void {
@@ -1813,10 +1848,12 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
     .prepare(
       `UPDATE companies
        SET hp_url = @hp_url, recruit_page_url = @recruit_page_url,
+           form_url = @form_url,
            business_summary = @business_summary, fit_score = @fit_score,
            fit_reason = @fit_reason, fit_service_id = @fit_service_id,
            analysis_json = @analysis_json,
-           enrichment_status = 'done', enrichment_error = '',
+           enrichment_status = 'done', enrichment_error = @enrichment_error,
+           error_kind = @error_kind,
            enriched_at = datetime('now','localtime')
        WHERE id = @id`
     )
@@ -1824,24 +1861,71 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
       id,
       hp_url: update.hp_url ?? current.hp_url,
       recruit_page_url: update.recruit_page_url ?? current.recruit_page_url,
+      form_url: update.form_url ?? current.form_url,
       business_summary: update.business_summary ?? current.business_summary,
       fit_score: update.fit_score ?? current.fit_score,
       fit_reason: update.fit_reason ?? current.fit_reason,
       fit_service_id: update.fit_service_id ?? current.fit_service_id,
       analysis_json: update.analysis_json ?? current.analysis_json,
+      enrichment_error: (update.enrichment_error ?? "").slice(0, 500),
+      error_kind: update.error_kind ?? null,
     });
 }
 
-/** 失敗は握り潰さず理由を残す。画面に出して人が気づけるようにするため */
-export function markCompanyEnrichmentFailed(id: number, error: string): void {
-  getDb()
+/** その企業が既に「送れるメールアドレス」を持っているか */
+function companyHasUsableContact(id: number): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS hit FROM contacts
+       WHERE company_id = ? AND email IS NOT NULL AND email != '' LIMIT 1`
+    )
+    .get(id) as { hit: number } | undefined;
+  return !!row;
+}
+
+/**
+ * 失敗は握り潰さず理由を残す。画面に出して人が気づけるようにするため。
+ *
+ * ただし「既に有効な連絡先を持っている企業」は failed に落とさない（A-1）。
+ * 落とすと、元々手元にあった正しいメールアドレスごと在庫から消える。
+ * - 基盤起因（検索ブロック・設定不足）: 状態は変えない＝pending のまま復旧後に再開できる
+ * - 企業固有（HP不明・クロール失敗 等）: done を維持し、理由だけ記録する
+ */
+export function markCompanyEnrichmentFailed(
+  id: number,
+  error: string,
+  kind: EnrichmentErrorKind = "unknown"
+): void {
+  const instance = getDb();
+  const message = error.slice(0, 500);
+
+  if (companyHasUsableContact(id)) {
+    if (isInfrastructureErrorKind(kind)) {
+      // こちらの基盤が止まっているだけ。状態は動かさず理由だけ残して再開を待つ
+      instance
+        .prepare("UPDATE companies SET enrichment_error = ?, error_kind = ? WHERE id = ?")
+        .run(message, kind, id);
+      return;
+    }
+    instance
+      .prepare(
+        `UPDATE companies
+         SET enrichment_status = 'done', enrichment_error = ?, error_kind = ?,
+             enriched_at = datetime('now','localtime')
+         WHERE id = ? AND enrichment_status != 'excluded'`
+      )
+      .run(message, kind, id);
+    return;
+  }
+
+  instance
     .prepare(
       `UPDATE companies
-       SET enrichment_status = 'failed', enrichment_error = ?,
+       SET enrichment_status = 'failed', enrichment_error = ?, error_kind = ?,
            enriched_at = datetime('now','localtime')
        WHERE id = ?`
     )
-    .run(error.slice(0, 500), id);
+    .run(message, kind, id);
 }
 
 /**
@@ -1853,7 +1937,7 @@ export function resetFailedEnrichments(): number {
   return getDb()
     .prepare(
       `UPDATE companies
-       SET enrichment_status = 'pending', enrichment_error = ''
+       SET enrichment_status = 'pending', enrichment_error = '', error_kind = NULL
        WHERE enrichment_status = 'failed'`
     )
     .run().changes;
@@ -1867,7 +1951,7 @@ export function resetEnrichedWithoutEmail(): number {
   return getDb()
     .prepare(
       `UPDATE companies
-       SET enrichment_status = 'pending', enrichment_error = ''
+       SET enrichment_status = 'pending', enrichment_error = '', error_kind = NULL
        WHERE enrichment_status = 'done'
          AND id NOT IN (
            SELECT DISTINCT company_id FROM contacts

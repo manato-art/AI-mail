@@ -158,9 +158,27 @@ async function fetchPage(url: string): Promise<FetchedPage | null> {
   }
 }
 
+/**
+ * ブロック要素・改行要素の境目に空白を入れてからテキスト化する。
+ *
+ * cheerio の .text() は要素間を無区切りで連結するため、
+ * `<a>privacy@example.co.jp</a><nav>TOP…` が `privacy@example.co.jpTOP…` になり、
+ * `privacy@example.co.jptop` という実在しないアドレスとして抽出されてしまう。
+ * 破損アドレスをそのまま宛先に使うとバウンスし、送信ドメインの評価まで落とす。
+ */
+const BLOCK_LEVEL_SELECTOR =
+  "address,article,aside,blockquote,br,dd,div,dl,dt,fieldset,figcaption,figure,footer,form,h1,h2,h3,h4,h5,h6,header,hr,li,main,nav,ol,p,pre,section,table,td,th,tr,ul";
+
+function separateBlocks($: cheerio.CheerioAPI): void {
+  $(BLOCK_LEVEL_SELECTOR).each((_, el) => {
+    $(el).before(" ").after(" ");
+  });
+}
+
 export function extractText(html: string): string {
   const $ = cheerio.load(html);
   $("script, style, nav, footer, header").remove();
+  separateBlocks($);
   const text = $("body").text().replace(/\s+/g, " ").trim();
   return text.slice(0, MAX_TEXT_LENGTH);
 }
@@ -169,6 +187,7 @@ export function extractText(html: string): string {
 export function extractFullBodyText(html: string): string {
   const $ = cheerio.load(html);
   $("script, style").remove();
+  separateBlocks($);
   return $("body").text().replace(/\s+/g, " ").trim();
 }
 
@@ -259,17 +278,49 @@ const ASSET_TLD_BLOCKLIST = new Set([
 ]);
 
 /**
+ * 3文字以上の既知TLD。2文字のTLD（ccTLD）は網羅できないので長さで許可する。
+ *
+ * これが無いと `privacy@example.co.jp` の直後に別要素のテキストがくっついた
+ * `privacy@example.co.jptop` のような破損アドレスを「英字だけのTLD」として通してしまう。
+ * 未知のTLDを落とす方向に倒すのは意図的（誤って送るより、拾い損ねる方が安全）。
+ */
+const KNOWN_TLDS = new Set([
+  // 主要gTLD
+  "com", "net", "org", "int", "edu", "gov", "mil", "biz", "info", "name", "pro", "mobi",
+  "asia", "tel", "xxx", "coop", "aero", "jobs", "museum", "travel", "post", "cat",
+  // 新gTLD（日本の企業サイトで実際に使われる範囲）
+  "app", "dev", "page", "site", "online", "store", "shop", "tech", "cloud", "digital",
+  "systems", "solutions", "services", "network", "company", "group", "inc", "ltd", "llc",
+  "agency", "consulting", "marketing", "design", "studio", "media", "works", "world",
+  "center", "expert", "partners", "associates", "capital", "finance", "fund", "estate",
+  "homes", "house", "build", "construction", "energy", "farm", "food", "cafe", "bar",
+  "restaurant", "fashion", "style", "beauty", "fitness", "sport", "travel", "tours",
+  "hotel", "taxi", "delivery", "express", "global", "life", "live", "club", "blog",
+  "email", "link", "one", "space", "team", "today", "tokyo", "osaka", "nagoya", "yokohama",
+  "kyoto", "okinawa", "work", "care", "clinic", "dental", "health", "law", "legal",
+  "academy", "school", "education", "science", "engineering", "computer", "software",
+  "support", "training", "management", "industries", "holdings", "ventures", "trade",
+  "market", "shopping", "bank", "insurance", "realty", "property", "rentals", "auto",
+  "cars", "bike", "toys", "games", "art", "photo", "photography", "music", "video",
+  "news", "press", "info", "guide", "wiki", "zone", "plus", "top", "vip", "xyz", "site",
+]);
+
+/**
  * 抽出した文字列が「本物のメールアドレスらしいか」を判定する。
- * TLD が画像等のアセット拡張子だったり、英字2文字以上でない場合は誤抽出とみなす。
+ * TLD が画像等のアセット拡張子だったり、既知TLDでない場合は誤抽出とみなす。
  */
 export function isPlausibleEmail(email: string): boolean {
   const at = email.lastIndexOf("@");
   if (at <= 0 || at === email.length - 1) return false;
   const domain = email.slice(at + 1);
-  const tld = domain.split(".").pop() ?? "";
-  if (ASSET_TLD_BLOCKLIST.has(tld.toLowerCase())) return false;
+  const tld = (domain.split(".").pop() ?? "").toLowerCase();
+  if (ASSET_TLD_BLOCKLIST.has(tld)) return false;
+  // 実在するTLDに24文字を超えるものは無い。極端に長いものは連結事故とみなす
+  if (tld.length > 24) return false;
   // 実在するメールのTLDは英字のみ（png/2x のような数字混じり・拡張子は弾く）
-  return /^[a-zA-Z]{2,}$/.test(tld);
+  if (!/^[a-zA-Z]{2,}$/.test(tld)) return false;
+  // 2文字はccTLD（jp/us/uk…）として許可。3文字以上は既知TLDだけ通す
+  return tld.length === 2 || KNOWN_TLDS.has(tld);
 }
 
 export function extractEmails(text: string): string[] {
@@ -375,6 +426,27 @@ function extractMailtoEmails(html: string): string[] {
   return emails;
 }
 
+/**
+ * フォームとして扱ってはいけない配布ファイル。
+ * 「お問い合わせ」リンクがPDFの申込用紙を指していることがあり、
+ * それを form_url として保存すると「連絡可能」の件数が実態より水増しされる。
+ */
+const NON_FORM_EXTENSIONS = [
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+  ".zip", ".rar", ".csv", ".txt", ".jpg", ".jpeg", ".png", ".gif",
+];
+
+/** リンク先がフォームではなく配布ファイル（PDF等）か */
+export function isNonFormDocumentUrl(url: string): boolean {
+  let pathname: string;
+  try {
+    pathname = new URL(url, "https://example.com").pathname.toLowerCase();
+  } catch {
+    pathname = url.toLowerCase().split("?")[0].split("#")[0];
+  }
+  return NON_FORM_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+}
+
 export function detectFormUrl(html: string, baseUrl: string): string | null {
   const $ = cheerio.load(html);
 
@@ -408,6 +480,11 @@ export function detectFormUrl(html: string, baseUrl: string): string | null {
     );
 
     if (!isContactLink) {
+      return;
+    }
+
+    // PDF等の配布ファイルは「フォーム」ではない。保存すると連絡可能件数を水増しする
+    if (isNonFormDocumentUrl(href)) {
       return;
     }
 

@@ -214,10 +214,25 @@ export interface Company {
   lp_url: string | null;
   /** F1: 採用・インターン・recruit ページのURL（検出できた場合） */
   recruit_page_url: string | null;
+  /**
+   * 問い合わせフォームのURL（クロールで見つかった場合）。
+   * メールが取れない企業に「人が」連絡するためのリスト用。自動送信はしない。
+   */
+  form_url: string | null;
+  /**
+   * 収集元（求人媒体等）での掲載ページURL。社名で公式サイトを検索し直さずに
+   * 済ませるための正準キー。列だけ先に用意し、活用は次段で行う。
+   */
+  listing_url: string | null;
   /** 裏処理（クロール→連絡先→相性スコア）の進捗 */
   enrichment_status: EnrichmentStatus;
   enriched_at: string | null;
   enrichment_error: string;
+  /**
+   * 失敗理由の分類。基盤起因（search_blocked / config_missing）と企業固有を
+   * 区別するために持つ。列追加より前の行・分類の無い行は null。
+   */
+  error_kind: EnrichmentErrorKind | null;
   /** データ整合チェック（HP再クロールで社名照合）を最後に行った時刻。未確認は null */
   integrity_checked_at?: string | null;
   /** F3: 相性スコア。fit_service_id とセットでないと古い商材の判定が混ざる */
@@ -248,6 +263,30 @@ export interface CompanyWithTag extends Company {
  * failed（処理エラー）と区別しないと、再試行すべきものと区別できなくなる。
  */
 export type EnrichmentStatus = "pending" | "done" | "failed" | "excluded";
+
+/**
+ * 調査が進まなかった理由の分類。
+ *
+ * 「1件の基盤障害が数百社分の個別失敗として記録される」のを止めるために、
+ * 基盤起因（search_blocked / config_missing）と企業固有（hp_not_found /
+ * crawl_empty / name_mismatch / analyze_failed）を必ず区別する。
+ * 判定ヘルパは lib/enrichment-errors.ts。
+ */
+export type EnrichmentErrorKind =
+  /** 検索元からアクセスを拒否・制限された（基盤起因） */
+  | "search_blocked"
+  /** 検索APIキーが未設定・無効（基盤起因） */
+  | "config_missing"
+  /** 公式サイトを特定できなかった（企業固有） */
+  | "hp_not_found"
+  /** 公式サイトは分かったが中身を取得できなかった（企業固有） */
+  | "crawl_empty"
+  /** 掴んだサイトに社名が現れず別会社の疑い（企業固有） */
+  | "name_mismatch"
+  /** AI分析だけが失敗した（連絡先は保持する） */
+  | "analyze_failed"
+  /** 上記に当てはまらない想定外のエラー */
+  | "unknown";
 
 /** 空文字は「未判定」。判定済みなら high / medium / low */
 export type FitScore = "" | "high" | "medium" | "low";

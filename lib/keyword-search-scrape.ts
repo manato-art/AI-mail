@@ -44,14 +44,17 @@ export async function scrapeSearch(
       signal: controller.signal,
     });
 
+    // 202/403/429/503 は「叩き過ぎ・拒否」。常時収集側が即停止できるよう型で区別する。
+    // 202 は res.ok が true なので、!res.ok の中で判定すると素通りして「静かに0件」になる。
+    // ブロック判定は必ず res.ok の判定より前に行う。
+    if (BLOCKED_STATUSES.has(res.status)) {
+      throw new SearchBlockedError(
+        `検索元からアクセスを拒否されました（${res.status}）`,
+        res.status
+      );
+    }
+
     if (!res.ok) {
-      // 403/429/503 は「叩き過ぎ・拒否」。常時収集側が即停止できるよう型で区別する
-      if (BLOCKED_STATUSES.has(res.status)) {
-        throw new SearchBlockedError(
-          `検索元からアクセスを拒否されました（${res.status}）`,
-          res.status
-        );
-      }
       throw new Error(`検索スクレイピングに失敗しました（${res.status}）`);
     }
 

@@ -10,7 +10,11 @@ import {
 } from "@/lib/db";
 import { logActivity } from "@/lib/activity-log";
 import { runCollectionCycle, type CollectionCycleResult } from "@/lib/collection";
-import { runEnrichmentBatch, type EnrichmentBatchResult } from "@/lib/enrichment";
+import {
+  getEnrichmentPausedUntil,
+  runEnrichmentBatch,
+  type EnrichmentBatchResult,
+} from "@/lib/enrichment";
 import { runIntegrityCheckBatch } from "@/lib/data-integrity";
 import { runScheduledSendBatch } from "@/lib/send-scheduler";
 
@@ -184,6 +188,13 @@ async function enrichTick(): Promise<void> {
   try {
     // 収集ジョブ・手動調査が動作中なら触らない（無駄なロック取得で他をブロックしない）
     if (isJobLocked(LOCK_KEY)) return;
+    // 検索ブロック・設定不足を検知して停止中なら、復旧するまで叩かない。
+    // ここを見ないと、直っていない基盤に5分おきに20社ずつ投げ込み続けることになる
+    const pausedUntil = getEnrichmentPausedUntil();
+    if (pausedUntil) {
+      console.info(`enrich tick: skipped (paused until ${pausedUntil})`);
+      return;
+    }
     if (countCompaniesPendingEnrichment() === 0) return;
     if (!tryAcquireJobLock(LOCK_KEY, ENRICH_LOCK_TTL_MINUTES)) return;
     try {

@@ -16,6 +16,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import type { CompanyWithTag, Contact } from "@/lib/types";
+import { describeErrorKind } from "@/lib/enrichment-errors";
 import { normGenDomain } from "@/lib/gen-status";
 import { useActiveService } from "@/components/service-context";
 import { ActivityLogPanel } from "../activity-log-panel";
@@ -56,6 +57,23 @@ const STATUS_CONFIG: Record<
 };
 
 type StatusFilter = "all" | "done" | "pending" | "failed";
+
+/**
+ * 「調査できず」の理由を、同じ理由ごとにまとめた集計。
+ * 238社が「同じ原因1件」なのか「238件の個別事情」なのかを、
+ * DBを見なくても画面だけで判断できるようにするためのもの。
+ */
+function summarizeFailures(companies: CompanyWithTag[]): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const c of companies) {
+    if (c.enrichment_status !== "failed") continue;
+    const label = describeErrorKind(c.error_kind);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+}
 
 function isStatusFilter(value: string): value is StatusFilter {
   return value === "all" || value === "done" || value === "pending" || value === "failed";
@@ -117,6 +135,7 @@ export default function CompaniesPage() {
   const [reEnriching, setReEnriching] = useState(false);
   const [enrichingPending, setEnrichingPending] = useState(false);
   const [reconciling, setReconciling] = useState(false);
+  const [retryingFailed, setRetryingFailed] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingHpId, setEditingHpId] = useState<number | null>(null);
   const [hpUrlInput, setHpUrlInput] = useState("");
@@ -255,6 +274,27 @@ export default function CompaniesPage() {
     }
   }, [load, showToast]);
 
+  // 「調査できず」の企業をまとめてやり直す。停止解除→待ち行列へ戻す→調査開始を1回で行う。
+  const handleRetryFailed = useCallback(async () => {
+    setRetryingFailed(true);
+    try {
+      const res = await fetch("/api/companies/retry-failed", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.started) {
+        await load();
+        showToast(`${data.reset}社を調べ直しています（数分かかります）`);
+      } else if (res.ok) {
+        showToast(data.message || "やり直す企業はありません");
+      } else {
+        showToast(data.error || "やり直しの開始に失敗しました");
+      }
+    } catch {
+      showToast("やり直しの開始に失敗しました（通信エラー）");
+    } finally {
+      setRetryingFailed(false);
+    }
+  }, [load, showToast]);
+
   // 調査済み企業のHPを再クロールし、登録社名がHPに現れない誤紐付けを是正する（連絡先無効化→再調査へ）。
   const handleReconcile = useCallback(async () => {
     setReconciling(true);
@@ -386,7 +426,11 @@ export default function CompaniesPage() {
   const totals = {
     done: companies.filter((c) => c.enrichment_status === "done").length,
     pending: companies.filter((c) => c.enrichment_status === "pending").length,
+    failed: companies.filter((c) => c.enrichment_status === "failed").length,
   };
+
+  // 「調査できず」タブを開いている時だけ、いま見えている範囲の失敗理由をまとめて出す
+  const failureSummary = filter === "failed" ? summarizeFailures(filtered) : [];
 
   if (loading) {
     return (
@@ -526,6 +570,47 @@ export default function CompaniesPage() {
           </select>
         )}
       </div>
+
+      {/* 「調査できず」の理由まとめ。原因が1つに集中しているのか、バラバラなのかを一目で出す */}
+      {filter === "failed" && failureSummary.length > 0 && (
+        <div className={`${CARD} flex flex-col gap-3 px-4 py-3`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[13px] font-medium text-(--color-foreground)">
+              調べられなかった理由の内訳
+            </p>
+            <button
+              type="button"
+              onClick={handleRetryFailed}
+              disabled={retryingFailed}
+              title="「調査できず」の企業を待ち行列に戻し、すぐに調べ直します（停止していた場合は再開します）"
+              className={BTN_SECONDARY}
+            >
+              {retryingFailed ? (
+                <SpinnerGap size={16} className="animate-spin" />
+              ) : (
+                <ArrowClockwise size={16} />
+              )}
+              {retryingFailed ? "やり直し中..." : `${totals.failed}社をやり直す`}
+            </button>
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {failureSummary.map((row) => (
+              <li
+                key={row.label}
+                className="flex flex-wrap items-baseline justify-between gap-2 text-[13px] text-(--color-muted)"
+              >
+                <span>{row.label}</span>
+                <span className="tabular-nums font-medium text-(--color-foreground)">
+                  {row.count}社
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12px] leading-relaxed text-(--color-muted)">
+            「企業側の問題ではありません」と出ている分は、こちらの検索設定を直せばまとめて調べ直せます。
+          </p>
+        </div>
+      )}
 
       {/* 選択バーはテーブルの直上（下部固定にしない＝モバイルの下部領域を奪わない） */}
       {selectedIds.size > 0 && (
@@ -679,6 +764,15 @@ export default function CompaniesPage() {
                           <StatusIcon size={15} weight="fill" />
                           {cfg?.label ?? company.enrichment_status}
                         </span>
+                        {/* ×印の理由は既にデータとして届いている。出さないと原因が1つなのか個別なのか分からない */}
+                        {company.enrichment_status === "failed" && (
+                          <p
+                            title={company.enrichment_error || undefined}
+                            className="mt-0.5 max-w-[220px] text-[11px] leading-snug text-(--color-muted)"
+                          >
+                            {describeErrorKind(company.error_kind)}
+                          </p>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 align-top tabular-nums text-(--color-muted)">
                         {formatDate(company.created_at)}

@@ -39,8 +39,25 @@ export class SearchBlockedError extends Error {
   }
 }
 
-/** 叩き過ぎ・拒否とみなすHTTPステータス */
-export const BLOCKED_STATUSES = new Set([403, 429, 503]);
+/**
+ * 「こちら側の設定が足りない/間違っている」状態。
+ * 上流が悪いのではなく設定で直せるので、SearchBlockedError（時間を置けば直る）とは分けて扱う。
+ * 文言マッチでしか判別できないと、調査側で基盤起因と企業固有を切り分けられない。
+ */
+export class SearchConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SearchConfigError";
+  }
+}
+
+/**
+ * 叩き過ぎ・拒否とみなすHTTPステータス。
+ * 202 は「受け付けたがコンテンツは返さない」= bot検知ページの定番応答。
+ * res.ok が true になるため、外すと「正常応答なのに0件」として静かに扱われ、
+ * ブロックされている事実が誰にも伝わらないまま叩き続けることになる。
+ */
+export const BLOCKED_STATUSES = new Set([202, 403, 429, 503]);
 
 export async function webSearch(
   apiKey: string,
@@ -80,7 +97,8 @@ export async function webSearch(
         throw new SearchBlockedError("検索APIが一時的に利用できません", res.status);
       }
       if (res.status === 401) {
-        throw new Error("検索APIキーが無効です。設定ページで正しいキーを登録してください");
+        // 設定エラー。時間を置いても直らないので、再試行ではなく設定修正へ誘導する
+        throw new SearchConfigError("検索APIキーが無効です。設定ページで正しいキーを登録してください");
       }
       if (res.status === 403) {
         throw new SearchBlockedError("検索APIへのアクセスが拒否されました", res.status);

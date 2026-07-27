@@ -71,6 +71,40 @@ function hasExplicitProtocol(urlStr: string): boolean {
   return /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(urlStr);
 }
 
+/**
+ * DNS解決の打ち切り時間（既定5秒）。
+ *
+ * dns.lookup にはタイムアウトが無く、応答しないDNSに当たると解決フェーズで無限に待つ。
+ * crawl.ts の AbortController は fetch にしか効かないため、ここが止まると
+ * 調査バッチは直列ループのまま進まず、収集ジョブのロックを握ったまま「実行中」が張り付く
+ * （KB: untimed-fetch-hang-holds-job-lock）。env DNS_LOOKUP_TIMEOUT_MS で調整可。
+ */
+export const DNS_LOOKUP_TIMEOUT_MS = 5000;
+
+function dnsTimeoutMs(): number {
+  const raw = Number(process.env.DNS_LOOKUP_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DNS_LOOKUP_TIMEOUT_MS;
+}
+
+/** dns.lookup を必ず打ち切る。タイムアウトしたら null（＝解決できなかった）を返す */
+async function lookupWithTimeout(hostname: string): Promise<{ address: string }[] | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      dns.lookup(hostname, { all: true }),
+      // unref しない。unref すると「解決も返らずタイマーも数えられない」状態になり、
+      // 打ち切りが発火しないまま処理が宙に浮く。決着後は必ず finally で解除する
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), dnsTimeoutMs());
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function validateUrl(urlStr: string): UrlValidationResult {
   const trimmed = urlStr.trim();
 
@@ -137,10 +171,10 @@ export async function validateUrlWithDns(urlStr: string): Promise<UrlValidationR
     return base;
   }
 
-  let addresses: { address: string }[];
-  try {
-    addresses = await dns.lookup(hostname, { all: true });
-  } catch {
+  // 解決できない／時間内に返らない場合は「解決できなかった」として先へ進める。
+  // ここで待ち続けると、1社のDNSハングがバッチ全体とジョブロックを巻き添えにする
+  const addresses = await lookupWithTimeout(hostname);
+  if (!addresses) {
     return { valid: false, normalized: base.normalized, error: "ホスト名を解決できませんでした" };
   }
 
