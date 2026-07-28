@@ -58,6 +58,8 @@ export function useGeneratedSend({
   const [genRowStatus, setGenRowStatus] = useState<Record<number, GenRowStatus>>({});
   const [genScheduledAt, setGenScheduledAt] = useState("");
   const [genEmailFilter, setGenEmailFilter] = useState("");
+  /** 送信状況の絞り込み: "" すべて / "unsent" 未送信 / "sent" 送信済み / "scheduled" 予約済み */
+  const [genSendFilter, setGenSendFilter] = useState("");
   // null = まだ自分で選んでいない（上部バーの商材が初期値になる）
   const [genServiceFilterState, setGenServiceFilter] = useState<string | null>(null);
   // 生成メールの内容プレビュー/編集（展開中の1件）
@@ -92,12 +94,20 @@ export function useGeneratedSend({
         return true;
       })
       .filter((p) => !genServiceFilter || p.service_id === Number(genServiceFilter))
+      // 送信状況での絞り込み。並び順（作成日時の新しい順）は変えない
+      // ＝「同じ宛先は最新1件だけ送る」判定がこの順序に依存しているため
+      .filter((p) => {
+        if (genSendFilter === "unsent") return p.send_status !== "sent" && p.send_status !== "scheduled";
+        if (genSendFilter === "sent") return p.send_status === "sent";
+        if (genSendFilter === "scheduled") return p.send_status === "scheduled";
+        return true;
+      })
       .filter((p) =>
         !q ||
         (p.company_name || "").toLowerCase().includes(q) ||
         (p.generated_subject || "").toLowerCase().includes(q)
       );
-  }, [sorted, generatedSearch, genEmailFilter, genServiceFilter]);
+  }, [sorted, generatedSearch, genEmailFilter, genServiceFilter, genSendFilter]);
 
   /** 表示中の生成メールのうち、送信できる対象（メアドあり・未送信）。全選択の対象 */
   // 同じ宛先メールに複数の生成メールがある場合は「最新の1件」だけを送信対象にする
@@ -325,6 +335,8 @@ export function useGeneratedSend({
     setGenScheduledAt,
     genEmailFilter,
     setGenEmailFilter,
+    genSendFilter,
+    setGenSendFilter,
     genServiceFilter,
     setGenServiceFilter,
     genServiceOptions,

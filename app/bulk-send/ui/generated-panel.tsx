@@ -80,6 +80,17 @@ export function GeneratedPanel({
             <option value="has">✉️ メアドあり</option>
             <option value="none">⚠️ メアド未取得</option>
           </select>
+          <select
+            value={gen.genSendFilter}
+            onChange={(e) => gen.setGenSendFilter(e.target.value)}
+            aria-label="送信状況で絞り込む"
+            className="h-11 rounded-lg border border-(--color-border) bg-gray-50 px-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-(--color-primary)/10 dark:bg-slate-800"
+          >
+            <option value="">送信状況：すべて</option>
+            <option value="unsent">まだ送っていない</option>
+            <option value="sent">送信済み</option>
+            <option value="scheduled">予約済み</option>
+          </select>
           {gen.genServiceOptions.length > 0 && (
             <select
               value={gen.genServiceFilter}
