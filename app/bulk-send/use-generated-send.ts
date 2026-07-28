@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { Prospect } from "@/lib/types";
+import {
+  buildHandledCompanies,
+  firstEmailFromJson,
+  selectSendableRows,
+  type SkipReason,
+} from "@/lib/generated-dedup";
 import type { GenRowStatus, SenderInfo } from "./shared";
 
 /**
@@ -14,12 +20,7 @@ import type { GenRowStatus, SenderInfo } from "./shared";
 
 /** 生成済みメールに紐づく送信先メール（HP分析時に見つけたもの）を1件返す */
 export function firstEmailOf(p: Prospect): string | null {
-  try {
-    const emails: string[] = p.emails_found_json ? JSON.parse(p.emails_found_json) : [];
-    return emails.find((e) => typeof e === "string" && e.includes("@")) ?? null;
-  } catch {
-    return null;
-  }
+  return firstEmailFromJson(p.emails_found_json);
 }
 
 interface Options {
@@ -84,9 +85,20 @@ export function useGeneratedSend({
       ? String(activeServiceId)
       : "");
 
-  const generatedProspects = useMemo(() => {
+  /**
+   * 既に対応済み（送信済み・予約済み）の会社。**絞り込み前の全生成メール**から作る。
+   * 絞り込み後の一覧から作ると、商材や検索で隠れている送信済みを見落として
+   * 「同じ会社にまた送れる」ように見えてしまう。
+   *
+   * サーバ側の重複ガードは送信ログ（直近90日）で判定するが、画面はこの一覧の
+   * 送信済み/予約済みで判定する。ユーザー決定（同じ会社には一回だけ）に沿う側に倒している。
+   */
+  const handledCompanies = useMemo(() => buildHandledCompanies(prospects), [prospects]);
+
+  const { generatedProspects, genSelectable, genRowNote, genHiddenCount } = useMemo(() => {
     const q = generatedSearch.toLowerCase();
-    return sorted
+    // 並び順（作成日時の新しい順）は変えない＝「同じ会社は最新の1件だけ送る」判定がこの順序に依存する
+    const base = sorted
       .filter((p) => p.generated_subject && p.generated_body && p.input_url)
       .filter((p) => {
         if (genEmailFilter === "has") return !!firstEmailOf(p);
@@ -94,50 +106,54 @@ export function useGeneratedSend({
         return true;
       })
       .filter((p) => !genServiceFilter || p.service_id === Number(genServiceFilter))
-      // 送信状況での絞り込み。並び順（作成日時の新しい順）は変えない
-      // ＝「同じ宛先は最新1件だけ送る」判定がこの順序に依存しているため
-      .filter((p) => {
-        if (genSendFilter === "unsent") return p.send_status !== "sent" && p.send_status !== "scheduled";
-        if (genSendFilter === "sent") return p.send_status === "sent";
-        if (genSendFilter === "scheduled") return p.send_status === "scheduled";
-        return true;
-      })
       .filter((p) =>
         !q ||
         (p.company_name || "").toLowerCase().includes(q) ||
         (p.generated_subject || "").toLowerCase().includes(q)
       );
-  }, [sorted, generatedSearch, genEmailFilter, genServiceFilter, genSendFilter]);
 
-  /** 表示中の生成メールのうち、送信できる対象（メアドあり・未送信）。全選択の対象 */
-  // 同じ宛先メールに複数の生成メールがある場合は「最新の1件」だけを送信対象にする
-  // （generatedProspects は作成日時の降順なので、各メールの先頭＝最新）。
-  const genSelectable = useMemo(() => {
-    const seen = new Set<string>();
-    const result: Prospect[] = [];
-    for (const p of generatedProspects) {
-      const email = firstEmailOf(p);
-      // 送信済み・予約済みは選択対象から外す（予約済みも送信済みと同じく「対応済み」）
-      if (!email || p.send_status === "sent" || p.send_status === "scheduled") continue;
-      const key = email.toLowerCase();
-      if (seen.has(key)) continue; // 同一宛先は最新だけ残す
-      seen.add(key);
-      result.push(p);
+    // 会社単位の選別（サーバ側の重複ガードと同じ会社キーで判定する）
+    const { sendable, skipped } = selectSendableRows(base, handledCompanies);
+
+    let visible = base;
+    let hidden = 0;
+    if (genSendFilter === "sent") {
+      visible = base.filter((p) => p.send_status === "sent");
+    } else if (genSendFilter === "scheduled") {
+      visible = base.filter((p) => p.send_status === "scheduled");
+    } else if (genSendFilter === "unsent") {
+      // 「まだ送っていない」＝**この会社に**まだ送っていない。同じ会社の重複や、
+      // 会社として送信済み/予約済みの行をここに残すと、送れないものを送れるように見せてしまう。
+      const isOpen = (p: Prospect) =>
+        p.send_status !== "sent" && p.send_status !== "scheduled";
+      visible = base.filter((p) => isOpen(p) && !skipped.has(p.id));
+      hidden = base.filter((p) => isOpen(p) && skipped.has(p.id)).length;
     }
-    return result;
-  }, [generatedProspects]);
-  /** 各宛先で「最新＝送信対象」に選ばれた生成メールのID。これ以外の同一宛先は重複扱い */
+
+    const visibleIds = new Set(visible.map((p) => p.id));
+    return {
+      generatedProspects: visible,
+      // 画面に出ていない行を「すべて選択」で拾わない
+      genSelectable: sendable.filter((p) => visibleIds.has(p.id)),
+      /** 送らない行と理由（画面のバッジ用）。会社として対応済み／同じ会社の古い重複 */
+      genRowNote: skipped as Map<number, SkipReason>,
+      /** 「まだ送っていない」で会社単位に畳んで隠した件数（黙って減らさず件数を出す） */
+      genHiddenCount: hidden,
+    };
+  }, [sorted, generatedSearch, genEmailFilter, genServiceFilter, genSendFilter, handledCompanies]);
+
+  /** 各社で「最新＝送信対象」に選ばれた生成メールのID。これ以外の同じ会社の行は重複扱い */
   const genSelectableIds = useMemo(() => new Set(genSelectable.map((p) => p.id)), [genSelectable]);
   const allGenSelected =
     genSelectable.length > 0 && genSelectable.every((p) => generatedChecked.has(p.id));
 
   function toggleGenSelectAll() {
-    // 全選択は「各宛先の最新1件」だけ。古い重複は選ばない
+    // 全選択は「各社の最新1件」だけ。同じ会社の古い重複・対応済みの会社は選ばない
     if (allGenSelected) setGeneratedChecked(new Set());
     else setGeneratedChecked(new Set(genSelectable.map((p) => p.id)));
   }
 
-  // 生成済みメールの面を開いた時、各宛先の最新1件をデフォルトで選択済みにする
+  // 生成済みメールの面を開いた時、各社の最新1件をデフォルトで選択済みにする
   useEffect(() => {
     if (open) setGeneratedChecked(new Set(genSelectable.map((p) => p.id)));
     // 開いた瞬間だけ既定選択する（絞り込み変更では選択をリセットしない）
@@ -150,21 +166,14 @@ export function useGeneratedSend({
       showToast("送信者（人格）を選択してください");
       return;
     }
-    // 同一宛先へは1通だけ（最新）。チェックに古い重複が混じっていても宛先ごとに最新へ絞る
-    const seenSend = new Set<string>();
-    const targets: Prospect[] = [];
-    for (const p of generatedProspects) {
-      // 送信済み・予約済みは対象外（予約済みも「対応済み」として送信済みと同じ扱いにする）
-      if (!generatedChecked.has(p.id) || p.send_status === "sent" || p.send_status === "scheduled") continue;
-      const email = firstEmailOf(p);
-      if (!email) continue;
-      const key = email.toLowerCase();
-      if (seenSend.has(key)) continue;
-      seenSend.add(key);
-      targets.push(p);
-    }
+    // 同じ会社へは1通だけ（最新）。チェックに古い重複や対応済みの会社が混じっていても、
+    // 画面の一覧と同じ選別（＝サーバ側の重複ガードと同じ会社キー）でここでも絞る。
+    const targets = selectSendableRows(
+      generatedProspects.filter((p) => generatedChecked.has(p.id)),
+      handledCompanies
+    ).sendable;
     if (targets.length === 0) {
-      showToast("送信できる選択がありません（メアドあり・未送信のみ対象）");
+      showToast("送信できる選択がありません（メアドあり・その会社にまだ送っていないものだけ）");
       return;
     }
     // 予約日時が入っていれば送信ではなく予約にする
@@ -343,6 +352,8 @@ export function useGeneratedSend({
     generatedProspects,
     genSelectable,
     genSelectableIds,
+    genRowNote,
+    genHiddenCount,
     allGenSelected,
     toggleGenSelectAll,
     genEditingId,

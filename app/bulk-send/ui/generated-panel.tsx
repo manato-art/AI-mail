@@ -7,7 +7,8 @@ import { firstEmailOf, type GeneratedSendApi } from "../use-generated-send";
 
 /**
  * 「生成」で作った個別メールを各社へまとめて送る面（モード2タブの片方）。
- * 送信済み/予約済み/メアド無し/古い重複は選べない（チェックボックスを無効化する）。
+ * 送信済み/予約済み/メアド無し/その会社へ対応済みの行は選べない（チェックボックスを無効化する）。
+ * 判定はサーバ側の重複ガードと同じ会社キー（lib/generated-dedup.ts）。画面と送信結果を食い違わせない。
  *
  * 送信バーは画面下に固定する。左サイドバーの幅ぶん padding を空けるのを忘れない。
  */
@@ -111,15 +112,26 @@ export function GeneratedPanel({
         {gen.generatedProspects.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <p className="text-sm text-(--color-muted)">
-              {gen.generatedSearch ? "該当する生成済みメールがありません" : "生成済みメールがありません"}
+              {gen.genHiddenCount > 0
+                ? `まだ送っていない会社はありません（同じ会社へ送信・予約済みの${gen.genHiddenCount}件は隠しています）`
+                : gen.generatedSearch
+                  ? "該当する生成済みメールがありません"
+                  : "生成済みメールがありません"}
             </p>
           </div>
         ) : (
           <div className="space-y-1.5">
             <p className="mb-2 text-[13px] leading-relaxed text-(--color-muted)">
-              チェックした生成メールを、<b>各社の個別本文のまま</b>それぞれの会社のメアドへまとめて送信できます（メアドあり・未送信のみ対象）。
+              チェックした生成メールを、<b>各社の個別本文のまま</b>それぞれの会社のメアドへまとめて送信できます
+              （メアドあり・<b>その会社にまだ送っていない</b>ものだけが対象。同じ会社へは最新の1件だけ送ります）。
               「内容」で本文の確認・編集、「引用」で直接入力欄のテンプレに読み込みます。
             </p>
+            {gen.genSendFilter === "unsent" && gen.genHiddenCount > 0 && (
+              <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-800 dark:bg-amber-900/25 dark:text-amber-200">
+                同じ会社にすでに送信・予約済みのもの、同じ会社の古い重複 <b>{gen.genHiddenCount}件</b> は隠しています
+                （「送信状況：すべて」に戻すと確認できます）。
+              </p>
+            )}
             <div className="sticky top-0 z-10 mb-1.5 flex items-center justify-between rounded-lg border border-(--color-border) bg-(--color-card) px-3 py-2">
               <label className={`flex items-center gap-2 ${gen.genSelectable.length > 0 ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}>
                 <input
@@ -144,11 +156,14 @@ export function GeneratedPanel({
               // 送信済み・予約済みはどちらも「対応済み」= 選択対象外にまとめる
               const done = already || scheduled;
               const st = gen.genRowStatus[p.id];
-              const selectable = !!email && !done;
+              const note = gen.genRowNote.get(p.id);
+              // この会社には既に送信済み/予約済み＝サーバ側でもブロックされる。選ばせない
+              const companyDone = note === "company-sent" || note === "company-scheduled";
+              const selectable = !!email && !done && !companyDone;
               const editing = gen.genEditingId === p.id;
               const svcName = serviceNameOf(p.service_id);
-              // 同一宛先に、より新しい生成メールがある＝この行は古い重複（既定では選ばれない）
-              const isOlderDup = !!email && !done && !gen.genSelectableIds.has(p.id);
+              // 同じ会社に、より新しい生成メールがある＝この行は古い重複（既定では選ばれない）
+              const isOlderDup = note === "older-duplicate";
               return (
                 <div key={p.id} className="rounded-lg border border-(--color-border)">
                   <div className="flex items-center gap-3 px-3 py-2.5">
@@ -176,8 +191,16 @@ export function GeneratedPanel({
                           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⚠️ メアド無し</span>
                         )}
                         {isOlderDup && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="同じ宛先に新しい生成メールがあります。既定では最新の1件だけ送ります">
-                            重複（最新を選択中）
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="同じ会社に新しい生成メールがあります。既定では最新の1件だけ送ります">
+                            同じ会社の重複（最新を選択中）
+                          </span>
+                        )}
+                        {companyDone && (
+                          <span
+                            className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                            title="この会社には既に別のメールを送信/予約しています。同じ会社に何通も送らないため、この行は送信できません"
+                          >
+                            🏢 この会社は{note === "company-sent" ? "送信済み" : "予約済み"}
                           </span>
                         )}
                         {svcName && (
