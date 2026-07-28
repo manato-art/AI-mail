@@ -2,6 +2,21 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/**
+ * 画面幅の境目は px で固定する。
+ * 既定の Tailwind は rem（＝ブラウザの標準フォントサイズに連動）なので、
+ * 利用者が Chrome の「フォントサイズ」を大きくしていると境目が右にずれ、
+ * 十分に広い画面でもサイドバーが隠れてナビゲーションを見失う。
+ * レイアウトの切り替わりは実際の画面幅だけで決める。
+ */
+@theme {
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

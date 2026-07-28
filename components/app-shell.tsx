@@ -119,7 +119,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setDrawerOpen(true)}
             aria-label="メニューを開く"
             aria-expanded={drawerOpen}
-            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-foreground) focus-visible:ring-2 focus-visible:ring-(--color-primary) md:hidden"
+            // 幅に関わらず常に出す。サイドバーが出ない環境（ブラウザの文字サイズ設定・
+            // 拡大表示・想定外の描画）でもナビゲーションを見失わないための最後の入口。
+            // YouTube Studio や Gmail も全幅でこのボタンを出している。
+            className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-(--color-muted) transition-colors motion-reduce:transition-none hover:bg-(--color-card-hover) hover:text-(--color-foreground) focus-visible:ring-2 focus-visible:ring-(--color-primary)"
           >
             <List size={20} />
           </button>
@@ -173,12 +176,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
 
-      {/* モバイルのドロワー（ESC・外側クリックで閉じ、開いたら中へフォーカス） */}
+      {/* メニューのドロワー（ESC・外側クリックで閉じ、開いたら中へフォーカス）。
+          幅で隠さない＝サイドバーが出ない環境でもここから全画面へ行ける */}
       <Modal
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         label="メインメニュー"
-        overlayClassName="fixed inset-0 z-50 flex bg-black/40 md:hidden"
+        overlayClassName="fixed inset-0 z-50 flex bg-black/40"
       >
         <div className="flex h-full w-64 max-w-[80vw] flex-col gap-1 border-r border-(--color-border) bg-(--color-card) p-2">
           <div className="mb-1 flex h-12 items-center justify-between pl-2">
