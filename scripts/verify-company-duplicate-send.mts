@@ -139,6 +139,29 @@ check(
   `gForce.canSend=${gForce.canSend}`
 );
 
+// ケース7【予約時点で気づける】: 予約済みの会社は「送信済み」と同じく重複として検知される
+const { hasScheduledToCompanyDomain, scheduleProspect } = await import("@/lib/db");
+const pSched = mk("予約テスト社", "yoyaku.zzz", "info@yoyaku.zzz");
+check(
+  "予約前は予約済みと判定されない",
+  !hasScheduledToCompanyDomain("yoyaku.zzz")
+);
+scheduleProspect(pSched, {
+  scheduledAt: "2099-01-01 00:00:00",
+  senderId: sender.id,
+  toEmail: "info@yoyaku.zzz",
+  subject: "ご提案の件",
+  body,
+} as never);
+check(
+  "【予約時点で気づける】予約を入れた会社は予約済みとして検知される",
+  hasScheduledToCompanyDomain("yoyaku.zzz")
+);
+check(
+  "予約しても別会社は影響を受けない",
+  !hasScheduledToCompanyDomain("other.zzz")
+);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 // DBハンドルが握ったままだと Windows で EPERM になるため、失敗しても無視する
 try { rmSync(dbDir, { recursive: true, force: true }); } catch { /* 一時ディレクトリの後始末 */ }

@@ -51,11 +51,14 @@ function mk(email: string | null, status = "unsent"): number {
   return id;
 }
 
-const p1 = mk(`c1-${seed}@sched-a.zzz`);
-const p2 = mk(`c2-${seed}@sched-b.zzz`);
-const p3 = mk(`c3-${seed}@sched-c.zzz`);
+// ドメインも seed で変える＝実行ごとに別会社にする。
+// 共有DBなので固定ドメインだと前回実行の予約が残り、会社単位の重複ガード
+// （同じ会社に予約が二重に積まれるのを防ぐ）に正しく弾かれてしまう。
+const p1 = mk(`c1-${seed}@sched-a-${seed}.zzz`);
+const p2 = mk(`c2-${seed}@sched-b-${seed}.zzz`);
+const p3 = mk(`c3-${seed}@sched-c-${seed}.zzz`);
 const pNoEmail = mk(null);
-const pSent = mk(`c5-${seed}@sched-e.zzz`, "sent");
+const pSent = mk(`c5-${seed}@sched-e-${seed}.zzz`, "sent");
 
 const scheduledAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 明日
 

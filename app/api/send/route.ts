@@ -8,6 +8,7 @@ import {
   claimProspectForSending,
   hasSentToEmail,
   hasSentToCompanyDomain,
+  hasScheduledToCompanyDomain,
   claimEmailForSend,
   releaseEmailClaim,
   scheduleProspect,
@@ -124,6 +125,18 @@ export async function POST(request: NextRequest) {
         error: "この会社には過去90日以内に送信済みのため、重複送信を防止しました",
         reasons: [
           `${companyDomainForGuard} の会社は別のアドレスで送信履歴にあります（同一企業への重複送信を防いでいます）`,
+        ],
+      },
+      { status: 409 }
+    );
+  }
+  // 同じ会社に送信待ちの予約がある状態で手動送信すると、予約が実行された時点で二重になる
+  if (hasScheduledToCompanyDomain(companyDomainForGuard)) {
+    return NextResponse.json(
+      {
+        error: "この会社には送信予約が入っているため、重複送信を防止しました",
+        reasons: [
+          `${companyDomainForGuard} の会社は予約済みです。履歴の「予約」から取り消すか、予約の実行をお待ちください`,
         ],
       },
       { status: 409 }

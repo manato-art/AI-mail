@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getProspect,
+  hasSentToCompanyDomain,
+  hasScheduledToCompanyDomain,
   getSender,
   getService,
   getPersona,
   scheduleProspect,
 } from "@/lib/db";
+import { companyDomainKey } from "@/lib/email-domains";
 import { runSendGuard } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { resolveEmailVariables } from "@/lib/variables";
@@ -80,6 +83,9 @@ export async function POST(request: NextRequest) {
 
   let scheduled = 0;
   const failed: { id: number; company: string; reason: string }[] = [];
+  // 同じ会社を同一バッチ内で二重に予約しない。先に処理した1件だけを通す
+  // （予約は send_log に載らないため、DB照合だけではバッチ内の重複を検知できない）
+  const claimedCompanyKeys = new Set<string>();
 
   for (const id of ids) {
     const prospect = getProspect(id);
@@ -97,6 +103,26 @@ export async function POST(request: NextRequest) {
         reason: prospect.send_status === "sent" ? "既に送信済み" : "既に予約済み",
       });
       continue;
+    }
+
+    // 会社単位の重複を「予約した時点で」弾く。
+    // ここが無いと、同じ会社への予約が複数積まれ、実行時に初めて重複が発覚する。
+    const companyKey = companyDomainKey(
+      prospect.domain || (prospect.scheduled_to_email ?? "").split("@")[1] || ""
+    );
+    if (companyKey) {
+      if (claimedCompanyKeys.has(companyKey)) {
+        failed.push({ id, company: label, reason: "同じ会社が今回の選択に複数あります" });
+        continue;
+      }
+      if (hasSentToCompanyDomain(companyKey)) {
+        failed.push({ id, company: label, reason: "この会社には送信済みです" });
+        continue;
+      }
+      if (hasScheduledToCompanyDomain(companyKey)) {
+        failed.push({ id, company: label, reason: "この会社には別の予約があります" });
+        continue;
+      }
     }
 
     const toEmail = firstEmail(prospect.emails_found_json);
@@ -161,6 +187,10 @@ export async function POST(request: NextRequest) {
       subject: resolved.subject,
       body: resolved.body,
     });
+    // 実際の宛先が決まったこの時点で会社を確保する（以降の同一企業はスキップ）
+    const claimedKey =
+      companyDomainKey(prospect.domain) || companyDomainKey(toEmail.split("@")[1] ?? "");
+    if (claimedKey) claimedCompanyKeys.add(claimedKey);
     scheduled++;
   }
 

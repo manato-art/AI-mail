@@ -1135,6 +1135,38 @@ export function getSentCompanyDomains(days = DUPLICATE_SEND_BLOCK_DAYS): Set<str
   return domains;
 }
 
+/**
+ * 予約中（まだ送っていないが送信待ち）の会社ドメイン集合。
+ * 送信済み(send_log)だけを見ると、同じ会社への予約が複数積まれていても
+ * 予約した時点では誰も気づけない（実行時に初めて重複が発覚する）。
+ */
+export function getScheduledCompanyDomains(): Set<string> {
+  const rows = getDb()
+    .prepare(
+      `SELECT domain, scheduled_to_email AS toEmail
+         FROM prospects
+        WHERE send_status = 'scheduled'`
+    )
+    .all() as { domain: string | null; toEmail: string | null }[];
+
+  const domains = new Set<string>();
+  for (const row of rows) {
+    const emailDomain = (row.toEmail ?? "").split("@")[1] ?? "";
+    for (const raw of [emailDomain, row.domain ?? ""]) {
+      const key = companyDomainKey(raw);
+      if (key) domains.add(key);
+    }
+  }
+  return domains;
+}
+
+/** 指定ドメインの会社に送信待ちの予約があるか */
+export function hasScheduledToCompanyDomain(domain: string | null | undefined): boolean {
+  const key = companyDomainKey(domain);
+  if (!key) return false;
+  return getScheduledCompanyDomains().has(key);
+}
+
 /** 指定ドメインの会社へ過去N日以内に送信済みか。会社を特定できない場合は常に false */
 export function hasSentToCompanyDomain(
   domain: string | null | undefined,

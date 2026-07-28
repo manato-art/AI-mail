@@ -12,6 +12,7 @@ import {
   claimProspectForSending,
   hasSentToEmail,
   hasSentToCompanyDomain,
+  hasScheduledToCompanyDomain,
   claimEmailForSend,
   releaseEmailClaim,
   scheduleProspect,
@@ -277,6 +278,16 @@ export async function POST(request: NextRequest) {
   // アドレス単位のガードだけでは、同一企業に何通も飛ぶ（2026-07-27 発覚）。
   // 会社の同一性は正準化したドメインで判定する（社名一致は誤検知するため使わない）。
   const rawToDomain = rawToEmail.split("@")[1] ?? "";
+  // 同じ会社に送信待ちの予約がある間は一括送信もしない（予約が実行された時点で二重になる）
+  if (hasScheduledToCompanyDomain(rawToDomain)) {
+    return NextResponse.json(
+      {
+        error: "この会社には送信予約が入っているため、重複送信を防止しました",
+        reasons: [`${rawToDomain} の会社は予約済みです（履歴の「予約」から取り消せます）`],
+      },
+      { status: 409 }
+    );
+  }
   if (hasSentToCompanyDomain(rawToDomain)) {
     return NextResponse.json(
       {
