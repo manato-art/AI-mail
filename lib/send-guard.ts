@@ -1,6 +1,8 @@
 import {
   isEmailSuppressed,
   hasSentToEmail,
+  hasSentToCompanyDomain,
+  getProspect,
   getTodaySendCount,
   getSender,
   getAllSenders,
@@ -172,6 +174,21 @@ export function runSendGuard(params: {
 
   if (!params.isFollowup && hasSentToEmail(params.toEmail)) {
     reasons.push(`このアドレスには過去${DUPLICATE_SEND_BLOCK_DAYS}日以内に送信済みです（二重送信防止）`);
+  }
+
+  // 同じ会社の別アドレス（info@ と contact@ 等）・別ドメイン表記への重複送信を止める。
+  // アドレス単位のガードだけでは素通りしていた（2026-07-27 同一企業への複数送信）。
+  if (!params.isFollowup) {
+    // prospectId は一括送信（送信直前に prospect を作る経路）では未指定。
+    // その場合は宛先アドレスのドメインを会社の印として使う。
+    const prospectDomain =
+      params.prospectId !== undefined ? getProspect(params.prospectId)?.domain : undefined;
+    const companyDomain = prospectDomain || (params.toEmail.split("@")[1] ?? "");
+    if (hasSentToCompanyDomain(companyDomain) && !hasSentToEmail(params.toEmail)) {
+      reasons.push(
+        `この会社には過去${DUPLICATE_SEND_BLOCK_DAYS}日以内に別のアドレスで送信済みです（同一企業への重複送信防止）`
+      );
+    }
   }
 
   const sender = getSender(params.senderId);

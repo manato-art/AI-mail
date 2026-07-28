@@ -11,6 +11,7 @@ import {
   updateProspectStatus,
   claimProspectForSending,
   hasSentToEmail,
+  hasSentToCompanyDomain,
   claimEmailForSend,
   releaseEmailClaim,
   scheduleProspect,
@@ -267,6 +268,22 @@ export async function POST(request: NextRequest) {
       {
         error: "このアドレスには過去90日以内に送信済みのため、重複送信を防止しました",
         reasons: [`${rawToEmail} は送信履歴にあります（一括送信では再送しません）`],
+      },
+      { status: 409 }
+    );
+  }
+
+  // 同じ会社の別アドレス（info@ と contact@ 等）への重複送信も一括では止める。
+  // アドレス単位のガードだけでは、同一企業に何通も飛ぶ（2026-07-27 発覚）。
+  // 会社の同一性は正準化したドメインで判定する（社名一致は誤検知するため使わない）。
+  const rawToDomain = rawToEmail.split("@")[1] ?? "";
+  if (hasSentToCompanyDomain(rawToDomain)) {
+    return NextResponse.json(
+      {
+        error: "この会社には過去90日以内に送信済みのため、重複送信を防止しました",
+        reasons: [
+          `${rawToDomain} の会社は送信履歴にあります（別アドレスでも一括送信では再送しません）`,
+        ],
       },
       { status: 409 }
     );

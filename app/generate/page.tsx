@@ -27,6 +27,7 @@ import { BatchProgress, type BatchItem } from "./batch-progress";
 import { CompanyPicker } from "./company-picker";
 import { DuplicateDialog, ErrorCard, LowCompatDialog, ProgressCard } from "./result-cards";
 import {
+  isAlreadySentResponse,
   isDuplicateResponse,
   isErrorResponse,
   isLowCompatibilityResponse,
@@ -274,6 +275,15 @@ function GeneratePageInner() {
         return;
       }
 
+      // 送信済みの会社。生成せずに戻ってくるので、理由を出して止める
+      if (isAlreadySentResponse(data)) {
+        setStatus("error");
+        setError(
+          `この会社にはすでにメールを送信済みです（${data.domain}）。重複を避けるため作成しませんでした。`
+        );
+        return;
+      }
+
       if (isLowCompatibilityResponse(data)) {
         setLowCompatAnalysis(data.analysis);
         setStatus("low-compat");
@@ -358,6 +368,13 @@ function GeneratePageInner() {
             )
           );
           return;
+        } else if (isAlreadySentResponse(data)) {
+          // 送信済みの会社は skipped（生成費用を使わずに次へ進む）
+          setBatchItems((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "skipped", skipReason: "送信済み" } : item
+            )
+          );
         } else if (isLowCompatibilityResponse(data)) {
           setBatchItems((prev) =>
             prev.map((item, idx) =>

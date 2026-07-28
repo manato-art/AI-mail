@@ -6,6 +6,8 @@ import {
   getPersona,
   updateProspectStatus,
   claimProspectForSending,
+  hasSentToEmail,
+  hasSentToCompanyDomain,
   claimEmailForSend,
   releaseEmailClaim,
   scheduleProspect,
@@ -110,6 +112,23 @@ export async function POST(request: NextRequest) {
   });
   const outgoingSubject = resolved.subject;
   const outgoingBody = resolved.body;
+
+  // 同一企業への重複送信は force（＝画面の「要確認の指摘があっても送信する」）では解除しない。
+  // あのチェックは本文品質の警告に対する承認であって、重複送信の承認ではない。
+  // runSendGuard は force で警告を全て飛ばすため、その手前でハードブロックする
+  // （2026-07-27 同一企業へ3通送信。一括送信側と同じ強度に揃える）。
+  const companyDomainForGuard = prospect.domain || (rawToEmail.split("@")[1] ?? "");
+  if (!hasSentToEmail(rawToEmail) && hasSentToCompanyDomain(companyDomainForGuard)) {
+    return NextResponse.json(
+      {
+        error: "この会社には過去90日以内に送信済みのため、重複送信を防止しました",
+        reasons: [
+          `${companyDomainForGuard} の会社は別のアドレスで送信履歴にあります（同一企業への重複送信を防いでいます）`,
+        ],
+      },
+      { status: 409 }
+    );
+  }
 
   const guardResult = runSendGuard({
     toEmail: TEST_MODE ? rawToEmail : toEmail,

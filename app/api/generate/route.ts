@@ -10,6 +10,7 @@ import {
   getPersona,
   getTemplate,
   findProspectByDomain,
+  hasSentToCompanyDomain,
   createProspect,
   addSuppression,
 } from "@/lib/db";
@@ -93,6 +94,20 @@ export async function POST(request: NextRequest) {
           { status: 200 }
         );
       }
+    }
+
+    // 送信済みの会社にはメールを作らない。force（まとめて生成）でも解除しない。
+    // force は「生成済みでも作り直す」意思表示であって「送った相手にまた作る」承認ではない。
+    // ここが無いと、送れない相手のためにAI生成の費用と時間を捨てる（2026-07-27 報告）。
+    if (hasSentToCompanyDomain(domain)) {
+      return NextResponse.json(
+        {
+          alreadySent: true,
+          skipReason: "送信済みの会社です",
+          domain,
+        },
+        { status: 200 }
+      );
     }
 
     const service = getService(Number(serviceId));

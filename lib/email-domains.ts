@@ -65,6 +65,37 @@ export function domainsMatch(a: string | undefined | null, b: string | undefined
 }
 
 /**
+ * 「これ以上短くすると会社を識別できない」公開サフィックス。
+ * 例えば recruit.co.jp から接頭辞を剥がして co.jp にすると、無関係な career.co.jp と
+ * 一致してしまい別会社をブロックする（2026-07-27 のレビューで実測検出）。
+ */
+const PUBLIC_SUFFIXES = new Set([
+  "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp", "lg.jp", "ed.jp", "gr.jp", "jp",
+  "com", "net", "org", "info", "biz", "co", "io", "me", "tokyo", "work", "site", "shop",
+  "co.uk", "com.cn", "com.au", "co.kr", "com.tw", "com.hk", "co.th",
+]);
+
+/**
+ * 会社の同一性判定に使う正準キーを作る（送信済み照合用）。
+ *
+ * 表記ゆれの吸収は www. の除去のみに限定する。recruit./info./jp. のような一般語の
+ * 接頭辞まで剥がすと、それが実ドメインの第1ラベルだったときに公開サフィックスだけが
+ * 残り、無関係な会社を同一視して誤ブロックする（実測で確認済み）。
+ * 取りこぼし（別サブドメインを別会社と見る）は「送りすぎ」ではなく「止めすぎない」方向の
+ * 誤りなので、こちらに倒す。
+ *
+ * 判定できない場合（空・フリーメール・公開サフィックスのみ・ラベル1個）は空文字を返し、
+ * 呼び出し側は「会社を特定できなかった」として照合をスキップする。
+ */
+export function companyDomainKey(domain: string | undefined | null): string {
+  const host = (domain ?? "").trim().toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
+  if (!host || !host.includes(".")) return "";
+  if (isFreeEmailDomain(host)) return "";
+  if (PUBLIC_SUFFIXES.has(host)) return "";
+  return host;
+}
+
+/**
  * 会社名を比較用に正規化する。
  * 法人格（株式会社・(株)・Inc. など）・空白・区切り記号の表記ゆれを吸収して、
  * 「株式会社サイバーワン」と「サイバーワン」を同一とみなせるようにする。

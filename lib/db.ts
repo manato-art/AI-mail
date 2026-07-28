@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import { isInfrastructureErrorKind } from "@/lib/enrichment-errors";
+import { companyDomainKey } from "@/lib/email-domains";
 import type {
   CompanyWithTag,
   Attachment,
@@ -1099,6 +1100,49 @@ export function hasSentToEmail(toEmail: string): boolean {
     )
     .get(normalizeEmailKey(toEmail), `-${DUPLICATE_SEND_BLOCK_DAYS} days`);
   return !!row;
+}
+
+/**
+ * 会社単位の重複送信ガード（2026-07-27 の同一企業への複数送信を受けて追加）。
+ *
+ * hasSentToEmail はアドレス単位なので、同じ会社でも連絡先が info@ / contact@ と
+ * 分かれていたり、www 有無でドメイン表記が揺れていると全て素通りしていた。
+ * 会社の同一性は「正準化したドメイン」で判定する（社名の文字列一致は
+ * KB entity-name-match-unreliable-use-canonical-key の通り両方向に誤るため使わない）。
+ *
+ * フリーメール（gmail.com 等）は会社の識別子にならないので突き合わせ対象から除く。
+ * これを含めると「たまたま両社とも gmail」で無関係な企業をブロックしてしまう。
+ */
+export function getSentCompanyDomains(days = DUPLICATE_SEND_BLOCK_DAYS): Set<string> {
+  const rows = getDb()
+    .prepare(
+      `SELECT sl.to_email AS toEmail, p.domain AS prospectDomain
+         FROM send_log sl
+         LEFT JOIN prospects p ON p.id = sl.prospect_id
+        WHERE sl.sent_at >= datetime('now', 'localtime', ?)`
+    )
+    .all(`-${days} days`) as { toEmail: string; prospectDomain: string | null }[];
+
+  const domains = new Set<string>();
+  for (const row of rows) {
+    // 送信先アドレスのドメインと、その prospect の企業ドメインの両方を会社の印として扱う
+    const emailDomain = (row.toEmail ?? "").split("@")[1] ?? "";
+    for (const raw of [emailDomain, row.prospectDomain ?? ""]) {
+      const key = companyDomainKey(raw);
+      if (key) domains.add(key);
+    }
+  }
+  return domains;
+}
+
+/** 指定ドメインの会社へ過去N日以内に送信済みか。会社を特定できない場合は常に false */
+export function hasSentToCompanyDomain(
+  domain: string | null | undefined,
+  days = DUPLICATE_SEND_BLOCK_DAYS
+): boolean {
+  const key = companyDomainKey(domain);
+  if (!key) return false;
+  return getSentCompanyDomains(days).has(key);
 }
 
 // クレームが「進行中」とみなす上限。これ以上前の claim は死んだリクエストの残骸として無視する。
