@@ -1870,6 +1870,20 @@ export function setCompanyDomain(id: number, domain: string): void {
     .run(domain.trim().toLowerCase().replace(/^www\./, ""), id);
 }
 
+/**
+ * 掲載URLが空の企業にだけ補充する（既に入っていれば触らない）。
+ * 掲載URLを保存する前に集めた企業は、社名検索に頼るしかなく検索が止まると
+ * 永久に調査できない。媒体に再び出てきた機会にこれを埋めて直取り経路へ乗せる。
+ */
+export function setCompanyListingUrl(id: number, listingUrl: string): void {
+  getDb()
+    .prepare(
+      `UPDATE companies SET listing_url = ?
+        WHERE id = ? AND (listing_url IS NULL OR trim(listing_url) = '')`
+    )
+    .run(listingUrl, id);
+}
+
 /** 送信済み・抑止対象・既登録と判明した企業を在庫から外す。理由は必ず残す */
 export function markCompanyExcluded(id: number, reason: string): void {
   getDb()

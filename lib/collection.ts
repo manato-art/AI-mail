@@ -1,6 +1,7 @@
 import {
   finishCollectionRun,
   findCompanyByName,
+  setCompanyListingUrl,
   getRunnableCollectionSources,
   getSetting,
   pauseCollectionSource,
@@ -162,8 +163,18 @@ function registerCompanies(
   let newCount = 0;
 
   for (const company of companies) {
-    if (findCompanyByName(company.name)) {
-      addSkip(breakdown, "登録済み");
+    const existing = findCompanyByName(company.name);
+    if (existing) {
+      // 掲載URLを保存する前に集めた企業は listing_url が空のままで、
+      // 裏処理が毎回「社名で検索」に落ちる（検索が止まると永久に調査できない）。
+      // 再び媒体に出てきたこの機会に掲載URLだけ補充して、直取り経路に乗せる。
+      const listingUrl = sanitizeListingUrl(company.sourceUrl);
+      if (listingUrl && !(existing.listing_url ?? "").trim()) {
+        setCompanyListingUrl(existing.id, listingUrl);
+        addSkip(breakdown, "登録済み（掲載URLを補充）");
+      } else {
+        addSkip(breakdown, "登録済み");
+      }
       continue;
     }
 
