@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  APIConnectionError,
-  APIConnectionTimeoutError,
-  RateLimitError,
-  InternalServerError,
-} from "@anthropic-ai/sdk";
+import { classifyGenerateError, type GenerateStage } from "@/lib/generate-error";
 import {
   getService,
   getPersona,
@@ -22,48 +17,9 @@ import { composeFromTemplate } from "@/lib/compose";
 import { validateEmail } from "@/lib/quality-check";
 import type { GenerationResult } from "@/lib/types";
 
-function classifyError(error: unknown): { message: string; status: number; retryable: boolean } {
-  if (error instanceof RateLimitError) {
-    return { message: "AI APIの利用制限に達しました。しばらく待ってから再試行してください", status: 429, retryable: true };
-  }
-  if (error instanceof InternalServerError) {
-    return { message: "AI APIが一時的に不安定です。しばらく待ってから再試行してください", status: 502, retryable: true };
-  }
-  if (error instanceof APIConnectionTimeoutError) {
-    return { message: "AI APIへの接続がタイムアウトしました。再試行してください", status: 504, retryable: true };
-  }
-  if (error instanceof APIConnectionError) {
-    return { message: "AI APIへの接続に失敗しました。再試行してください", status: 502, retryable: true };
-  }
-  if (error instanceof Error) {
-    // 設定不備（APIキー未設定・無効）はリトライしても直らない。
-    // 汎用500に握りつぶさず、運用者が何を直すべきか分かる形で返す。
-    if (error.message.includes("が設定されていません")) {
-      return { message: error.message, status: 500, retryable: false };
-    }
-    if (error.message.includes("API key not valid") || error.message.includes("API_KEY_INVALID")) {
-      return {
-        message: "AI APIキーが無効です。GEMINI_API_KEY を確認してください",
-        status: 500,
-        retryable: false,
-      };
-    }
-    if (error.message.includes("分析APIエラー") || error.message.includes("分析がブロック")) {
-      return { message: error.message, status: 502, retryable: true };
-    }
-    if (error.message.includes("JSONパース")) {
-      const stage = error.message.includes("分析") ? "分析" : error.message.includes("生成") ? "生成" : "";
-      const detail = error.message.includes("応答切れ") ? "（応答が途中で切れました）" : "";
-      return { message: `AIの応答を解析できませんでした${stage ? `（${stage}段階）` : ""}${detail}。再試行してください`, status: 502, retryable: true };
-    }
-    if (error.message.includes("テキストを取得できません")) {
-      return { message: "AIから有効な応答がありませんでした。再試行してください", status: 502, retryable: true };
-    }
-  }
-  return { message: "サーバーエラーが発生しました", status: 500, retryable: false };
-}
-
 export async function POST(request: NextRequest) {
+  // どの段階で落ちたかを失敗時に必ず残す（分類できない例外の手掛かりになる）
+  let stage: GenerateStage = "準備";
   try {
     const body = await request.json();
     const { serviceId, personaId, url, force, forceLow, tone, length, cta, additionalInstructions, fixedText, templateId } = body ?? {};
@@ -120,6 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "人格が見つかりません" }, { status: 404 });
     }
 
+    stage = "サイト読み取り";
     const crawlResult = await crawlWebsiteWithRefusal(validated.normalized);
 
     if (crawlResult.pages.length === 0) {
@@ -140,6 +97,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    stage = "分析";
     const analysis = await analyzeCompany(crawlResult, service);
 
     if (analysis.compatibility.score === "low" && !forceLow) {
@@ -155,6 +113,7 @@ export async function POST(request: NextRequest) {
     const template = templateId ? getTemplate(Number(templateId)) : undefined;
     const fromTemplate = Boolean(template);
 
+    stage = "生成";
     let generation: GenerationResult;
     if (template) {
       // テンプレは compose エンジンで処理する（固定文保持・{{AI:}}のみ生成・変数置換）。
@@ -177,6 +136,7 @@ export async function POST(request: NextRequest) {
 
     const qualityCheck = validateEmail(generation.body, generation.subject, analysis, { fromTemplate });
 
+    stage = "保存";
     const prospect = createProspect({
       input_url: validated.normalized,
       domain,
@@ -202,8 +162,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ prospect, qualityCheck });
   } catch (error) {
-    console.error("[generate]", error);
-    const classified = classifyError(error);
+    console.error(`[generate] stage=${stage}`, error);
+    const classified = classifyGenerateError(error, stage);
     return NextResponse.json(
       { error: classified.message, retryable: classified.retryable },
       { status: classified.status }

@@ -369,12 +369,14 @@ function GeneratePageInner() {
           );
           return;
         } else if (isAlreadySentResponse(data)) {
-          // 送信済みの会社は skipped（生成費用を使わずに次へ進む）
+          // 送信済みの会社は skipped（生成費用を使わずに次へ進む）。
+          // return を忘れるとリトライループに落ちて同じ会社へ無駄な再リクエストが飛ぶ
           setBatchItems((prev) =>
             prev.map((item, idx) =>
               idx === i ? { ...item, status: "skipped", skipReason: "送信済み" } : item
             )
           );
+          return;
         } else if (isLowCompatibilityResponse(data)) {
           setBatchItems((prev) =>
             prev.map((item, idx) =>

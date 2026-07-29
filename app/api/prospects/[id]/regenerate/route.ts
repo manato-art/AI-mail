@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProspect, getService, getPersona, getTemplate, updateProspect } from "@/lib/db";
 import { generateEmail } from "@/lib/generate";
 import { composeFromTemplate } from "@/lib/compose";
+import { classifyGenerateError } from "@/lib/generate-error";
 import type { AnalysisResult } from "@/lib/types";
 
 export async function POST(
@@ -49,7 +50,12 @@ export async function POST(
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
+    // 再生成も同じAI経路。原因を汎用500に潰さない（/api/generate と同じ分類を使う）
+    console.error("[regenerate]", error);
+    const classified = classifyGenerateError(error, "生成");
+    return NextResponse.json(
+      { error: classified.message, retryable: classified.retryable },
+      { status: classified.status }
+    );
   }
 }
