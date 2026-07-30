@@ -10,8 +10,33 @@ const FETCH_TIMEOUT_MS = 15000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-const PAGES_PER_RUN = 2;
-const MAX_PAGE = 20;
+/** 正の整数の環境変数を読む。未設定・不正値・0以下は既定値に倒す（運用でノブを回せるように） */
+function readIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * 1回の巡回で進めるページ数（user要求 2026-07-30: 2 → 30。1日8回で240ページ/日）。
+ *
+ * 1ページごとに3〜8秒の間隔を空けるので、30ページ＝1収集元あたり**約3分**かかる。
+ * 収集元の数 × 3分 が1周期の所要時間になり、収集ジョブのロック（90分）を超えると
+ * 後ろの収集元に順番が来なくなる。そのため lib/collection.ts 側で
+ * 1周期に回す収集元の数に上限を設けている（両方を一緒に見ること）。
+ *
+ * **呼び出し時に読む**（モジュール読み込み時に固定しない）。検証スクリプトが
+ * 少ないページ数を指定して短時間で回せるようにするため。
+ */
+function pagesPerRun(): number {
+  return readIntEnv("WANTEDLY_PAGES_PER_RUN", 30);
+}
+
+/** どこまで深いページまで辿るか（user要求: 100ページ目まで） */
+function maxPage(): number {
+  return readIntEnv("WANTEDLY_MAX_PAGE", 100);
+}
 
 const REQUEST_DELAY_BASE_MS = 3000;
 const REQUEST_DELAY_JITTER_MS = 5000;
@@ -215,6 +240,8 @@ export async function fetchWantedlyListings(
   startPage: number
 ): Promise<WantedlyFetchResult> {
   const allListings: WantedlyListing[] = [];
+  const PAGES_PER_RUN = pagesPerRun();
+  const MAX_PAGE = maxPage();
   let page = startPage;
   let emptyPages = 0;
 
@@ -259,11 +286,13 @@ export async function fetchWantedlyListingsFromUrl(
 ): Promise<WantedlyFetchResult> {
   if (!isWantedlyUrl(baseUrl)) {
     // 呼び出し側は listings=0 で「収集元が無効」を検知できる
-    return { listings: [], nextPage: 1, emptyPages: PAGES_PER_RUN };
+    return { listings: [], nextPage: 1, emptyPages: pagesPerRun() };
   }
 
   const allListings: WantedlyListing[] = [];
   const seen = new Set<string>();
+  const PAGES_PER_RUN = pagesPerRun();
+  const MAX_PAGE = maxPage();
   let page = startPage;
   let emptyPages = 0;
 

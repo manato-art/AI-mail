@@ -3,6 +3,9 @@
  * fetch をモックし、403/429/503 は SearchBlockedError で即停止、
  * それ以外(404等)は従来通り空ページ扱い(throwしない)ことを確認する。
  */
+// ブロック検知の確認が目的なので、巡回ページ数は最小にして短時間で回す（本番既定は30ページ/回）
+process.env.WANTEDLY_PAGES_PER_RUN = "2";
+
 import { fetchWantedlyListings } from "@/lib/wantedly-scraper";
 import { SearchBlockedError } from "@/lib/keyword-search";
 

@@ -26,6 +26,7 @@ import {
   type WantedlyFetchResult,
 } from "@/lib/wantedly-scraper";
 import type { CollectionRunStatus, CollectionSource } from "@/lib/types";
+import { logActivity } from "@/lib/activity-log";
 
 /** 正の整数の環境変数を読む。未設定・不正値・0以下・小数(0.5等)はデフォルトに倒す（運用でノブを回せるように） */
 function readIntEnv(name: string, fallback: number): number {
@@ -45,6 +46,16 @@ const PAGES_PER_RUN = readIntEnv("COLLECTION_PAGES_PER_RUN", 5);
 const MAX_PAGE = 9;
 /** 1ソース1回の登録上限。env COLLECTION_MAX_COMPANIES_PER_RUN で調整（既定=50） */
 const MAX_COMPANIES_PER_RUN = readIntEnv("COLLECTION_MAX_COMPANIES_PER_RUN", 50);
+
+/**
+ * 1周期で回す収集元の数の上限。
+ *
+ * Wantedly の URL 巡回は1件あたり最大30ページ（1ページごとに3〜8秒の間隔）＝約3分。
+ * 収集ジョブのロックは90分で切れるため、20件で約60分＝余裕を残す設定にしている。
+ * 上限で切った分は「最終実行が古い順」の並びにより次の周期で順番が回る（切り捨てではない）。
+ * env COLLECTION_MAX_SOURCES_PER_CYCLE で調整。
+ */
+const MAX_SOURCES_PER_CYCLE = readIntEnv("COLLECTION_MAX_SOURCES_PER_CYCLE", 20);
 
 /**
  * 「検索結果が0件」がこの回数続いたら止める。
@@ -471,15 +482,29 @@ export interface CollectionCycleResult {
   ranSources: number;
   newCompanies: number;
   paused: PausedSourceNotice[];
+  /** 収集対象のうち、この周期では順番が回らなかった件数（黙って切らずに必ず報告する） */
+  skippedByCap: number;
 }
 
 /**
  * 収集を1周する。ソースは同時実行せず順番に処理する（同時に叩くと検知されやすい）。
  */
 export async function runCollectionCycle(): Promise<CollectionCycleResult> {
-  const sources = getRunnableCollectionSources();
+  const all = getRunnableCollectionSources();
+  // 1収集元あたり最大30ページ（1ページごとに3〜8秒空ける）＝約3分かかるため、
+  // 全件を1周期で回すと収集ジョブのロック(90分)を超えて途中で切れる。
+  // 最終実行が古い順に並んでいるので、上限で切っても次の周期で残りに順番が回る。
+  const sources = all.slice(0, MAX_SOURCES_PER_CYCLE);
+  const skippedByCap = all.length - sources.length;
   const paused: PausedSourceNotice[] = [];
   let newCompanies = 0;
+
+  if (skippedByCap > 0) {
+    logActivity(
+      `⏭️ 収集対象${all.length}件のうち${sources.length}件を今回巡回します（残り${skippedByCap}件は次回以降）`,
+      "info"
+    );
+  }
 
   for (const [index, source] of sources.entries()) {
     if (index > 0) await sleep(nextRequestDelay());
@@ -491,5 +516,5 @@ export async function runCollectionCycle(): Promise<CollectionCycleResult> {
     }
   }
 
-  return { ranSources: sources.length, newCompanies, paused };
+  return { ranSources: sources.length, newCompanies, paused, skippedByCap };
 }

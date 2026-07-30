@@ -1741,6 +1741,77 @@ export function createWantedlyUrlSource(
   return instance.prepare("SELECT * FROM collection_sources WHERE url = ?").get(url) as CollectionSource;
 }
 
+/**
+ * 同じ検索が重複登録されている収集元を1件にまとめる。
+ *
+ * URL末尾の `page=` は巡回時に1ページ目から振り直すため、番号だけ違うURLは
+ * **機能的に同一の検索**。それが何百件も並ぶと、1件ずつ順番に回る巡回の行列が
+ * 伸びて後ろの収集元に永久に順番が来ない（2026-07-30 報告）。
+ *
+ * 残すのは「一番進んでいる1件」（next_page が大きい → 巡回回数が多い → id が小さい）。
+ * 集めた企業データは消さない（companies.collection_source_id に FK 制約は無い）。
+ * 消えるのは重複していた収集元の行と、その巡回履歴だけ。
+ */
+export function mergeDuplicateUrlSources(dryRun = false): {
+  groups: number;
+  removed: number;
+  kept: { id: number; url: string; removedIds: number[] }[];
+} {
+  const instance = getDb();
+  const rows = instance
+    .prepare(
+      `SELECT s.id AS id, s.url AS url, s.next_page AS nextPage,
+              (SELECT COUNT(*) FROM collection_runs r WHERE r.source_id = s.id) AS runs
+         FROM collection_sources s
+        WHERE s.url IS NOT NULL AND trim(s.url) <> ''`
+    )
+    .all() as { id: number; url: string; nextPage: number; runs: number }[];
+
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    let key = row.url;
+    try {
+      const u = new URL(row.url);
+      u.searchParams.delete("page");
+      key = u.toString();
+    } catch {
+      // URLとして読めないものは同一視しない（勝手にまとめない）
+    }
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+
+  const kept: { id: number; url: string; removedIds: number[] }[] = [];
+  let removed = 0;
+  let groupCount = 0;
+
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    groupCount += 1;
+    // 一番進んでいるものを残す（進捗＝next_page、次に巡回回数、最後に古い順）
+    const sorted = [...list].sort(
+      (a, b) => b.nextPage - a.nextPage || b.runs - a.runs || a.id - b.id
+    );
+    const keep = sorted[0];
+    const removeIds = sorted.slice(1).map((r) => r.id);
+    kept.push({ id: keep.id, url: keep.url, removedIds: removeIds });
+    removed += removeIds.length;
+  }
+
+  if (!dryRun && removed > 0) {
+    const del = instance.prepare("DELETE FROM collection_sources WHERE id = ?");
+    // 途中で失敗しても半端に消えないよう1トランザクションで実行する
+    instance.transaction(() => {
+      for (const group of kept) {
+        for (const id of group.removedIds) del.run(id);
+      }
+    })();
+  }
+
+  return { groups: groupCount, removed, kept };
+}
+
 export function setCollectionSourceActive(id: number, isActive: boolean): void {
   getDb()
     .prepare("UPDATE collection_sources SET is_active = ? WHERE id = ?")

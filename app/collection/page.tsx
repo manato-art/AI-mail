@@ -198,6 +198,55 @@ export default function CollectionPage() {
     setTimeout(() => setToast(msg), 0);
   }
 
+  const [merging, setMerging] = useState(false);
+
+  /**
+   * 同じ検索（URLの page= 違い）で重複登録された収集元を1件にまとめる。
+   * 消える件数を必ず先に見せてから確認を取る（黙って消さない）。
+   */
+  async function handleMergeDuplicates() {
+    if (merging) return;
+    setMerging(true);
+    try {
+      const previewRes = await fetch("/api/collection/sources/merge-duplicates");
+      if (!previewRes.ok) {
+        showToast("重複の件数を取得できませんでした");
+        return;
+      }
+      const preview = await previewRes.json();
+      if (!preview.willRemove) {
+        showToast("まとめる重複はありませんでした");
+        return;
+      }
+      const ok = confirm(
+        `同じ検索が重複している ${preview.groups}種類 について、` +
+          `一番進んでいる1件だけを残し ${preview.willRemove}件を削除します。
+
+` +
+          `集めた企業データは消えません（消えるのは収集元の行と巡回履歴だけ）。
+実行しますか？`
+      );
+      if (!ok) return;
+
+      const res = await fetch("/api/collection/sources/merge-duplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "MERGE_DUPLICATE_SOURCES" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "まとめに失敗しました");
+        return;
+      }
+      showToast(`${data.removed}件をまとめました（${data.groups}種類）`);
+      await load();
+    } catch {
+      showToast("まとめに失敗しました（通信エラー）");
+    } finally {
+      setMerging(false);
+    }
+  }
+
   const load = useCallback(async () => {
     try {
       const [statusRes, sourcesRes, servicesRes, diagRes] = await Promise.all([
@@ -545,11 +594,22 @@ export default function CollectionPage() {
               )}
             </div>
             {diag.sources.duplicateUrlSources > 0 && (
-              <p className="mt-1.5 rounded bg-(--color-warning-light) px-2 py-1 text-[12px] leading-relaxed text-(--color-warning-text)">
-                同じ検索が重複して登録されています（<b className="tabular-nums">{diag.sources.duplicateUrlSources}</b>件 /{" "}
-                {diag.sources.duplicateUrlGroups}種類）。URL末尾の <code>page=</code> は巡回時に1ページ目から振り直すため、
-                番号だけ違うURLは<b>同じ検索の重複</b>になり、順番待ちを長くしています。
-              </p>
+              <div className="mt-1.5 rounded bg-(--color-warning-light) px-2 py-1.5">
+                <p className="text-[12px] leading-relaxed text-(--color-warning-text)">
+                  同じ検索が重複して登録されています（<b className="tabular-nums">{diag.sources.duplicateUrlSources}</b>件 /{" "}
+                  {diag.sources.duplicateUrlGroups}種類）。URL末尾の <code>page=</code> は巡回時に1ページ目から振り直すため、
+                  番号だけ違うURLは<b>同じ検索の重複</b>になり、順番待ちを長くしています。
+                </p>
+                <button
+                  type="button"
+                  onClick={handleMergeDuplicates}
+                  disabled={merging || jobRunning}
+                  title={jobRunning ? "収集の実行中はまとめられません" : "一番進んでいる1件だけを残します"}
+                  className="mt-1.5 inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-(--color-warning-text)/40 px-3 text-[12px] font-semibold text-(--color-warning-text) transition-colors hover:bg-(--color-warning-text)/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {merging ? "まとめています…" : "重複を1件にまとめる"}
+                </button>
+              </div>
             )}
             {diag.sources.active > 0 && diag.lastCycle && diag.lastCycle.ranSources < diag.sources.active && (
               <p className="mt-1.5 text-[12px] leading-relaxed text-(--color-muted)">

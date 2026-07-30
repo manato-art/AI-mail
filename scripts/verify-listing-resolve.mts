@@ -11,6 +11,9 @@
  *   5. JSON-LDが無ければ null を返し、従来の検索経路にフォールバックする
  *   6. 募集ページしか無い場合でも、媒体へのアクセスは1社あたり2回まで
  */
+// URL解決の確認が目的なので、巡回ページ数は最小にして短時間で回す（本番既定は30ページ/回）
+process.env.WANTEDLY_PAGES_PER_RUN = "2";
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
