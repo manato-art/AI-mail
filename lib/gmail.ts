@@ -86,6 +86,65 @@ export interface SendEmailResult {
   threadId: string;
 }
 
+/** Gmail 側に残っている実物のメールから読み取った控え（こちらのDBとは独立した事実） */
+export interface SentMessageProof {
+  /** Gmail が記録した受理時刻（UTCミリ秒）。こちらの sent_at と突き合わせる */
+  internalDateMs: number | null;
+  /** Gmail 側のヘッダ実物 */
+  to: string | null;
+  subject: string | null;
+  dateHeader: string | null;
+  /** SENT ラベルが付いているか＝送信済みトレイに存在するか */
+  labelIds: string[];
+  threadId: string | null;
+}
+
+/**
+ * 記録した gmail_message_id で Gmail の実物を引き、送信の裏を取る。
+ *
+ * 「送信済み」表示がこちらのDBだけを根拠にしていると、記録漏れ・手動書き換えを
+ * 見分けられない。Gmail 側の internalDate とヘッダを持ってきて突き合わせる。
+ * 権限は既存の gmail.modify（読み取りを含む）で足りるので再認証は不要。
+ */
+export async function fetchSentMessageProof(
+  encryptedRefreshToken: string,
+  messageId: string
+): Promise<SentMessageProof> {
+  const oauth2Client = getOAuth2Client();
+  oauth2Client.setCredentials({ refresh_token: decrypt(encryptedRefreshToken) });
+  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+  try {
+    const res = await gmail.users.messages.get({
+      userId: "me",
+      id: messageId,
+      format: "metadata",
+      metadataHeaders: ["To", "Subject", "Date"],
+    });
+    const headers = res.data.payload?.headers ?? [];
+    const headerOf = (name: string) =>
+      headers.find((h) => (h.name ?? "").toLowerCase() === name.toLowerCase())?.value ?? null;
+    return {
+      internalDateMs: res.data.internalDate ? Number(res.data.internalDate) : null,
+      to: headerOf("To"),
+      subject: headerOf("Subject"),
+      dateHeader: headerOf("Date"),
+      labelIds: res.data.labelIds ?? [],
+      threadId: res.data.threadId ?? null,
+    };
+  } catch (err: unknown) {
+    const error = err as { response?: { data?: { error?: string }; status?: number } };
+    const status = error.response?.status;
+    if (status === 401 || error.response?.data?.error === "invalid_grant") {
+      throw new Error("REAUTH_REQUIRED");
+    }
+    if (status === 404) {
+      throw new Error("MESSAGE_NOT_FOUND");
+    }
+    throw new Error("Gmail API get failed");
+  }
+}
+
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const oauth2Client = getOAuth2Client();
   const refreshToken = decrypt(params.encryptedRefreshToken);

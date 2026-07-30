@@ -23,6 +23,7 @@ import type { AnalysisResult, Prospect, SendStatus } from "@/lib/types";
 import { validateEmail } from "@/lib/quality-check";
 import { Toast } from "@/components/toast";
 import { CARD } from "@/components/ui-kit";
+import { SendRecord } from "./send-record";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -503,6 +504,9 @@ export default function ProspectPage() {
           </a>
         </div>
       )}
+
+      {/* 送信の記録（いつ送ったか・Gmail側の控え）。本文より先に「送ったのか」に答える */}
+      <SendRecord prospectId={prospect.id} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
         {/* Left: Mail Editor（主役） */}

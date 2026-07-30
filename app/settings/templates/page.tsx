@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Attachment, ComposeMode, Template, TemplateWithAttachments } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import { formatJst } from "@/lib/datetime";
 import {
   BTN_PRIMARY,
   Card,
@@ -27,10 +28,9 @@ import {
   TEXTAREA,
 } from "@/components/ui-kit";
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** DBの素の日時文字列はUTC。共通フォーマッタ経由で日本時間に直す（lib/datetime） */
+function formatDate(value: string): string {
+  return formatJst(value, "shortDateTime");
 }
 
 function formatBytes(bytes: number): string {

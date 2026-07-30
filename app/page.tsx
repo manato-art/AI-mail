@@ -32,6 +32,7 @@ import type {
 import type { CollectionStatus } from "@/app/collection/types";
 import { useActiveService } from "@/components/service-context";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, LABEL, SELECT } from "@/components/ui-kit";
+import { formatJst } from "@/lib/datetime";
 
 const COMPATIBILITY_LABELS: Record<string, string> = {
   high: "高",
@@ -45,15 +46,9 @@ const COMPATIBILITY_STYLES: Record<string, string> = {
   low: "bg-(--color-danger-light) text-(--color-danger-text)",
 };
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("ja-JP", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+/** DBの素の日時文字列はUTC。共通フォーマッタ経由で日本時間に直す（lib/datetime） */
+function formatDate(value: string): string {
+  return formatJst(value, "shortDateTime");
 }
 
 function truncate(text: string, max: number) {

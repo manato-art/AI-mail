@@ -202,6 +202,24 @@ export interface SendLog {
   sent_at: string;
 }
 
+/**
+ * 「本当に送ったのか」を画面で確かめるための送信記録。
+ * send_log（送信が Gmail に受理された時点で書かれる記録）＋送信元アカウントを合わせた形。
+ * gmail_message_id / gmail_thread_id は Gmail 側の実物を指す控えなので、
+ * これがあれば Gmail の送信済みトレイで同じメールを開いて突き合わせられる。
+ */
+export interface SendEvidence extends SendLog {
+  /** 送信に使った Gmail アカウント（削除済みなら null） */
+  sender_email: string | null;
+}
+
+/** 一覧表示用: prospect ごとの最新の送信記録と通算回数 */
+export interface SendEvidenceSummary {
+  latest: SendEvidence;
+  /** この prospect で送信が記録された回数（追客を含む） */
+  count: number;
+}
+
 /** F1: 収集した企業。同一ドメインは重複登録しない */
 export interface Company {
   id: number;

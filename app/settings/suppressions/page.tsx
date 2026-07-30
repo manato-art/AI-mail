@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Suppression, SuppressionReason, SuppressionTargetType } from "@/lib/types";
 import { Toast } from "@/components/toast";
+import { formatJst } from "@/lib/datetime";
 import {
   BTN_PRIMARY,
   Card,
@@ -41,16 +42,9 @@ const REASON_STYLES: Record<SuppressionReason, string> = {
 /** 手動登録で選べる理由。自動でしか付かないものは出さない */
 const SELECTABLE_REASONS: SuppressionReason[] = ["optout", "rejected_reply", "manual"];
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+/** DBの素の日時文字列はUTC。共通フォーマッタ経由で日本時間に直す（lib/datetime） */
+function formatDate(value: string): string {
+  return formatJst(value, "dateTime");
 }
 
 export default function SuppressionsPage() {

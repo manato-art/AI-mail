@@ -22,6 +22,8 @@ import type {
   PersonaInput,
   Prospect,
   SendLog,
+  SendEvidence,
+  SendEvidenceSummary,
   Sender,
   SenderAuthStatus,
   Service,
@@ -1074,6 +1076,55 @@ export function getSendLogByProspect(prospectId: number): SendLog[] {
   return getDb()
     .prepare("SELECT * FROM send_log WHERE prospect_id = ? ORDER BY sent_at DESC")
     .all(prospectId) as SendLog[];
+}
+
+/**
+ * 「いつ・どのアカウントから・どの Gmail メッセージとして送られたか」の記録。
+ *
+ * ステータス（prospects.send_status）は手で書き換えられる**申告**だが、send_log は
+ * Gmail が受理した時点で書かれる**記録**（gmail_message_id 付き）。画面で送信を
+ * 確かめるときはこちらを見せる。両方が食い違う場合は send_log が事実に近い。
+ */
+export function getSendEvidenceByProspect(prospectId: number): SendEvidence[] {
+  return getDb()
+    .prepare(
+      `SELECT sl.*, s.email AS sender_email
+         FROM send_log sl
+         LEFT JOIN senders s ON s.id = sl.sender_id
+        WHERE sl.prospect_id = ?
+        ORDER BY sl.sent_at DESC, sl.id DESC`
+    )
+    .all(prospectId) as SendEvidence[];
+}
+
+/**
+ * DBが今を何時と書くか。日時表示の基準確認に使う（診断用）。
+ * dbNowLocal と dbNowUtc が同じなら、素の日時文字列は UTC として読むのが正しい。
+ */
+export function getDbNow(): { dbNowLocal: string; dbNowUtc: string } {
+  return getDb()
+    .prepare("SELECT datetime('now','localtime') AS dbNowLocal, datetime('now') AS dbNowUtc")
+    .get() as { dbNowLocal: string; dbNowUtc: string };
+}
+
+/** 一覧に「送信済 7/22 12:49」と出すための辞書（prospect_id → 最新の記録＋通算回数） */
+export function getSendEvidenceMap(): Record<number, SendEvidenceSummary> {
+  const rows = getDb()
+    .prepare(
+      `SELECT sl.*, s.email AS sender_email
+         FROM send_log sl
+         LEFT JOIN senders s ON s.id = sl.sender_id
+        ORDER BY sl.sent_at ASC, sl.id ASC`
+    )
+    .all() as SendEvidence[];
+
+  const map: Record<number, SendEvidenceSummary> = {};
+  for (const row of rows) {
+    // 昇順で回して上書きするので、最後に残るのが最新の送信記録
+    const current = map[row.prospect_id];
+    map[row.prospect_id] = { latest: row, count: (current?.count ?? 0) + 1 };
+  }
+  return map;
 }
 
 export function getTodaySendCount(senderId: number): number {

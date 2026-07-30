@@ -23,7 +23,8 @@ import {
 } from "@phosphor-icons/react";
 import type { IconProps } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
-import type { Prospect, SendStatus, Service } from "@/lib/types";
+import type { Prospect, SendStatus, Service, SendEvidenceSummary } from "@/lib/types";
+import { formatJst } from "@/lib/datetime";
 import { useActiveService } from "@/components/service-context";
 import { BTN_SECONDARY, CARD } from "@/components/ui-kit";
 
@@ -84,23 +85,16 @@ const STATUS_ORDER: SendStatus[] = [
 const PERIOD_DAYS: Record<string, number> = { "7d": 7, "30d": 30 };
 
 /** UTC保存の scheduled_at をローカル表記にする */
+/**
+ * 日時表示は lib/datetime に集約する。DBの素の日時文字列はUTCとして読む
+ * （ブラウザ既定の解釈に任せると日本の利用者には9時間ずれた時刻が出る）。
+ */
 function formatScheduledAt(s: string | null): string {
-  if (!s) return "";
-  const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatJst(s, "shortDateTime");
 }
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatDate(value: string): string {
+  return formatJst(value, "dateTime");
 }
 
 function truncate(text: string, max: number) {
@@ -116,6 +110,8 @@ export default function HistoryPage() {
   const { activeServiceId } = useActiveService();
 
   const [prospects, setProspects] = useState<Prospect[]>([]);
+  /** prospect_id → 実際の送信記録（送信時刻・Gmail控え）。ステータスとは別の「記録」 */
+  const [sendLog, setSendLog] = useState<Record<number, SendEvidenceSummary>>({});
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,19 +131,23 @@ export default function HistoryPage() {
       setLoading(true);
       setError(null);
       try {
-        const [prospectsRes, servicesRes, sendCountsRes] = await Promise.all([
+        const [prospectsRes, servicesRes, sendCountsRes, sendLogRes] = await Promise.all([
           fetch("/api/prospects"),
           fetch("/api/services"),
           fetch("/api/prospects/send-counts"),
+          // 「送信済」ラベル（手で変えられる申告）ではなく、実際の送信記録の時刻を出すため
+          fetch("/api/prospects/send-log"),
         ]);
         if (!prospectsRes.ok) throw new Error("履歴の取得に失敗しました。");
         const prospectsData: Prospect[] = await prospectsRes.json();
         const servicesData: Service[] = servicesRes.ok ? await servicesRes.json() : [];
         const sendCountsData: Record<string, number> = sendCountsRes.ok ? await sendCountsRes.json() : {};
+        const sendLogData: Record<number, SendEvidenceSummary> = sendLogRes.ok ? await sendLogRes.json() : {};
         if (!cancelled) {
           setProspects(prospectsData);
           setServices(servicesData);
           setSentCountsByDomain(sendCountsData);
+          setSendLog(sendLogData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -587,6 +587,16 @@ export default function HistoryPage() {
                             </select>
                             <CaretDown size={10} weight="bold" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2" />
                           </div>
+                          {/*
+                            ステータス（手で変えられる申告）の下に、実際の送信記録の時刻を出す。
+                            記録が無ければ何も出さない＝「送信済にしただけ」と本当に送った分を見分けられる。
+                          */}
+                          {sendLog[prospect.id] && (
+                            <p className="mt-1 whitespace-nowrap text-[11px] tabular-nums text-(--color-muted)">
+                              {formatJst(sendLog[prospect.id].latest.sent_at, "shortDateTime")} に送信
+                              {sendLog[prospect.id].count > 1 && `（${sendLog[prospect.id].count}通）`}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-(--color-muted)">
                           {/* 1行に収める。幅が足りないと日本語は1文字ずつ縦に割れて行が異様に高くなる */}
