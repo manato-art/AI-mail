@@ -1684,10 +1684,23 @@ export function deleteCollectionSource(id: number): boolean {
 }
 
 /** URL からタグ用の短い一意ラベルを作る（乱数不使用の決定的ハッシュ） */
+/**
+ * URLを短いラベルに畳む。
+ *
+ * **末尾を切り落とさないこと**が要件。以前は base36 の先頭6文字だけを使っていたため、
+ * `...&page=337` と `...&page=338` のように末尾だけ違うURLが同じラベルに潰れ、
+ * UNIQUE(keyword, site) 違反で登録が500エラーになっていた（末尾がまさに差分の在り処）。
+ * 2系統のハッシュを連結して衝突の確率を下げる。
+ */
 function shortHash(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36).slice(0, 6);
+  let h1 = 0;
+  let h2 = 5381;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = (h1 * 31 + c) | 0;
+    h2 = ((h2 * 33) ^ c) | 0;
+  }
+  return `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 
 /**
@@ -1709,12 +1722,22 @@ export function createWantedlyUrlSource(
     }
     return instance.prepare("SELECT * FROM collection_sources WHERE id = ?").get(existing.id) as CollectionSource;
   }
-  const keyword = `Wantedly:${shortHash(url)}`;
-  instance
-    .prepare(
-      "INSERT INTO collection_sources (keyword, site, source_type, service_id, url) VALUES (?, 'wantedly.com', 'wantedly_url', ?, ?)"
-    )
-    .run(keyword, serviceId, url);
+  // ラベルが万一衝突しても登録は通す（UNIQUE(keyword, site) 違反を500として見せない）。
+  // 別URLなら別の収集元として登録されるべきで、ラベルは表示上の都合にすぎない。
+  const insert = instance.prepare(
+    "INSERT INTO collection_sources (keyword, site, source_type, service_id, url) VALUES (?, 'wantedly.com', 'wantedly_url', ?, ?)"
+  );
+  const baseKeyword = `Wantedly:${shortHash(url)}`;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const keyword = attempt === 0 ? baseKeyword : `${baseKeyword}-${attempt + 1}`;
+    try {
+      insert.run(keyword, serviceId, url);
+      break;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== "SQLITE_CONSTRAINT_UNIQUE" || attempt === 19) throw error;
+    }
+  }
   return instance.prepare("SELECT * FROM collection_sources WHERE url = ?").get(url) as CollectionSource;
 }
 
@@ -1812,6 +1835,143 @@ export function finishCollectionRun(runId: number, result: CollectionRunResult):
       breakdown: JSON.stringify(result.skipBreakdown),
       error: result.error ?? "",
     });
+}
+
+/**
+ * 収集が「本当に回っているか」を数字で見るための集計。
+ *
+ * 収集元が増えると、1周期で全件に順番が回らない（1件ずつ待ち時間を入れて直列に走るため）。
+ * 「動いていない」のか「順番が来ていないだけ」なのかは、**周期あたり何件走ったか**と
+ * **各収集元がどこまで進んだか**を見ないと区別できない。それをまとめて返す。
+ */
+export interface CollectionDiagnostics {
+  sources: {
+    total: number;
+    /** 収集対象（有効かつ一時停止でない） */
+    active: number;
+    /** 一時停止（自動停止を含む）*/
+    paused: number;
+    /** 一度も順番が来ていない */
+    neverRun: number;
+    /** 直近24時間に走った */
+    ranLast24h: number;
+    /** 同じ検索（URLのpageを除いて一致）が重複登録されている数 */
+    duplicateUrlGroups: number;
+    duplicateUrlSources: number;
+  };
+  /** 直近の周期で実際に走った収集元の数（周期＝連続した実行のまとまり） */
+  lastCycle: { startedAt: string | null; finishedAt: string | null; ranSources: number } | null;
+  /** 1件も走らなかった直近の周期があるか判定するための、時間帯別の実行数 */
+  runsPerDay: { day: string; runs: number; found: number; newCount: number }[];
+  /** 収集元ごとの進み具合（多い順）。何ページ目まで行って何社取れたか */
+  perSource: {
+    id: number;
+    label: string;
+    sourceType: string;
+    isActive: boolean;
+    pausedReason: string;
+    nextPage: number;
+    lastRunAt: string | null;
+    runs: number;
+    companies: number;
+  }[];
+}
+
+export function getCollectionDiagnostics(): CollectionDiagnostics {
+  const instance = getDb();
+
+  const counts = instance
+    .prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN is_active = 1 AND paused_kind = '' THEN 1 ELSE 0 END) AS active,
+         SUM(CASE WHEN is_active = 0 OR paused_kind <> '' THEN 1 ELSE 0 END) AS paused,
+         SUM(CASE WHEN last_run_at IS NULL THEN 1 ELSE 0 END) AS neverRun,
+         SUM(CASE WHEN last_run_at >= datetime('now','-1 day') THEN 1 ELSE 0 END) AS ranLast24h
+       FROM collection_sources`
+    )
+    .get() as { total: number; active: number; paused: number; neverRun: number; ranLast24h: number };
+
+  // 同じ検索の重複（URLから page パラメータだけを除いて突き合わせる）。
+  // page は取得時に1から振り直すので、page違いのURLは機能的に同一。
+  const urlRows = instance
+    .prepare("SELECT id, url FROM collection_sources WHERE url IS NOT NULL AND trim(url) <> ''")
+    .all() as { id: number; url: string }[];
+  const groups = new Map<string, number>();
+  for (const row of urlRows) {
+    let key = row.url;
+    try {
+      const u = new URL(row.url);
+      u.searchParams.delete("page");
+      key = u.toString();
+    } catch {
+      // URLとして読めないものはそのまま鍵にする（勝手に同一視しない）
+    }
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  let duplicateUrlGroups = 0;
+  let duplicateUrlSources = 0;
+  for (const count of groups.values()) {
+    if (count > 1) {
+      duplicateUrlGroups += 1;
+      duplicateUrlSources += count;
+    }
+  }
+
+  // 直近の周期＝最後の実行から遡って、30分以上の空白が開くまでを1まとまりとみなす
+  const recent = instance
+    .prepare("SELECT started_at, finished_at FROM collection_runs ORDER BY started_at DESC, id DESC LIMIT 500")
+    .all() as { started_at: string; finished_at: string | null }[];
+  let lastCycle: CollectionDiagnostics["lastCycle"] = null;
+  if (recent.length > 0) {
+    const toMs = (s: string) => new Date(s.replace(" ", "T") + "Z").getTime();
+    const latest = toMs(recent[0].started_at);
+    let ran = 0;
+    let oldest = recent[0].started_at;
+    for (const row of recent) {
+      const gap = latest - toMs(row.started_at);
+      if (gap > 30 * 60 * 1000) break;
+      ran += 1;
+      oldest = row.started_at;
+    }
+    lastCycle = { startedAt: oldest, finishedAt: recent[0].finished_at ?? recent[0].started_at, ranSources: ran };
+  }
+
+  const runsPerDay = instance
+    .prepare(
+      `SELECT date(started_at) AS day,
+              COUNT(*) AS runs,
+              COALESCE(SUM(found_count), 0) AS found,
+              COALESCE(SUM(new_count), 0) AS newCount
+         FROM collection_runs
+        GROUP BY date(started_at)
+        ORDER BY day DESC
+        LIMIT 7`
+    )
+    .all() as { day: string; runs: number; found: number; newCount: number }[];
+
+  const perSource = instance
+    .prepare(
+      `SELECT s.id                AS id,
+              COALESCE(NULLIF(trim(s.url), ''), s.keyword) AS label,
+              s.source_type       AS sourceType,
+              (s.is_active = 1 AND s.paused_kind = '') AS isActive,
+              s.paused_reason     AS pausedReason,
+              s.next_page         AS nextPage,
+              s.last_run_at       AS lastRunAt,
+              (SELECT COUNT(*) FROM collection_runs r WHERE r.source_id = s.id) AS runs,
+              (SELECT COUNT(*) FROM companies c WHERE c.collection_source_id = s.id) AS companies
+         FROM collection_sources s
+        ORDER BY companies DESC, runs DESC, s.id ASC`
+    )
+    .all() as CollectionDiagnostics["perSource"];
+
+  return {
+    sources: { ...counts, duplicateUrlGroups, duplicateUrlSources },
+    lastCycle,
+    runsPerDay,
+    perSource: perSource.map((r) => ({ ...r, isActive: Boolean(r.isActive) })),
+  };
 }
 
 export function getRecentCollectionRuns(limit: number = 30): CollectionRun[] {

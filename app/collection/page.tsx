@@ -58,6 +58,33 @@ const RUN_STATUS_STYLES: Record<string, string> = {
  * 収集元の「集め方（方式）」を一目で分かるバッジにする。今どの方式で回っているかの混乱を防ぐ。
  * アイコンは phosphor のみ（絵文字をアイコン代わりにしない・IA-DESIGN §3.3）。
  */
+/** /api/collection/diagnostics の応答 */
+interface CollectionDiagnosticsResponse {
+  sources: {
+    total: number;
+    active: number;
+    paused: number;
+    neverRun: number;
+    ranLast24h: number;
+    duplicateUrlGroups: number;
+    duplicateUrlSources: number;
+  };
+  lastCycle: { startedAt: string | null; finishedAt: string | null; ranSources: number } | null;
+  runsPerDay: { day: string; runs: number; found: number; newCount: number }[];
+  perSource: {
+    id: number;
+    label: string;
+    sourceType: string;
+    isActive: boolean;
+    pausedReason: string;
+    nextPage: number;
+    lastRunAt: string | null;
+    runs: number;
+    companies: number;
+  }[];
+  lastJobFinishedAt: string | null;
+}
+
 function sourceMethod(sourceType: string): {
   label: string;
   hint: string;
@@ -145,6 +172,8 @@ function formatDateTime(value: string | null): string {
 
 export default function CollectionPage() {
   const [status, setStatus] = useState<CollectionStatus | null>(null);
+  /** 収集の進み具合（収集元が多いと1周期で全件に順番が回らないので、数字で見せる） */
+  const [diag, setDiag] = useState<CollectionDiagnosticsResponse | null>(null);
   const [sources, setSources] = useState<CollectionSource[]>([]);
   const [runs, setRuns] = useState<CollectionRun[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,11 +200,16 @@ export default function CollectionPage() {
 
   const load = useCallback(async () => {
     try {
-      const [statusRes, sourcesRes, servicesRes] = await Promise.all([
+      const [statusRes, sourcesRes, servicesRes, diagRes] = await Promise.all([
         fetch("/api/collection/status"),
         fetch("/api/collection/sources"),
         fetch("/api/services"),
+        // 「本当に巡回できているか」を数字で見るための集計（読み取り専用）
+        fetch("/api/collection/diagnostics"),
       ]);
+      if (diagRes.ok) {
+        setDiag(await diagRes.json());
+      }
       if (servicesRes.ok) {
         const data = await servicesRes.json();
         setServices(Array.isArray(data.services) ? data.services : data);
@@ -490,6 +524,42 @@ export default function CollectionPage() {
           </p>
         )}
 
+        {/*
+          巡回の進み具合。収集元は1件ずつ順番に回る（媒体に負荷をかけないため間隔を空ける）ので、
+          件数が増えると1周期で全件に順番が来ない。「動いていない」と「順番待ち」を数字で見分けるための表示。
+        */}
+        {diag && diag.sources.total > 0 && (
+          <div className="mb-3 rounded-lg border border-(--color-border) bg-(--color-card-hover) px-3 py-2.5">
+            <p className="text-[13px] font-semibold">巡回の進み具合</p>
+            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-(--color-muted)">
+              <span>収集元 <b className="tabular-nums text-(--color-foreground)">{diag.sources.total}</b>件（収集対象 {diag.sources.active} / 停止中 {diag.sources.paused}）</span>
+              {diag.lastCycle && (
+                <span>
+                  直近の巡回で順番が来たのは{" "}
+                  <b className="tabular-nums text-(--color-foreground)">{diag.lastCycle.ranSources}</b>件
+                  （{formatDateTime(diag.lastCycle.startedAt)}〜）
+                </span>
+              )}
+              {diag.sources.neverRun > 0 && (
+                <span className="text-(--color-warning-text)">まだ一度も順番が来ていない: <b className="tabular-nums">{diag.sources.neverRun}</b>件</span>
+              )}
+            </div>
+            {diag.sources.duplicateUrlSources > 0 && (
+              <p className="mt-1.5 rounded bg-(--color-warning-light) px-2 py-1 text-[12px] leading-relaxed text-(--color-warning-text)">
+                同じ検索が重複して登録されています（<b className="tabular-nums">{diag.sources.duplicateUrlSources}</b>件 /{" "}
+                {diag.sources.duplicateUrlGroups}種類）。URL末尾の <code>page=</code> は巡回時に1ページ目から振り直すため、
+                番号だけ違うURLは<b>同じ検索の重複</b>になり、順番待ちを長くしています。
+              </p>
+            )}
+            {diag.sources.active > 0 && diag.lastCycle && diag.lastCycle.ranSources < diag.sources.active && (
+              <p className="mt-1.5 text-[12px] leading-relaxed text-(--color-muted)">
+                収集対象 {diag.sources.active}件に対し、1回の巡回で回れたのは {diag.lastCycle.ranSources}件です。
+                残りは次回以降に順番が回ります（最終実行が古い順）。
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           {sources.length === 0 && (
             <p className="py-6 text-center text-[13px] text-(--color-muted)">
@@ -530,6 +600,18 @@ export default function CollectionPage() {
                       : `検索元: ${source.site || "自動判定"}`}
                   {" "}・ 最終実行 {formatDateTime(source.last_run_at)}
                 </p>
+                {/* 進み具合: 何ページ目まで行って、そこから何社集まったか（順番待ちなら「未実行」と分かる） */}
+                {(() => {
+                  const stat = diag?.perSource.find((x) => x.id === source.id);
+                  if (!stat) return null;
+                  return (
+                    <p className="mt-0.5 pl-4 text-[12px] text-(--color-muted)">
+                      {stat.runs === 0
+                        ? "まだ順番が来ていません（次回以降に巡回します）"
+                        : `${stat.nextPage > 0 ? `${stat.nextPage}ページ目まで進行` : "1ページ目から"} ・ ここから ${stat.companies}社 ・ 巡回${stat.runs}回`}
+                    </p>
+                  );
+                })()}
                 {source.paused_kind && (
                   <p
                     className={`mt-1.5 rounded px-2 py-1 text-[12px] text-pretty ${
