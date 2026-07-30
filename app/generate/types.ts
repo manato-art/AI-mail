@@ -35,6 +35,13 @@ export interface AlreadySentResponse {
 
 export interface ErrorResponse {
   error: string;
+  /** 時間を置けば直る種類か（自動リトライの判断に使う） */
+  retryable?: boolean;
+  /**
+   * アカウント・設定側の問題（残高切れ・キー無効・モデル名間違い）。
+   * どの会社でも同じく失敗するので、一括生成は続いたら止める。
+   */
+  fatal?: boolean;
 }
 
 export type GenerateResponse =

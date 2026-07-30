@@ -72,6 +72,14 @@ function GeneratePageInner() {
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   const abortRef = useRef(false);
+  /**
+   * アカウント側の問題（残高切れ・キー無効・モデル名間違い）が連続した回数。
+   * 1社ごとにサイト読み取りとGemini分析（有料）を先に走らせてから落ちるため、
+   * 気付かず全社流すと調査費を丸ごと捨てる。3社連続で残りを止める。
+   */
+  const fatalStreakRef = useRef(0);
+  const FATAL_STREAK_LIMIT = 3;
+  const [batchStopReason, setBatchStopReason] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const batchProgressRef = useRef<HTMLDivElement>(null);
 
@@ -354,6 +362,7 @@ function GeneratePageInner() {
         const data: GenerateResponse = await res.json();
 
         if (isSuccessResponse(data)) {
+          fatalStreakRef.current = 0; // 1件でも通れば設定は生きている
           setBatchItems((prev) =>
             prev.map((item, idx) =>
               idx === i ? { ...item, status: "done", prospectId: data.prospect.id, companyName: data.prospect.company_name } : item
@@ -386,6 +395,17 @@ function GeneratePageInner() {
           return;
         } else if (isErrorResponse(data)) {
           lastError = data.error;
+          // 残高切れ・キー無効等は待っても直らず全社で同じ結果になる。連続したら残りを打ち切る
+          if (data.fatal) {
+            fatalStreakRef.current += 1;
+            if (fatalStreakRef.current >= FATAL_STREAK_LIMIT) {
+              abortRef.current = true;
+              abortControllerRef.current?.abort();
+              setBatchStopReason(data.error);
+            }
+          } else {
+            fatalStreakRef.current = 0;
+          }
           const retryable = "retryable" in data && (data as { retryable?: boolean }).retryable;
           if (!retryable || attempt >= MAX_RETRIES) {
             setBatchItems((prev) =>
@@ -446,6 +466,8 @@ function GeneratePageInner() {
     setBatchItems(items);
     setBatchRunning(true);
     abortRef.current = false;
+    fatalStreakRef.current = 0;
+    setBatchStopReason(null);
 
     setTimeout(() => {
       batchProgressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -671,6 +693,7 @@ function GeneratePageInner() {
           <BatchProgress
             items={batchItems}
             running={batchRunning}
+            stopReason={batchStopReason}
             onStop={() => { abortRef.current = true; abortControllerRef.current?.abort(); }}
           />
         </div>

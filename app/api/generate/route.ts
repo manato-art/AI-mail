@@ -165,7 +165,9 @@ export async function POST(request: NextRequest) {
     console.error(`[generate] stage=${stage}`, error);
     const classified = classifyGenerateError(error, stage);
     return NextResponse.json(
-      { error: classified.message, retryable: classified.retryable },
+      // fatal = 残高・キー・モデル等のアカウント側の問題。どの会社でも同じく失敗するので
+      // 一括生成側はこれが続いたら残りを止める（無駄な調査費を出さない）
+      { error: classified.message, retryable: classified.retryable, fatal: classified.fatal ?? false },
       { status: classified.status }
     );
   }

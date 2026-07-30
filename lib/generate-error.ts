@@ -27,6 +27,13 @@ export interface ClassifiedError {
   status: number;
   /** 時間を置けば直る種類か（クライアントの自動リトライ判断に使う） */
   retryable: boolean;
+  /**
+   * アカウント・設定側の問題で、**どの会社でも同じように失敗する**種類か。
+   * 残高切れ・キー無効・モデル名間違いなど。一括生成はこれが続いたら止める
+   * （1社ごとにサイト読み取りとGemini分析＝有料処理を先に走らせてから落ちるため、
+   *   気付かず流し続けると全社ぶんの調査費を捨てる）。
+   */
+  fatal?: boolean;
 }
 
 const MAX_DETAIL = 200;
@@ -93,17 +100,17 @@ function classifyByStatus(api: { status: number; type: string; message: string }
   const { status, type, message } = api;
 
   if (status === 401) {
-    return { message: "AI APIキーが認証されませんでした。ANTHROPIC_API_KEY を確認してください", status: 500, retryable: false };
+    return { message: "AI APIキーが認証されませんでした。ANTHROPIC_API_KEY を確認してください", status: 500, retryable: false, fatal: true };
   }
   if (status === 403) {
-    return { message: `AI APIへのアクセスが拒否されました（権限エラー）${message ? `: ${message}` : ""}`, status: 500, retryable: false };
+    return { message: `AI APIへのアクセスが拒否されました（権限エラー）${message ? `: ${message}` : ""}`, status: 500, retryable: false, fatal: true };
   }
   if (status === 404) {
-    return { message: `AIモデルが見つかりません。GENERATION_MODEL の設定を確認してください（${message || type}）`, status: 500, retryable: false };
+    return { message: `AIモデルが見つかりません。GENERATION_MODEL の設定を確認してください（${message || type}）`, status: 500, retryable: false, fatal: true };
   }
   if (status === 400) {
     if (/credit balance|billing|quota/i.test(message)) {
-      return { message: `AI APIの残高・請求設定に問題があります: ${message}`, status: 500, retryable: false };
+      return { message: `AI APIの残高・請求設定に問題があります: ${message}`, status: 500, retryable: false, fatal: true };
     }
     return { message: `AI APIにリクエストを拒否されました: ${message || type}`, status: 500, retryable: false };
   }
@@ -138,10 +145,10 @@ export function classifyGenerateError(error: unknown, stage: GenerateStage = "�
   if (error instanceof Error) {
     // 3. 設定不備（APIキー未設定・無効）はリトライしても直らない
     if (error.message.includes("が設定されていません")) {
-      return { message: error.message, status: 500, retryable: false };
+      return { message: error.message, status: 500, retryable: false, fatal: true };
     }
     if (error.message.includes("API key not valid") || error.message.includes("API_KEY_INVALID")) {
-      return { message: "AI APIキーが無効です。GEMINI_API_KEY を確認してください", status: 500, retryable: false };
+      return { message: "AI APIキーが無効です。GEMINI_API_KEY を確認してください", status: 500, retryable: false, fatal: true };
     }
     // 4. 分析（Gemini）側で包んだエラー
     if (error.message.includes("分析APIエラー") || error.message.includes("分析がブロック")) {

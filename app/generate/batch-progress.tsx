@@ -25,6 +25,11 @@ interface Props {
   items: BatchItem[];
   running: boolean;
   onStop: () => void;
+  /**
+   * アカウント側の問題（残高切れ・キー無効等）で残りを自動で打ち切ったときの理由。
+   * 黙って止めると「なぜ途中で終わったのか」が分からないので必ず画面に出す。
+   */
+  stopReason?: string | null;
 }
 
 function formatElapsed(seconds: number): string {
@@ -33,7 +38,7 @@ function formatElapsed(seconds: number): string {
   return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}秒`;
 }
 
-export function BatchProgress({ items, running, onStop }: Props) {
+export function BatchProgress({ items, running, onStop, stopReason }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
 
@@ -81,6 +86,20 @@ export function BatchProgress({ items, running, onStop }: Props) {
           )}
         </div>
       </div>
+
+      {stopReason && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 dark:border-red-800 dark:bg-red-950/40">
+          <Warning size={15} weight="fill" className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" />
+          <div className="text-[13px] leading-relaxed text-red-700 dark:text-red-300">
+            <p className="font-semibold">同じ理由で続けて失敗したため、残りを中止しました</p>
+            <p className="mt-0.5">{stopReason}</p>
+            <p className="mt-1 text-[12px] text-red-600/90 dark:text-red-400/90">
+              この原因は待っても直りません。設定・請求を直してから、もう一度実行してください
+              （1社ごとにサイト調査の費用がかかるため、無駄打ちを止めています）。
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden mb-4">
         <div

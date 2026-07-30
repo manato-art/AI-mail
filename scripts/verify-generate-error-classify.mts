@@ -114,6 +114,36 @@ const apiError = (status: number, type: string, message: string) =>
   check("キー未設定はそのまま伝える", r.message.includes("GEMINI_API_KEY") && !r.retryable, r.message);
 }
 
+// --- 一括生成のブレーカー用: アカウント側の問題は fatal で伝える ---
+{
+  const cases: Array<[string, unknown]> = [
+    ["残高不足", apiError(400, "invalid_request_error", "Your credit balance is too low")],
+    ["キー認証エラー", apiError(401, "authentication_error", "invalid x-api-key")],
+    ["権限エラー", apiError(403, "permission_error", "no")],
+    ["モデル無効", apiError(404, "not_found_error", "model: xxx")],
+    ["キー未設定", new Error("GEMINI_API_KEY が設定されていません")],
+  ];
+  const allFatal = cases.every(([, e]) => classifyGenerateError(e, "生成").fatal === true);
+  check("設定・請求起因のエラーは fatal=true（一括生成を止める合図）", allFatal);
+}
+{
+  // 一時的な失敗で止めてはいけない（待てば直る＝続行すべき）
+  const transient: unknown[] = [
+    apiError(429, "rate_limit_error", "slow down"),
+    apiError(529, "overloaded_error", "overloaded"),
+    new Error("分析APIエラー: 503"),
+    new Error("AI応答のJSONパースに失敗しました（生成）"),
+    new TypeError("fetch failed"),
+  ];
+  check("一時的な失敗は fatal にしない（打ち切らない）",
+    transient.every((e) => !classifyGenerateError(e, "生成").fatal));
+}
+{
+  // サイトが重い等の個別事情で全体を止めない
+  const perCompany = classifyGenerateError(apiError(413, "request_too_large", "too big"), "生成");
+  check("その会社だけの問題（入力過大）は fatal にしない", !perCompany.fatal);
+}
+
 // --- 退行防止: 中身の無い汎用文を返さない ---
 {
   const samples = [
