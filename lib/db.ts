@@ -1414,6 +1414,68 @@ export function upsertContact(data: ContactInput): Contact {
     .get(Number(result.lastInsertRowid)) as Contact;
 }
 
+/**
+ * 既存の連絡先に個社LPのURLを設定する（2026-08-06 追加）。
+ *
+ * なぜ upsertContact では駄目か:
+ *   upsertContact は同じメールアドレスが既にあると **何もせずに既存行を返す**。
+ *   つまり「先に企業だけ集めておいて、後からLPのURLを流し込む」ができない。
+ *   商材「かってにHP」は1店1URLが核心なので、この経路が無いと1通も送れない。
+ *
+ * 見つからなかったことを成功として返さない。呼び出し側が「入ったつもり」になると、
+ * 商材共通のLPへフォールバックして **別の店のページを送る事故** になる。
+ */
+export type SetLpUrlOutcome = "updated" | "unchanged" | "not_found";
+
+export function setContactLpUrl(email: string, lpUrl: string): SetLpUrlOutcome {
+  const instance = getDb();
+  const key = normalizeEmailKey(email);
+  const existing = instance
+    .prepare("SELECT id, lp_url FROM contacts WHERE email = ?")
+    .get(key) as { id: number; lp_url: string | null } | undefined;
+
+  if (!existing) return "not_found";
+  if ((existing.lp_url ?? "") === lpUrl) return "unchanged";
+
+  instance.prepare("UPDATE contacts SET lp_url = ? WHERE id = ?").run(lpUrl, existing.id);
+  return "updated";
+}
+
+/**
+ * 宛先の企業について、**こちらが既に持っている調査結果**を分析データとして入れる
+ * （2026-08-06 追加）。
+ *
+ * ★ なぜ要るか（実際に起きた乖離）:
+ *   店舗LP（かってにHP）では、その店の既存HPを12ページ巡回し、お品書き51品まで
+ *   写して1枚のページを作っている。ところがメール生成側は**それを知らず**、
+ *   宛先のドメインから改めてWeb検索し、**グループ本体（不動産・ケーブルテレビ）**を
+ *   分析していた。結果、**送るLPには「明治四十年創業のそば屋」と書いてあるのに、
+ *   本文は「30年以上にわたり不動産事業とケーブルテレビ事業の両軸で」と書いた。**
+ *
+ *   同じ店を2つの仕組みが別々に調べて食い違う、という構造の問題なので、
+ *   **店の情報については LP 側を正とする**（2026-08-06 ユーザー判断）。
+ *   ここに入れておけば resolveAnalysisForRecipient が最優先で拾い、クロールは走らない。
+ *
+ * 見つからないことを成功として返さない。入ったつもりで送ると、また食い違った本文が出る。
+ */
+export type SetAnalysisOutcome = "updated" | "contact_not_found" | "company_not_linked";
+
+export function setCompanyAnalysisByContactEmail(
+  email: string,
+  analysisJson: string,
+  hpUrl?: string | null
+): SetAnalysisOutcome {
+  const contact = getContactByEmail(email);
+  if (!contact) return "contact_not_found";
+  if (!contact.company_id) return "company_not_linked";
+
+  markCompanyEnriched(contact.company_id, {
+    analysis_json: analysisJson,
+    ...(hpUrl ? { hp_url: hpUrl } : {}),
+  });
+  return "updated";
+}
+
 export interface ImportRow {
   name: string;
   domain?: string | null;
