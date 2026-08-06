@@ -14,6 +14,33 @@ import type { SendGuardResult } from "@/lib/types";
 const UNRESOLVED_VARIABLE_PATTERN = /\{\{[^}]+\}\}/g;
 const AI_ZONE_PREFIX = /^\{\{AI:/;
 
+/**
+ * 全角の波括弧で書かれた「変数のつもり」を検出する。
+ *
+ * なぜ要るか（2026-08-06・実際に3回起きた）:
+ *   テンプレに `｛｛店舗HPのURL｝｝` と全角で書くと——
+ *     1. VARIABLE_PATTERN（半角のみ）に一致しないので **置換されない**
+ *     2. UNRESOLVED_VARIABLE_PATTERN も半角のみなので **未解決としても検知されない**
+ *   結果、`｛｛店舗HPのURL｝｝` という文字列が**警告ゼロで顧客に届く**。
+ *   「置換されない」より「置換されないことに誰も気づかない」方が悪い
+ *   （KB silent-failure-cascade）。半角に直せというメッセージまで出す。
+ *
+ * 全角波括弧が日本語の営業メール本文に正当に現れることはまず無いので、
+ * 誤検知より取りこぼしを恐れる側に倒す。
+ */
+const FULLWIDTH_VARIABLE_PATTERN = /[｛]{1,2}[^｝]*[｝]{1,2}/g;
+
+/**
+ * 全角波括弧の混入を返す（空配列＝問題なし）。件名・本文の両方を見る。
+ */
+export function checkFullwidthBraces(subject: string, body: string): string[] {
+  const hits = [
+    ...(subject.match(FULLWIDTH_VARIABLE_PATTERN) ?? []),
+    ...(body.match(FULLWIDTH_VARIABLE_PATTERN) ?? []),
+  ];
+  return [...new Set(hits)];
+}
+
 // フリーメールドメイン（自社ドメイン誤ブロック除外に使う）は lib/email-domains に集約。
 
 function parseEnvOwnDomains(): string[] {
@@ -151,6 +178,14 @@ export function runSendGuard(params: {
   const unresolvedVars = checkUnresolvedVariables(params.subject, params.body);
   if (unresolvedVars.length > 0) {
     hardBlocks.push(`未解決の変数が残っています: ${unresolvedVars.join(", ")}`);
+  }
+  // 全角の波括弧は「変数のつもりが置換されず、しかも未解決検知にも掛からない」状態。
+  // 未解決変数と同じく「承認して送る」ものではなく単に壊れているので、force でも弾く
+  const fullwidth = checkFullwidthBraces(params.subject, params.body);
+  if (fullwidth.length > 0) {
+    hardBlocks.push(
+      `全角の波括弧が残っています（半角の {{ }} に直してください）: ${fullwidth.join(", ")}`
+    );
   }
   if (!params.subject.trim()) hardBlocks.push("件名が空です");
   if (!params.body.trim()) hardBlocks.push("本文が空です");
