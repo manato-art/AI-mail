@@ -18,8 +18,8 @@ const MAX_ZONE_TOKENS = 512;
 
 const COMPOSE_MODES: ComposeMode[] = ["full_ai", "hybrid", "fixed_only"];
 
-/** AI ゾーンのパターン。{{AI:...}} を検出する。改行を含む指示にも対応 */
-const AI_ZONE_PATTERN = /\{\{AI:([\s\S]*?)\}\}/g;
+/** AI ゾーンの開始。終わりは正規表現では決められない（下の scanAiZones を参照） */
+const AI_ZONE_OPEN = "{{AI:";
 
 /** 不正な値が入ると生成経路の分岐が壊れるので、既知の値以外は既定に倒す */
 export function normalizeComposeMode(value: unknown): ComposeMode {
@@ -46,20 +46,81 @@ export interface ComposeParams {
   analysis?: AnalysisResult | null;
 }
 
+export interface AiZone {
+  /** `{{AI:` から対応する `}}` までの全体 */
+  full: string;
+  /** 中身の指示文（前後の空白を除く） */
+  instruction: string;
+  /** text 内の開始位置 */
+  index: number;
+}
+
+/**
+ * {{AI:...}} ゾーンを、**波括弧の対応を数えながら**切り出す。
+ *
+ * ★ なぜ正規表現をやめたか（2026-08-06・実際に顧客宛の下書きが壊れた）:
+ *   旧実装は `/\{\{AI:([\s\S]*?)\}\}/g` の**非貪欲**マッチだった。
+ *   指示文の中に `{{company_name}}` のような変数を書くと、
+ *   **その閉じ括弧でゾーンが終わったことになる**。結果:
+ *     1. AIには途中で切れた指示しか渡らない（末尾の条件が丸ごと消える）
+ *     2. 残りの `}}…そこへ自然に渡すこと。}}` が
+ *        **社内向けの指示文のまま本文に残り、顧客に届く**
+ *   実際、生成されたメールに指示文の断片がそのまま入っていた。
+ *
+ *   「指示文に変数を書くな」という運用ルールでは防げない。書けてしまうし、
+ *   書くのが自然だから（次の段落の文言を指示に引用したくなる）。**構文の側を直す。**
+ *
+ * 閉じ括弧が足りないゾーンは**採らない**。中途半端に採ると、上と同じ
+ * 「指示文が本文に残る」事故に戻る。採らなければ `{{AI:` が本文に残り、
+ * 未解決変数ガード（send-guard）が送信を止める＝安全側に倒れる。
+ */
+function scanAiZones(text: string): AiZone[] {
+  const zones: AiZone[] = [];
+  let from = 0;
+
+  for (;;) {
+    const start = text.indexOf(AI_ZONE_OPEN, from);
+    if (start === -1) break;
+
+    let depth = 1; // AI_ZONE_OPEN の `{{` の分
+    let i = start + AI_ZONE_OPEN.length;
+    let end = -1;
+    while (i < text.length) {
+      if (text.startsWith("{{", i)) {
+        depth++;
+        i += 2;
+      } else if (text.startsWith("}}", i)) {
+        depth--;
+        i += 2;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      } else {
+        i++;
+      }
+    }
+
+    if (end === -1) break; // 閉じていない。ここから後ろにゾーンは無いものとして扱う
+    zones.push({
+      full: text.slice(start, end),
+      instruction: text.slice(start + AI_ZONE_OPEN.length, end - 2).trim(),
+      index: start,
+    });
+    from = end;
+  }
+
+  return zones;
+}
+
 /** テンプレ本文に {{AI:...}} ゾーンが含まれるか判定する */
 export function hasAiZones(text: string): boolean {
-  AI_ZONE_PATTERN.lastIndex = 0;
-  return AI_ZONE_PATTERN.test(text);
+  return scanAiZones(text).length > 0;
 }
 
 /** テンプレ本文から {{AI:...}} ゾーンの指示を全て抽出する */
-export function extractAiZones(text: string): Array<{ full: string; instruction: string }> {
-  AI_ZONE_PATTERN.lastIndex = 0;
-  const zones: Array<{ full: string; instruction: string }> = [];
-  for (const match of text.matchAll(AI_ZONE_PATTERN)) {
-    zones.push({ full: match[0], instruction: match[1].trim() });
-  }
-  return zones;
+export function extractAiZones(text: string): AiZone[] {
+  return scanAiZones(text);
 }
 
 export function buildZoneSystemPrompt(persona?: Persona | null): string {
@@ -173,13 +234,12 @@ const ZONE_HIDDEN = "（別途生成される部分）";
 /**
  * 本文中の全 {{AI:...}} ゾーンを出現順に列挙する（位置情報付き）。
  *
- * AI_ZONE_PATTERN はモジュール共有のグローバル正規表現。matchAll はクローンの
- * 開始位置に元の lastIndex を引き継ぐため、直前に hasAiZones()（.test()）が
- * lastIndex を進めていると途中から走査してゾーンを取りこぼす。必ず 0 に戻す。
+ * 2026-08-06: 共有グローバル正規表現の lastIndex 汚染を避けるための関数だったが、
+ * ゾーンの切り出し自体を scanAiZones（波括弧の対応を数える）に置き換えたので、
+ * 状態を持たない。KB global-regex-lastindex-shared-state の踏み替えも同時に消えた。
  */
-function matchAiZones(text: string): RegExpMatchArray[] {
-  AI_ZONE_PATTERN.lastIndex = 0;
-  return [...text.matchAll(AI_ZONE_PATTERN)];
+function matchAiZones(text: string): AiZone[] {
+  return scanAiZones(text);
 }
 
 /**
@@ -189,14 +249,12 @@ function matchAiZones(text: string): RegExpMatchArray[] {
  * 位置(index)で対象を特定するため、空の {{AI:}} を複数置いても
  * それぞれのゾーンの実際の位置に目印が付く（文字列一致だと先頭に固定されズレる）。
  */
-function renderZoneContext(text: string, matches: RegExpMatchArray[], targetIndex: number): string {
+function renderZoneContext(text: string, matches: AiZone[], targetIndex: number): string {
   let out = "";
   let cursor = 0;
-  for (let i = 0; i < matches.length; i++) {
-    const match = matches[i];
-    const start = match.index ?? 0;
-    out += text.slice(cursor, start) + (i === targetIndex ? ZONE_MARKER : ZONE_HIDDEN);
-    cursor = start + match[0].length;
+  for (const [i, zone] of matches.entries()) {
+    out += text.slice(cursor, zone.index) + (i === targetIndex ? ZONE_MARKER : ZONE_HIDDEN);
+    cursor = zone.index + zone.full.length;
   }
   out += text.slice(cursor);
   return out;
@@ -218,10 +276,11 @@ export function buildZoneContexts(text: string): string[] {
  */
 export function buildZoneContext(text: string, targetZone: string): string {
   const matches = matchAiZones(text);
-  const targetIndex = matches.findIndex((m) => m[0] === targetZone);
+  const targetIndex = matches.findIndex((m) => m.full === targetZone);
   if (targetIndex === -1) {
-    // 目印が見つからない場合も他ゾーンは伏せる（従来挙動の保険）
-    return text.replace(AI_ZONE_PATTERN, ZONE_HIDDEN);
+    // 目印が見つからない場合も他ゾーンは伏せる（従来挙動の保険）。
+    // -1 を渡すとどのゾーンにも目印が付かず、全部が伏せ字になる
+    return renderZoneContext(text, matches, -1);
   }
   return renderZoneContext(text, matches, targetIndex);
 }
@@ -234,26 +293,77 @@ export function buildZoneContext(text: string, targetZone: string): string {
  * 文脈も最終組み立ても位置(index)基準で行うため、空の {{AI:}} を複数置いても
  * 生成文脈・挿入位置がゾーンごとに正しく対応する。
  */
+/**
+ * AIゾーンの生成結果が「顧客に見せてよい文章」か検査する。駄目なら例外を投げる。
+ *
+ * ★ なぜ要るか（2026-08-06・実際に起きた）:
+ *   商材と相手企業が噛み合っていなかったため、AIが**運用者に向けた断り文**を返した。
+ *     「申し訳ございませんが、今回のご依頼にはお応えしかねます。
+ *      分析データを拝見したところ、相手先の…様は不動産・ケーブルテレビ事業者であり、
+ *      自社サービス「きっかけ！インターン」は採用支援サービスです。…
+ *      以下をご提供いただけますでしょうか。1. 相手企業の公式サイトURL…」
+ *   これが**そのまま顧客宛メールの本文に差し込まれた**。
+ *   生成結果を誰も見ていなかったのが原因。
+ *
+ * 判定は厳しめに倒す。**誤検知の代償は「もう一度生成する」だけ**だが、
+ * 取りこぼしの代償は「断り文を客に送る」。非対称なので厳しい側でよい。
+ */
+const ZONE_OUTPUT_REJECT: Array<{ id: string; test: RegExp }> = [
+  // 運用者向けの語。顧客宛の1〜3文には絶対に出てこない
+  { id: "こちら向けの語", test: /生成指示|分析データ|テンプレート|プロンプト|自社サービス|相手企業|挿入する文章|フック文/ },
+  // 断り・保留。文章ではなく回答になっている
+  { id: "断り・保留", test: /お応えしかねます|お書きすることができません|生成できません|生成いたします|ご提供いただけますでしょうか|情報が揃い次第|条件が整えば/ },
+  // Markdown。素のテキストとして差し込まれる前提なので、記法が出た時点で対話文
+  { id: "Markdown記法", test: /\*\*|^\s*---\s*$|^\s*#{1,6}\s/m },
+];
+
+/** 1〜3文のはずのゾーンがこれを超えたら、文章ではなく説明になっている */
+const ZONE_OUTPUT_MAX_CHARS = 400;
+
+export function checkZoneOutput(text: string): string | null {
+  const t = text.trim();
+  if (!t) return "空の文字列が返った";
+  for (const rule of ZONE_OUTPUT_REJECT) {
+    if (rule.test.test(t)) return `${rule.id}が含まれる`;
+  }
+  if (t.length > ZONE_OUTPUT_MAX_CHARS) {
+    return `長すぎる（${t.length}字 / 上限${ZONE_OUTPUT_MAX_CHARS}字）`;
+  }
+  return null;
+}
+
+function assertUsableZoneOutput(text: string, zoneNumber: number): string {
+  const problem = checkZoneOutput(text);
+  if (problem) {
+    // 差し込まずに落とす。壊れた文面を作って送信ガードに任せるより、ここで止める方が早い
+    throw new Error(
+      `AI生成部分（${zoneNumber}個目）が本文に使えません: ${problem}。` +
+        `商材と宛先が噛み合っているか、企業の分析データが取れているかを確認してください。` +
+        `\n--- 生成された内容 ---\n${text.slice(0, 300)}`
+    );
+  }
+  return text.trim();
+}
+
 async function resolveAiZones(text: string, params: ComposeParams): Promise<string> {
   const matches = matchAiZones(text);
   if (matches.length === 0) return text;
 
   // 文脈は「まだ生成前の原文」を基準にする（前ゾーンの生成結果に引きずられないため）
   const generated: string[] = [];
-  for (let i = 0; i < matches.length; i++) {
+  for (const [i, zone] of matches.entries()) {
     const context = renderZoneContext(text, matches, i);
-    const instruction = matches[i][1].trim();
-    generated.push(await generateZoneContent(instruction, params, context));
+    const raw = await generateZoneContent(zone.instruction, params, context);
+    // ★ 生成結果をそのまま信用しない。詳細は assertUsableZoneOutput
+    generated.push(assertUsableZoneOutput(raw, i + 1));
   }
 
   // 位置基準で組み立てる。生成文が {{...}} を含んでもズレない。
   let out = "";
   let cursor = 0;
-  for (let i = 0; i < matches.length; i++) {
-    const match = matches[i];
-    const start = match.index ?? 0;
-    out += text.slice(cursor, start) + generated[i];
-    cursor = start + match[0].length;
+  for (const [i, zone] of matches.entries()) {
+    out += text.slice(cursor, zone.index) + generated[i];
+    cursor = zone.index + zone.full.length;
   }
   out += text.slice(cursor);
   return out;
