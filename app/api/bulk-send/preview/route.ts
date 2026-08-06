@@ -9,14 +9,14 @@ import {
   getContactByEmail,
   getSetting,
 } from "@/lib/db";
+import { pickService, type PickServiceResult } from "@/lib/pick-service";
 import { composeBody, hasAiZones } from "@/lib/compose";
 import { resolveAnalysisForRecipient } from "@/lib/company-analysis";
 import type { Persona, Service } from "@/lib/types";
 
-function resolveService(): Service | undefined {
-  const configured = Number(getSetting("default_service_id"));
-  return (Number.isInteger(configured) && configured > 0 ? getService(configured) : undefined)
-    ?? getAllServices()[0];
+/** 送信本体と同じ順序で解決する。プレビューと本番で違う商材になると意味が無い */
+function resolveService(requestedId?: number): PickServiceResult<Service> {
+  return pickService(requestedId, Number(getSetting("default_service_id")), getService, getAllServices);
 }
 
 function resolvePersona(): Persona | undefined {
@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     email: string;
     subject: string;
     body: string;
+    /** 画面で選択中の商材。送信本体と同じものを渡す */
+    serviceId?: number;
   };
   try {
     body = await request.json();
@@ -79,7 +81,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "送信者アカウントが見つかりません" }, { status: 404 });
   }
 
-  const service = resolveService();
+  const picked = resolveService(body.serviceId);
+  if (picked.error) {
+    return NextResponse.json({ error: picked.error }, { status: 400 });
+  }
+  const service = picked.service;
   const persona = resolvePersona();
   if (!service || !persona) {
     return NextResponse.json(

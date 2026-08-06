@@ -18,6 +18,8 @@ interface Options {
   inputMode: "template" | "direct";
   selectedTemplate: TemplateWithAttachments | undefined;
   selectedSenderId: number | null;
+  /** 画面で選択中の商材。渡さないと API 側で「登録順の先頭」が黙って使われる */
+  activeServiceId: number | null;
   senders: SenderInfo[];
   directSubject: string;
   directBody: string;
@@ -33,6 +35,7 @@ export function useSendRun({
   inputMode,
   selectedTemplate,
   selectedSenderId,
+  activeServiceId,
   senders,
   directSubject,
   directBody,
@@ -127,6 +130,7 @@ export function useSendRun({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             senderId: selectedSenderId,
+            ...(activeServiceId !== null && { serviceId: activeServiceId }),
             templateId: inputMode === "template" ? selectedTemplate?.id : undefined,
             company: r.company,
             person: r.person,
@@ -208,6 +212,7 @@ export function useSendRun({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             senderId: selectedSenderId,
+            ...(activeServiceId !== null && { serviceId: activeServiceId }),
             templateId: inputMode === "template" ? selectedTemplate?.id : undefined,
             company: r.company,
             person: r.person,

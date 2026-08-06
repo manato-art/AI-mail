@@ -26,6 +26,7 @@ import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
 import { resolveEmailVariables } from "@/lib/variables";
 import { composeBody, hasAiZones, verifyFixedPartIntact } from "@/lib/compose";
+import { pickService, type PickServiceResult } from "@/lib/pick-service";
 import { resolveAnalysisForRecipient } from "@/lib/company-analysis";
 import type { AnalysisResult, Persona, Service } from "@/lib/types";
 
@@ -34,11 +35,12 @@ const TEST_MODE = TEST_MODE_RECIPIENT.length > 0;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** 設定の既定値 → 無ければ先頭 の順に解決する */
-function resolveService(): Service | undefined {
-  const configured = Number(getSetting("default_service_id"));
-  return (Number.isInteger(configured) && configured > 0 ? getService(configured) : undefined)
-    ?? getAllServices()[0];
+/**
+ * 画面で選ばれた商材 → 設定の既定値 → 先頭 の順に解決する。
+ * 明示指定が解決できない場合は既定に落とさずエラーを返す（lib/pick-service.ts の説明を参照）。
+ */
+function resolveService(requestedId?: number): PickServiceResult<Service> {
+  return pickService(requestedId, Number(getSetting("default_service_id")), getService, getAllServices);
 }
 
 function resolvePersona(): Persona | undefined {
@@ -63,6 +65,8 @@ export async function POST(request: NextRequest) {
     acknowledgedWarnings?: boolean;
     /** 予約送信の予定時刻（ISO文字列）。指定時は即時送信せず予約する */
     scheduledAt?: string;
+    /** 画面で選択中の商材。未指定なら設定の既定値→先頭にフォールバックする */
+    serviceId?: number;
   };
   try {
     body = await request.json();
@@ -103,7 +107,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "送信者アカウントが見つかりません" }, { status: 404 });
   }
 
-  const service = resolveService();
+  const picked = resolveService(body.serviceId);
+  if (picked.error) {
+    // 画面が指定した商材が解決できないのに別の商材で書き始めない
+    return NextResponse.json({ error: picked.error }, { status: 400 });
+  }
+  const service = picked.service;
   const persona = resolvePersona();
   if (!service || !persona) {
     return NextResponse.json(

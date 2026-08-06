@@ -225,6 +225,7 @@ export default function BulkSendPage() {
     inputMode,
     selectedTemplate,
     selectedSenderId,
+    activeServiceId,
     senders,
     directSubject,
     directBody,
