@@ -41,6 +41,26 @@ export function checkFullwidthBraces(subject: string, body: string): string[] {
   return [...new Set(hits)];
 }
 
+/**
+ * 商材ごとの禁止語（services.banned_phrases・改行/読点区切り）をパースする。
+ * かってにHPでは「順位」「口コミを増や」等が法・通報リスクに直結する（NG-1/NG-10/R-TEST5）。
+ */
+export function parseBannedPhrases(raw: string | null | undefined): string[] {
+  return (raw ?? "")
+    .split(/[\n,、／/]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 2); // 1文字の禁止語は誤爆しかしない
+}
+
+/**
+ * 禁止語の混入を返す（空配列＝問題なし）。単純な部分一致。
+ * 誤検知の代償は「文面を直す」だけだが、取りこぼしの代償は通報・特電法違反なので厳しい側に倒す。
+ */
+export function checkBannedPhrases(subject: string, body: string, phrases: string[]): string[] {
+  const text = `${subject}\n${body}`;
+  return phrases.filter((p) => text.includes(p));
+}
+
 // フリーメールドメイン（自社ドメイン誤ブロック除外に使う）は lib/email-domains に集約。
 
 function parseEnvOwnDomains(): string[] {
@@ -155,6 +175,11 @@ export function runSendGuard(params: {
    * force で押し切れる（画面の抑止リストから手動解除する運用も可能）。
    */
   force?: boolean;
+  /**
+   * 商材の禁止語（parseBannedPhrases 済み）。混入は force でも押し切れない。
+   * 「順位が上がる」等は法・通報リスクに直結し、承認して送るものではなく単に書いてはいけない。
+   */
+  bannedPhrases?: string[];
 }): SendGuardResult {
   const reasons: string[] = [];
 
@@ -189,6 +214,12 @@ export function runSendGuard(params: {
   }
   if (!params.subject.trim()) hardBlocks.push("件名が空です");
   if (!params.body.trim()) hardBlocks.push("本文が空です");
+  if (params.bannedPhrases?.length) {
+    const banned = checkBannedPhrases(params.subject, params.body, params.bannedPhrases);
+    if (banned.length > 0) {
+      hardBlocks.push(`この商材の禁止語が含まれています: ${banned.join(", ")}`);
+    }
+  }
   if (hardBlocks.length > 0) {
     return { canSend: false, reasons: hardBlocks };
   }

@@ -31,6 +31,8 @@ const EMPTY_FORM: ServiceInput = {
   strengths: "",
   target: "",
   lp_url: "",
+  banned_phrases: "",
+  send_halted: false,
 };
 
 function truncate(text: string, max: number) {
@@ -109,6 +111,8 @@ export default function ServicesPage() {
       strengths: service.strengths,
       target: service.target,
       lp_url: service.lp_url ?? "",
+      banned_phrases: service.banned_phrases ?? "",
+      send_halted: !!service.send_halted,
     });
     setFormError(null);
     setShowForm(true);
@@ -509,6 +513,33 @@ function ServiceForm({
               className={FIELD}
             />
           </div>
+
+          <div>
+            <label htmlFor="service-banned" className={LABEL}>
+              禁止語（改行区切り・任意）
+            </label>
+            <textarea
+              id="service-banned"
+              value={form.banned_phrases ?? ""}
+              onChange={(e) => onChange({ ...form, banned_phrases: e.target.value })}
+              placeholder={"この商材のメールに絶対に書いてはいけない語を1行ずつ。\n例: 順位\n口コミを増や\n保証"}
+              rows={4}
+              className={TEXTAREA}
+            />
+            <p className="mt-1 text-[12px] text-(--color-muted)">
+              本文・件名・AI生成部分に1つでも含まれると送信がブロックされます（「承知の上で送信」でも解除されません）
+            </p>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-[14px]">
+            <input
+              type="checkbox"
+              checked={!!form.send_halted}
+              onChange={(e) => onChange({ ...form, send_halted: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <span>この商材の送信を一時停止する（緊急停止・苦情が続いたときに使う）</span>
+          </label>
 
           <div className="flex flex-wrap gap-3 pt-1">
             <button type="submit" disabled={saving} className={BTN_PRIMARY}>

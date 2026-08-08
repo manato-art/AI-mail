@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, strengths, target, lp_url } = body ?? {};
+    const { name, description, strengths, target, lp_url, banned_phrases, send_halted } = body ?? {};
 
     if (!name || !description || !strengths || !target) {
       return NextResponse.json(
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const input: ServiceInput = { name, description, strengths, target, lp_url };
+    const input: ServiceInput = { name, description, strengths, target, lp_url, banned_phrases, send_halted };
     const service = createService(input);
 
     return NextResponse.json(service, { status: 201 });

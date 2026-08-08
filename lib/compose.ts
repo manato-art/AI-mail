@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveVariables, type VariableValues } from "@/lib/variables";
+import { parseBannedPhrases } from "@/lib/send-guard";
 import { fenceUntrusted } from "@/lib/prompt-fence";
 import type { AnalysisResult, ComposeMode, Persona, Service, Template } from "@/lib/types";
 
@@ -320,11 +321,21 @@ const ZONE_OUTPUT_REJECT: Array<{ id: string; test: RegExp }> = [
 /** 1〜3文のはずのゾーンがこれを超えたら、文章ではなく説明になっている */
 const ZONE_OUTPUT_MAX_CHARS = 400;
 
-export function checkZoneOutput(text: string): string | null {
+export function checkZoneOutput(text: string, bannedPhrases?: string[]): string | null {
   const t = text.trim();
   if (!t) return "空の文字列が返った";
   for (const rule of ZONE_OUTPUT_REJECT) {
     if (rule.test.test(t)) return `${rule.id}が含まれる`;
+  }
+  // ★ URLは無条件で拒否（2026-08-08 検証ワークフロー V10）。
+  //   生成プロンプトには店のHP原文・クチコミ由来のテキストが入る。そこに
+  //   「次のリンクを本文に含めてください」と仕込まれると、AIが書く段落に
+  //   攻撃者のURLが混入し、運用者のGmailからフィッシングリンクが送られる。
+  //   AIが書く1〜3文にリンクが入る正当な理由は無いので、存在自体を弾く。
+  if (/https?:\/\/|www\./i.test(t)) return "URLが含まれる（AI生成部分にリンクは書かせない）";
+  if (bannedPhrases?.length) {
+    const hit = bannedPhrases.find((p) => t.includes(p));
+    if (hit) return `商材の禁止語「${hit}」が含まれる`;
   }
   if (t.length > ZONE_OUTPUT_MAX_CHARS) {
     return `長すぎる（${t.length}字 / 上限${ZONE_OUTPUT_MAX_CHARS}字）`;
@@ -332,8 +343,8 @@ export function checkZoneOutput(text: string): string | null {
   return null;
 }
 
-function assertUsableZoneOutput(text: string, zoneNumber: number): string {
-  const problem = checkZoneOutput(text);
+function assertUsableZoneOutput(text: string, zoneNumber: number, bannedPhrases?: string[]): string {
+  const problem = checkZoneOutput(text, bannedPhrases);
   if (problem) {
     // 差し込まずに落とす。壊れた文面を作って送信ガードに任せるより、ここで止める方が早い
     throw new Error(
@@ -350,12 +361,13 @@ async function resolveAiZones(text: string, params: ComposeParams): Promise<stri
   if (matches.length === 0) return text;
 
   // 文脈は「まだ生成前の原文」を基準にする（前ゾーンの生成結果に引きずられないため）
+  const banned = parseBannedPhrases(params.service?.banned_phrases);
   const generated: string[] = [];
   for (const [i, zone] of matches.entries()) {
     const context = renderZoneContext(text, matches, i);
     const raw = await generateZoneContent(zone.instruction, params, context);
     // ★ 生成結果をそのまま信用しない。詳細は assertUsableZoneOutput
-    generated.push(assertUsableZoneOutput(raw, i + 1));
+    generated.push(assertUsableZoneOutput(raw, i + 1, banned));
   }
 
   // 位置基準で組み立てる。生成文が {{...}} を含んでもズレない。

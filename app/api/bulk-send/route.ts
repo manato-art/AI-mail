@@ -20,7 +20,7 @@ import {
   getSetting,
 } from "@/lib/db";
 import { recordSuccessfulSend } from "@/lib/post-send";
-import { runSendGuard } from "@/lib/send-guard";
+import { runSendGuard, parseBannedPhrases } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { sendEmail, type EmailAttachment } from "@/lib/gmail";
 import { loadEmailAttachments } from "@/lib/attachments";
@@ -118,6 +118,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "商材または人格が登録されていません。設定ページで登録してください" },
       { status: 400 }
+    );
+  }
+
+  // R-STOP1: 商材単位の緊急停止（同一エリアで苦情2件→人がスイッチを入れる）。force でも解除しない
+  if (service.send_halted) {
+    return NextResponse.json(
+      { error: `商材「${service.name}」は送信停止中です（設定ページで解除できます）` },
+      { status: 423 }
     );
   }
 
@@ -229,6 +237,7 @@ export async function POST(request: NextRequest) {
     body: outgoingBody,
     senderId,
     force: !!body.acknowledgedWarnings,
+    bannedPhrases: parseBannedPhrases(service.banned_phrases),
   });
 
   if (!guardResult.canSend) {

@@ -15,7 +15,8 @@ import {
   updateSenderAuthStatus,
 } from "@/lib/db";
 import { recordSuccessfulSend } from "@/lib/post-send";
-import { runSendGuard } from "@/lib/send-guard";
+import { getContactByEmail } from "@/lib/db";
+import { runSendGuard, parseBannedPhrases } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { applyBookingLink } from "@/lib/booking";
 import { resolveEmailVariables } from "@/lib/variables";
@@ -97,10 +98,26 @@ export async function POST(request: NextRequest) {
   const service = getService(prospect.service_id);
   const persona = getPersona(prospect.persona_id);
 
+  // R-STOP1: 商材単位の緊急停止。苦情が続いたとき人がスイッチを入れる。
+  // ここ（生成物の良し悪しより前）で止める。force でも解除しない
+  if (service?.send_halted) {
+    return NextResponse.json(
+      { error: `商材「${service.name}」は送信停止中です（設定ページで解除できます）` },
+      { status: 423 }
+    );
+  }
+
   // F14: 日程調整リンクはDBを汚さず送信時のみ本文に添える
   const bodyWithBooking = body.includeBookingLink
     ? applyBookingLink(prospect.body, sender.booking_url)
     : prospect.body;
+
+  // F9: 個社LPは宛先ごとに違う。登録済み連絡先のLPを優先し、無ければ商材共通のLPを使う。
+  // 一括送信側と同じ解決順（2026-08-08・単発送信だけ商材共通URLを使い続けていた誤送信経路を塞ぐ。
+  // かってにHPは商材のLP欄を意図的に空にしているため、ここを直さないと
+  // {{lp_url}} が未解決で残るか、他店の共通URLが入るかの二択だった）
+  const registeredContact = getContactByEmail(rawToEmail);
+  const recipientLpUrl = registeredContact?.lp_url || service?.lp_url || undefined;
 
   // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
   const resolved = resolveEmailVariables(prospect.subject, bodyWithBooking, {
@@ -108,7 +125,7 @@ export async function POST(request: NextRequest) {
     person_name: analysis?.representative_name ?? undefined,
     sender_name: persona?.name,
     service_name: service?.name,
-    lp_url: service?.lp_url ?? undefined,
+    lp_url: recipientLpUrl,
     booking_url: sender.booking_url,
   });
   const outgoingSubject = resolved.subject;
@@ -150,6 +167,7 @@ export async function POST(request: NextRequest) {
     senderId,
     prospectId,
     force: !!body.acknowledgedWarnings,
+    bannedPhrases: parseBannedPhrases(service?.banned_phrases),
   });
 
   if (!guardResult.canSend) {

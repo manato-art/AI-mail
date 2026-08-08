@@ -28,7 +28,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, strengths, target, lp_url } = body ?? {};
+    const { name, description, strengths, target, lp_url, banned_phrases, send_halted } = body ?? {};
 
     if (!name || !description || !strengths || !target) {
       return NextResponse.json(
@@ -37,7 +37,7 @@ export async function PUT(
       );
     }
 
-    const input: ServiceInput = { name, description, strengths, target, lp_url };
+    const input: ServiceInput = { name, description, strengths, target, lp_url, banned_phrases, send_halted };
     const service = updateService(Number(id), input);
 
     if (!service) {
