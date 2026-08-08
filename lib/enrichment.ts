@@ -167,6 +167,16 @@ async function enrichCompany(
   company: Company,
   service: Service | null
 ): Promise<EnrichResult> {
+  // ★ 店舗LP側で人が検証した分析（analysis_source='lp'）は自動処理が触らない。
+  //   これが無いと、取込routeの実装漏れ等で pending に残った企業を定期ジョブが拾い、
+  //   Web検索由来の分析（グループ会社案内など）で正データを静かに置き換える
+  //   （2026-08-08 検証ワークフローが指摘した実在の経路）。
+  if (company.analysis_source === "lp") {
+    logActivity(`⏭️ ${company.name}: 店舗LP由来の分析があるため自動調査をスキップ`, "warn");
+    markCompanyEnriched(company.id, { analysis_source: "lp" }); // status を done に固定し直すだけ
+    return { outcome: "done" };
+  }
+
   const knownHpUrl = (company.hp_url ?? "").trim();
   const resolved = await resolveCompanySite(company);
 

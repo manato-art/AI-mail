@@ -7,6 +7,10 @@ export interface Service {
   lp_url: string | null;
   pdf_path: string | null;
   pdf_extracted_text: string | null;
+  /** 商材ごとの禁止語（改行区切り）。送信ガードとAIゾーン出力検査が参照する */
+  banned_phrases: string;
+  /** 商材単位の緊急停止（R-STOP1）。1なら送信APIが全て拒否する */
+  send_halted: number;
   created_at: string;
   updated_at: string;
 }
@@ -17,6 +21,8 @@ export interface ServiceInput {
   strengths: string;
   target: string;
   lp_url?: string;
+  banned_phrases?: string;
+  send_halted?: boolean;
 }
 
 export interface Persona {
@@ -260,6 +266,10 @@ export interface Company {
   business_summary: string;
   /** エンリッチメント時のAI分析結果JSON（{{AI:...}}ゾーン生成に使用） */
   analysis_json: string;
+  /** 分析の出所。'lp'=店舗LP側で人が検証した正データ（自動処理は上書き禁止）/ ''=自動 */
+  analysis_source: string;
+  /** 店の一意キー（Google Places）。同一ドメイン複数店舗を区別する。無ければ null */
+  place_id: string | null;
   /** F1 タグ付け: どの収集キーワード（collection_sources）由来か */
   collection_source_id: number | null;
   created_at: string;

@@ -366,6 +366,22 @@ function migrateSchema(instance: Database.Database): void {
   addColumnIfMissing(instance, "companies", "business_summary", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing(instance, "companies", "analysis_json", "TEXT NOT NULL DEFAULT '{}'");
 
+  // ── かってにHP（店舗LP）対応・2026-08-08 ──
+  // place_id: 店の一意キー（Google Places）。同一ドメインに複数店舗が同居するケース
+  //   （実例: sanwa-gr.com 配下にそば屋・不動産・CATV）で、ドメイン照合だと
+  //   company が1行に潰れ、店Bの取込が店Aの分析を上書きする。キーで同定する。
+  addColumnIfMissing(instance, "companies", "place_id", "TEXT");
+  // analysis_source: 分析データの出所（'lp'=店舗LP側で人が検証した正データ / ''=自動）。
+  //   'lp' は自動enrichmentが上書きしてはいけない。これが無いと、pending を拾う
+  //   定期ジョブが正データを Web検索由来の分析で黙って置き換える。
+  addColumnIfMissing(instance, "companies", "analysis_source", "TEXT NOT NULL DEFAULT ''");
+  // banned_phrases: 商材ごとの禁止語（改行区切り）。送信ガードとAIゾーン出力検査が参照。
+  //   かってにHPでは「順位」「口コミを増や」等が法・通報リスクに直結するため機械で止める。
+  addColumnIfMissing(instance, "services", "banned_phrases", "TEXT NOT NULL DEFAULT ''");
+  // send_halted: 商材単位の緊急停止（R-STOP1 の実装）。同一エリアで苦情2件が出たら
+  //   人が判断してこのスイッチを入れる。エリア単位の停止は Phase 2 で候補が area を持ってから。
+  addColumnIfMissing(instance, "services", "send_halted", "INTEGER NOT NULL DEFAULT 0");
+
   // Wantedly直接スクレイピング対応: 収集元の種別を区別する
   addColumnIfMissing(instance, "collection_sources", "source_type", "TEXT NOT NULL DEFAULT 'keyword_search'");
 
@@ -448,8 +464,8 @@ export function createService(input: ServiceInput): Service {
   const result = instance
     .prepare(
       `
-    INSERT INTO services (name, description, strengths, target, lp_url)
-    VALUES (@name, @description, @strengths, @target, @lp_url)
+    INSERT INTO services (name, description, strengths, target, lp_url, banned_phrases)
+    VALUES (@name, @description, @strengths, @target, @lp_url, @banned_phrases)
   `
     )
     .run({
@@ -458,6 +474,7 @@ export function createService(input: ServiceInput): Service {
       strengths: input.strengths,
       target: input.target,
       lp_url: input.lp_url ?? null,
+      banned_phrases: input.banned_phrases ?? "",
     });
 
   return getService(Number(result.lastInsertRowid)) as Service;
@@ -482,6 +499,8 @@ export function updateService(
         strengths = @strengths,
         target = @target,
         lp_url = @lp_url,
+        banned_phrases = @banned_phrases,
+        send_halted = @send_halted,
         updated_at = datetime('now','localtime')
     WHERE id = @id
   `
@@ -493,6 +512,8 @@ export function updateService(
       strengths: input.strengths,
       target: input.target,
       lp_url: input.lp_url ?? null,
+      banned_phrases: input.banned_phrases ?? existing.banned_phrases ?? "",
+      send_halted: input.send_halted === undefined ? (existing.send_halted ?? 0) : (input.send_halted ? 1 : 0),
     });
 
   return getService(id);
@@ -1458,6 +1479,17 @@ export function setContactLpUrl(email: string, lpUrl: string): SetLpUrlOutcome {
  *
  * 見つからないことを成功として返さない。入ったつもりで送ると、また食い違った本文が出る。
  */
+/** place_id（Google Places の店キー）で企業を引く。同一ドメイン複数店舗の同定用 */
+export function getCompanyByPlaceId(placeId: string): Company | undefined {
+  return getDb()
+    .prepare("SELECT * FROM companies WHERE place_id = ?")
+    .get(placeId) as Company | undefined;
+}
+
+export function setCompanyPlaceId(companyId: number, placeId: string): void {
+  getDb().prepare("UPDATE companies SET place_id = ? WHERE id = ?").run(placeId, companyId);
+}
+
 export type SetAnalysisOutcome = "updated" | "contact_not_found" | "company_not_linked";
 
 export function setCompanyAnalysisByContactEmail(
@@ -2269,6 +2301,8 @@ export interface CompanyEnrichmentUpdate {
   fit_reason?: string;
   fit_service_id?: number | null;
   analysis_json?: string;
+  /** 分析の出所（'lp'=店舗LP側の正データ）。省略時は現在値を維持する */
+  analysis_source?: string;
   /** 部分成功（AI分析だけ失敗 等）を done のまま記録するための備考。既定は空＝成功 */
   enrichment_error?: string;
   error_kind?: EnrichmentErrorKind | null;
@@ -2286,6 +2320,7 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
            business_summary = @business_summary, fit_score = @fit_score,
            fit_reason = @fit_reason, fit_service_id = @fit_service_id,
            analysis_json = @analysis_json,
+           analysis_source = @analysis_source,
            enrichment_status = 'done', enrichment_error = @enrichment_error,
            error_kind = @error_kind,
            enriched_at = datetime('now','localtime')
@@ -2301,6 +2336,7 @@ export function markCompanyEnriched(id: number, update: CompanyEnrichmentUpdate)
       fit_reason: update.fit_reason ?? current.fit_reason,
       fit_service_id: update.fit_service_id ?? current.fit_service_id,
       analysis_json: update.analysis_json ?? current.analysis_json,
+      analysis_source: update.analysis_source ?? current.analysis_source ?? "",
       enrichment_error: (update.enrichment_error ?? "").slice(0, 500),
       error_kind: update.error_kind ?? null,
     });

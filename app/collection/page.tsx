@@ -32,6 +32,7 @@ import {
 const FORM_SELECT =
   "h-11 w-full rounded-lg border border-(--color-border) bg-(--color-card) px-3 text-sm text-(--color-foreground) transition-colors focus:border-(--color-primary) focus:outline-none focus:ring-2 focus:ring-(--color-primary)/25";
 import { ActivityLogPanel } from "./activity-log-panel";
+import { HandoffPanel } from "./handoff-panel";
 import { InventoryPanel } from "./inventory-panel";
 import type { CollectionStatus, SourcesResponse } from "./types";
 
@@ -878,6 +879,8 @@ export default function CollectionPage() {
           </div>
         )}
       </Card>
+
+      <HandoffPanel />
 
       <ActivityLogPanel />
 
