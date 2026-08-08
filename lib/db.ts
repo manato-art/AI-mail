@@ -464,8 +464,8 @@ export function createService(input: ServiceInput): Service {
   const result = instance
     .prepare(
       `
-    INSERT INTO services (name, description, strengths, target, lp_url, banned_phrases)
-    VALUES (@name, @description, @strengths, @target, @lp_url, @banned_phrases)
+    INSERT INTO services (name, description, strengths, target, lp_url, banned_phrases, send_halted)
+    VALUES (@name, @description, @strengths, @target, @lp_url, @banned_phrases, @send_halted)
   `
     )
     .run({
@@ -475,6 +475,7 @@ export function createService(input: ServiceInput): Service {
       target: input.target,
       lp_url: input.lp_url ?? null,
       banned_phrases: input.banned_phrases ?? "",
+      send_halted: input.send_halted ? 1 : 0,
     });
 
   return getService(Number(result.lastInsertRowid)) as Service;
@@ -1488,6 +1489,19 @@ export function getCompanyByPlaceId(placeId: string): Company | undefined {
 
 export function setCompanyPlaceId(companyId: number, placeId: string): void {
   getDb().prepare("UPDATE companies SET place_id = ? WHERE id = ?").run(placeId, companyId);
+}
+
+/**
+ * 連絡先の所属企業を明示的に付け替える（2026-08-08）。
+ * upsertContact は既存行に一切触らないため、「以前に別会社へ紐付いた宛先」を
+ * 正しい店に付け替える経路がここ以外に無い。付け替えを怠ると、
+ * resolveAnalysisForRecipient が古い company_id を辿って**別事業の分析**を採用する
+ * （LPはそば屋・本文は不動産、の事故の再発経路）。
+ */
+export function setContactCompany(email: string, companyId: number, companyName: string): void {
+  getDb()
+    .prepare("UPDATE contacts SET company_id = ?, company_name = ? WHERE email = ?")
+    .run(companyId, companyName, normalizeEmailKey(email));
 }
 
 export type SetAnalysisOutcome = "updated" | "contact_not_found" | "company_not_linked";

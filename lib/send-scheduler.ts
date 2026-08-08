@@ -1,5 +1,6 @@
 import {
   getSender,
+  getService,
   getSetting,
   getDueScheduledProspects,
   updateProspectStatus,
@@ -7,7 +8,7 @@ import {
   claimEmailForSend,
   releaseEmailClaim,
 } from "@/lib/db";
-import { runSendGuard } from "@/lib/send-guard";
+import { runSendGuard, parseBannedPhrases } from "@/lib/send-guard";
 import { recordSuccessfulSend } from "@/lib/post-send";
 import { sendEmail } from "@/lib/gmail";
 import { logActivity } from "@/lib/activity-log";
@@ -48,6 +49,18 @@ export async function runScheduledSendBatch(limit: number = SCHEDULE_BATCH): Pro
       continue;
     }
 
+    // ★ 予約後に商材が停止された可能性がある（R-STOP1）。予約時のチェックだけでは、
+    //   「苦情2件→緊急停止」の後に予約済みの分が送られ続ける穴になる
+    //   （2026-08-08 独立レビューが発見。/api/send・/api/bulk-send を塞いでも
+    //   この経路が残っていた）。禁止語も同じ理由で、予約後の追加分を再検証する
+    const service = getService(p.service_id);
+    if (service?.send_halted) {
+      updateProspectStatus(p.id, "failed");
+      logActivity(`⏰ 予約送信ブロック: ${p.company_name || rawToEmail} — 商材「${service.name}」は送信停止中`, "warn");
+      failed++;
+      continue;
+    }
+
     // 予約後に抑止リスト・重複送信が増えている可能性があるので再検証する
     const guard = runSendGuard({
       toEmail: rawToEmail,
@@ -56,6 +69,7 @@ export async function runScheduledSendBatch(limit: number = SCHEDULE_BATCH): Pro
       senderId,
       prospectId: p.id,
       force: false,
+      bannedPhrases: parseBannedPhrases(service?.banned_phrases),
     });
     if (!guard.canSend) {
       updateProspectStatus(p.id, "failed");

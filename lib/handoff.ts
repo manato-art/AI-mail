@@ -16,9 +16,11 @@
  */
 import {
   addSuppression,
+  getCompanyById,
   getCompanyByPlaceId,
   markCompanyEnriched,
   setCompanyPlaceId,
+  setContactCompany,
   setContactLpUrl,
   upsertCompany,
   upsertContact,
@@ -57,9 +59,13 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 function checkAnalysis(value: unknown): { ok: true; json: string } | { ok: false; why: string } {
   if (typeof value !== "object" || value === null) return { ok: false, why: "analysis が object ではない" };
   const a = value as Partial<AnalysisResult>;
-  if (!a.company_name?.trim()) return { ok: false, why: "analysis.company_name が空" };
-  if (!a.business_summary?.trim()) return { ok: false, why: "analysis.business_summary が空" };
-  if (!a.hook?.trim()) return { ok: false, why: "analysis.hook が空（AI生成の足場になるので必須）" };
+  // 型は信用しない（外部ファイル由来）。数値やobjectが入っていると `?.trim()` が
+  // TypeError を投げ、**バッチ全体が500で落ちて成功済み分の結果まで消える**
+  // （2026-08-08 独立レビューが実際に再現）。文字列でないものは invalid として返す
+  const nonEmptyString = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+  if (!nonEmptyString(a.company_name)) return { ok: false, why: "analysis.company_name が文字列でないか空" };
+  if (!nonEmptyString(a.business_summary)) return { ok: false, why: "analysis.business_summary が文字列でないか空" };
+  if (!nonEmptyString(a.hook)) return { ok: false, why: "analysis.hook が文字列でないか空（AI生成の足場になるので必須）" };
   const json = JSON.stringify(value);
   if (json.length > 200_000) return { ok: false, why: `analysis が大きすぎる（${json.length}バイト）` };
   return { ok: true, json };
@@ -73,6 +79,9 @@ export function importStorePack(pack: StorePack): HandoffResult {
   const placeId = str(pack.place_id) || null;
 
   if (!name) return { ok: false, outcome: "invalid", detail: "company_name が空です" };
+  if (name.length > 200 || email.length > 320 || hpUrl.length > 2000 || lpUrl.length > 2000) {
+    return { ok: false, outcome: "invalid", detail: "フィールドが長すぎます（company_name≤200 / email≤320 / URL≤2000）" };
+  }
   if (!hpUrl) return { ok: false, outcome: "invalid", detail: "hp_url が空です（グループのトップではなく店のページを入れる）" };
 
   // ── DT-5: 営業お断りが検出された店は、宛先を作らず抑止リストへ ──
@@ -100,18 +109,36 @@ export function importStorePack(pack: StorePack): HandoffResult {
     // 名前で upsert し、place_id があれば行に刻んで以後の同定キーにする
     company = upsertCompany({ name, domain: null, source: "manual", source_detail: "かってにHP 店パック取込", hp_url: hpUrl });
 
-    // ★ 既存行の乗っ取り検査（V1）: 拾った行に「別の店」のLP由来分析が既に入っていたら止める。
-    //   黙って上書きすると、店Aのメールに店Bの紹介文が混入する（高美亭の事故と同型）
+    /**
+     * ★ 同一店かどうかの判定（2026-08-08 独立レビューで作り直し）。
+     *
+     * 最初の実装は「place_id 一致 OR 分析内の店名一致」で同一店とみなしていたが、
+     * これは2つの穴を持っていた:
+     *   1. name で upsert した行は **name が一致したからヒットした**ので、店名一致は
+     *      同一店の証拠として無意味（チェーン店・同名別店で常に真になり、検査が素通り）
+     *   2. 両者が place_id を持っていて食い違っても、名前一致が握りつぶしていた
+     *
+     * 正しい判定:
+     *   - 両者が place_id を持つ → **place_id の一致だけ**が証拠（名前で救済しない）
+     *   - どちらかが欠ける → **hp_url（店のページ）の一致**で判定する。
+     *     同名の別店は別のページを持つ。同じページを指すなら同じ店の更新
+     */
     if (company.analysis_source === "lp") {
-      let existing: Partial<AnalysisResult> = {};
-      try { existing = JSON.parse(company.analysis_json); } catch { /* 壊れていれば空扱い */ }
-      const samePlace = placeId && company.place_id ? company.place_id === placeId : false;
-      const sameName = (existing.company_name ?? "") === name;
-      if (!samePlace && !sameName) {
+      const norm = (u: string) => u.replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+      const bothHavePlaceId = !!placeId && !!company.place_id;
+      const identityConfirmed = bothHavePlaceId
+        ? company.place_id === placeId
+        : !!company.hp_url && norm(company.hp_url) === norm(hpUrl);
+      if (!identityConfirmed) {
+        let existing: Partial<AnalysisResult> = {};
+        try { existing = JSON.parse(company.analysis_json); } catch { /* 壊れていれば空扱い */ }
         return {
           ok: false,
           outcome: "conflict",
-          detail: `company #${company.id} には別の店のLP由来分析（${existing.company_name ?? "不明"}）が入っています。place_id を付けて別店として取り込んでください`,
+          detail:
+            `company #${company.id}「${name}」には別の店のLP由来データが入っています` +
+            `（既存HP: ${company.hp_url ?? "?"} / 今回: ${hpUrl}${existing.company_name ? ` / 既存分析: ${existing.company_name}` : ""}）。` +
+            `同名の別店なら place_id を付けて取り込んでください`,
         };
       }
     }
@@ -135,6 +162,32 @@ export function importStorePack(pack: StorePack): HandoffResult {
     source: "manual",
     lp_url: lpUrl,
   });
+
+  /**
+   * ★ 既存の連絡先が**別の会社**に紐付いている場合の扱い（2026-08-08 独立レビューで追加）。
+   *
+   * upsertContact は既存行に触らないため、放置すると取込は「成功」なのに
+   * 送信時の分析解決（resolveAnalysisForRecipient）が古い company_id を辿り、
+   * **LPはそば屋・本文は別事業**の事故が別経路で再現する。
+   *
+   * - 古い紐付け先が **別のLP由来の店**（analysis_source='lp'）→ 2つの店が1つの
+   *   受信箱を共有している。lp_url も後勝ちで潰し合うので、機械で決めずに conflict
+   * - それ以外（自動収集などが作った紐付け）→ LP側を正として付け替える
+   */
+  if (contact.company_id !== null && contact.company_id !== company.id) {
+    const old = getCompanyById(contact.company_id);
+    if (old && old.analysis_source === "lp") {
+      return {
+        ok: false,
+        outcome: "conflict",
+        detail:
+          `宛先 ${email} は既に別のLP店「${old.name}」に紐付いています。` +
+          `2つの店が同じ受信箱を共有している状態で、どちらのURLを送るか機械には決められません`,
+      };
+    }
+    setContactCompany(email, company.id, name);
+  }
+
   const lpOutcome = setContactLpUrl(email, lpUrl);
   if (lpOutcome === "not_found") {
     return { ok: false, outcome: "invalid", detail: `連絡先の作成に失敗しました: ${email}` };

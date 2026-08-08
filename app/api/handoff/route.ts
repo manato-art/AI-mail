@@ -27,7 +27,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const results = packs.map((p) => importStorePack(p));
+  // 1件の例外でバッチ全体を500にしない。成功済み分の結果（summary）が消えると、
+  // 呼び出し側は「何件入ったのか」を知る手段を失う（部分失敗は行単位で返す）
+  const results = packs.map((p) => {
+    try {
+      return importStorePack(p);
+    } catch (e) {
+      console.error("handoff import failed:", e);
+      return { ok: false as const, outcome: "invalid" as const, detail: "取込処理で例外が発生しました（パックの形式を確認してください）" };
+    }
+  });
   const summary = {
     imported: results.filter((r) => r.outcome === "imported").length,
     suppressed: results.filter((r) => r.outcome === "suppressed").length,

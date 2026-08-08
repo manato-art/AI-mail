@@ -16,6 +16,7 @@ import {
 } from "@/lib/db";
 import { recordSuccessfulSend } from "@/lib/post-send";
 import { getContactByEmail } from "@/lib/db";
+import { companyNamesConsistent } from "@/lib/email-domains";
 import { runSendGuard, parseBannedPhrases } from "@/lib/send-guard";
 import { runDangerCheck } from "@/lib/danger-check";
 import { applyBookingLink } from "@/lib/booking";
@@ -116,8 +117,18 @@ export async function POST(request: NextRequest) {
   // 一括送信側と同じ解決順（2026-08-08・単発送信だけ商材共通URLを使い続けていた誤送信経路を塞ぐ。
   // かってにHPは商材のLP欄を意図的に空にしているため、ここを直さないと
   // {{lp_url}} が未解決で残るか、他店の共通URLが入るかの二択だった）
+  //
+  // ★ 連絡先のLPを採用する前に、その連絡先が**この案件の会社**のものかを確認する。
+  //   同じ受信箱を複数店舗が共有していると（sanwa-gr.com の実例）、email 一致だけでは
+  //   「本文はそば屋・リンクは別店」が起きる（独立レビュー指摘）。名前が食い違うなら
+  //   連絡先のLPは捨てる — かってにHPでは商材LPが空なので未解決で残り、ガードが止める
   const registeredContact = getContactByEmail(rawToEmail);
-  const recipientLpUrl = registeredContact?.lp_url || service?.lp_url || undefined;
+  const contactMatchesProspect =
+    !registeredContact?.company_name ||
+    !prospect.company_name ||
+    companyNamesConsistent(registeredContact.company_name, prospect.company_name);
+  const recipientLpUrl =
+    (contactMatchesProspect ? registeredContact?.lp_url : undefined) || service?.lp_url || undefined;
 
   // F4/F9: 差し込み変数を解決。値が無い変数は原文のまま残り、下の送信ガードが弾く
   const resolved = resolveEmailVariables(prospect.subject, bodyWithBooking, {

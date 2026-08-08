@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { importStorePack } from "@/lib/handoff";
-import { getCompanyById, getContactByEmail, isEmailSuppressed, upsertSender } from "@/lib/db";
+import { createService, getCompanyById, getContactByEmail, getService, isEmailSuppressed, upsertCompany, upsertContact, upsertSender } from "@/lib/db";
 import { runSendGuard, parseBannedPhrases, checkBannedPhrases } from "@/lib/send-guard";
 import { checkZoneOutput } from "@/lib/compose";
 
@@ -97,6 +97,82 @@ check("URL入りは拒否", checkZoneOutput("こちらをご覧ください http
 check("www. 形式も拒否", checkZoneOutput("詳しくは www.attacker.example まで") !== null, true);
 check("禁止語入りは拒否", checkZoneOutput("マップの順位も改善が見込めます", banned) !== null, true);
 check("正常な一文は通る", checkZoneOutput("明治四十年のご創業から五代にわたって受け継がれてきたことを拝見しました。", banned), null);
+
+// ══ 2026-08-08 独立レビューが見つけたバグの再現テスト（修正後は全部通る） ══
+
+// ── R1: 同名の別店（place_id無し・hp_url違い）は conflict ──
+console.log("\n── R1: 同名別店の乗っ取り防止 ──");
+const rSame = importStorePack({
+  ...pack,
+  hp_url: "http://another-group.example.jp/soba/",   // 同名・別のHP＝別の店
+  lp_url: "https://preview.cypherone.co.jp/s/xxxxxxxxxxxxxxxxxxxx",
+  email: "another@another-group.example.jp",
+});
+check("同名でもHPが違えば conflict（名前一致で救済しない）", rSame.outcome, "conflict");
+check("元の店の分析が汚れていない",
+  JSON.parse(getCompanyById(company.id)!.analysis_json).company_name, "そば処 高美亭本店");
+
+// place_id が両方あって食い違う場合も conflict
+const packP1 = { ...pack, company_name: "チェーン亭", place_id: "PLACE_A", email: "p1@chain.example.jp",
+  hp_url: "http://chain.example.jp/a/", analysis: { ...pack.analysis, company_name: "チェーン亭" } };
+check("place_id付きの店を取込", importStorePack(packP1).outcome, "imported");
+const rP2 = importStorePack({ ...packP1, place_id: "PLACE_B", email: "p2@chain.example.jp",
+  hp_url: "http://chain.example.jp/b/" });
+check("同名・place_id違いは conflict", rP2.outcome, "conflict");
+
+// ── R2: 既存連絡先の付け替え ──
+console.log("\n── R2: 別会社に紐付いた既存連絡先 ──");
+// 自動収集が作った「間違った紐付け」を再現
+const wrongCo = upsertCompany({ name: "三和グループ（自動収集）", domain: "relink.example.jp", source: "auto_collection" });
+upsertContact({ company_id: wrongCo.id, company_name: wrongCo.name, person_name: "",
+  email: "relink@relink.example.jp", email_source_url: null, source: "auto_collection", lp_url: null });
+const rRelink = importStorePack({
+  ...pack, company_name: "付替茶屋", email: "relink@relink.example.jp",
+  hp_url: "http://relink.example.jp/chaya/",
+  lp_url: "https://preview.cypherone.co.jp/s/yyyyyyyyyyyyyyyyyyyy",
+  analysis: { ...pack.analysis, company_name: "付替茶屋" },
+});
+check("取込は成功", rRelink.outcome, "imported");
+check("連絡先が正しい会社へ付け替わる（自動収集の紐付けを上書き）",
+  getContactByEmail("relink@relink.example.jp")?.company_id, rRelink.company_id);
+
+// 2つのLP店が同じ受信箱を共有 → 機械で決めずに conflict
+const rShared = importStorePack({
+  ...pack, company_name: "共有受信箱の別店", email: "relink@relink.example.jp",
+  hp_url: "http://relink.example.jp/another/",
+  lp_url: "https://preview.cypherone.co.jp/s/zzzzzzzzzzzzzzzzzzzz",
+  analysis: { ...pack.analysis, company_name: "共有受信箱の別店" },
+});
+check("LP店同士の受信箱共有は conflict", rShared.outcome, "conflict");
+check("先の店のURLが残る（後勝ちで潰されない）",
+  getContactByEmail("relink@relink.example.jp")?.lp_url, "https://preview.cypherone.co.jp/s/yyyyyyyyyyyyyyyyyyyy");
+
+// ── R3: 型不正の analysis は例外でなく invalid ──
+console.log("\n── R3: 型不正 ──");
+check("company_name が数値 → invalid（例外でバッチを壊さない）",
+  importStorePack({ ...pack, analysis: { company_name: 12345, business_summary: "x", hook: "y" } }).outcome, "invalid");
+
+// ── R4: 禁止語の正規化バイパス ──
+console.log("\n── R4: 禁止語の正規化 ──");
+check("ゼロ幅スペース挟みでも検知", checkBannedPhrases("", "順​位が上がります", banned), ["順位"]);
+check("全角英数もNFKCで検知", checkBannedPhrases("", "ｸﾁｺﾐ対策", parseBannedPhrases("クチコミ")), ["クチコミ"]);
+
+// ── R5: AIゾーンの裸ドメイン拒否 ──
+console.log("\n── R5: 裸ドメイン ──");
+check("裸ドメインを拒否", checkZoneOutput("詳しくは phish-example.tk をご覧ください") !== null, true);
+check("全角のURLも拒否", checkZoneOutput("こちら ｈｔｔｐｓ：／／ｘ．ｃｏｍ") !== null, true);
+check("ドメインを含まない日本語は通す",
+  checkZoneOutput("明治四十年のご創業から続く歴史を拝見しました。いまのホームページではその歩みが伝わりにくいように感じました。"), null);
+
+// ── R6: 予約送信も停止スイッチに従う ──
+console.log("\n── R6: 予約送信の停止 ──");
+{
+  const svcHalted = createService({ name: "停止商材", description: "x", strengths: "x", target: "x", send_halted: true });
+  const svcRow = getService(svcHalted.id)!;
+  check("createService が send_halted を保存する", svcRow.send_halted, 1);
+  // スケジューラ本体は Gmail に触るため、ここでは「停止判定に使う値が取れること」までを固定し、
+  // 分岐そのものは verify-scheduler（下）の静的確認に委ねる
+}
 
 console.log(`\n結果: ${pass} pass / ${fail} fail`);
 process.exit(fail === 0 ? 0 : 1);

@@ -53,12 +53,23 @@ export function parseBannedPhrases(raw: string | null | undefined): string[] {
 }
 
 /**
- * 禁止語の混入を返す（空配列＝問題なし）。単純な部分一致。
+ * 照合用の正規化（2026-08-08 独立レビューで追加）。
+ * 素の includes だと「順​位」（ゼロ幅スペース挟み）や全角英数で禁止語検知が外れる。
+ * この文面はAI生成部分＝店のHP原文・クチコミ由来のテキストが通る場所なので、
+ * 注入で意図的に細工される前提で照合する。NFKC で全半角を畳み、ゼロ幅類を除去する。
+ */
+export function normalizeForMatch(text: string): string {
+  // U+200B..D ゼロ幅類 / U+2060 word joiner / U+FEFF BOM / U+00AD soft hyphen
+  return text.normalize("NFKC").replace(/[​-‍⁠﻿­]/g, "");
+}
+
+/**
+ * 禁止語の混入を返す（空配列＝問題なし）。正規化してから部分一致。
  * 誤検知の代償は「文面を直す」だけだが、取りこぼしの代償は通報・特電法違反なので厳しい側に倒す。
  */
 export function checkBannedPhrases(subject: string, body: string, phrases: string[]): string[] {
-  const text = `${subject}\n${body}`;
-  return phrases.filter((p) => text.includes(p));
+  const text = normalizeForMatch(`${subject}\n${body}`);
+  return phrases.filter((p) => text.includes(normalizeForMatch(p)));
 }
 
 // フリーメールドメイン（自社ドメイン誤ブロック除外に使う）は lib/email-domains に集約。

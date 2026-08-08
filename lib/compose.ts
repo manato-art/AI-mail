@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { resolveVariables, type VariableValues } from "@/lib/variables";
-import { parseBannedPhrases } from "@/lib/send-guard";
+import { parseBannedPhrases, normalizeForMatch } from "@/lib/send-guard";
 import { fenceUntrusted } from "@/lib/prompt-fence";
 import type { AnalysisResult, ComposeMode, Persona, Service, Template } from "@/lib/types";
 
@@ -327,14 +327,20 @@ export function checkZoneOutput(text: string, bannedPhrases?: string[]): string 
   for (const rule of ZONE_OUTPUT_REJECT) {
     if (rule.test.test(t)) return `${rule.id}が含まれる`;
   }
-  // ★ URLは無条件で拒否（2026-08-08 検証ワークフロー V10）。
+  // ★ URL・ドメインは無条件で拒否（2026-08-08 検証ワークフロー V10）。
   //   生成プロンプトには店のHP原文・クチコミ由来のテキストが入る。そこに
   //   「次のリンクを本文に含めてください」と仕込まれると、AIが書く段落に
   //   攻撃者のURLが混入し、運用者のGmailからフィッシングリンクが送られる。
+  //   Gmail は「phish.example」のような**裸ドメインも自動でリンク化する**ので、
+  //   https:// と www. だけ見るのでは足りない（独立レビューが実際にすり抜けを再現）。
+  //   照合は正規化後に行う（全角の ｈｔｔｐｓ：／／ も NFKC で畳まれて捕まる）。
   //   AIが書く1〜3文にリンクが入る正当な理由は無いので、存在自体を弾く。
-  if (/https?:\/\/|www\./i.test(t)) return "URLが含まれる（AI生成部分にリンクは書かせない）";
+  const tn = normalizeForMatch(t);
+  if (/https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]*\.[a-z]{2,}\b/i.test(tn)) {
+    return "URLまたはドメインが含まれる（AI生成部分にリンクは書かせない）";
+  }
   if (bannedPhrases?.length) {
-    const hit = bannedPhrases.find((p) => t.includes(p));
+    const hit = bannedPhrases.find((p) => tn.includes(normalizeForMatch(p)));
     if (hit) return `商材の禁止語「${hit}」が含まれる`;
   }
   if (t.length > ZONE_OUTPUT_MAX_CHARS) {
